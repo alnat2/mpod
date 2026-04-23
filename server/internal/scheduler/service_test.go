@@ -6,7 +6,9 @@ import (
 	"io"
 	"log"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/cross/mpod/server/internal/settings"
 	"github.com/cross/mpod/server/internal/storage"
@@ -58,6 +60,93 @@ func TestRunOnceFailureUpdatesStatus(t *testing.T) {
 	if status.LastRunAt == nil || status.LastFailureAt == nil || status.LastError == nil {
 		t.Fatalf("expected failure status fields to be set")
 	}
+}
+
+func TestParseClock(t *testing.T) {
+	hour, minute, err := parseClock("09:45")
+	if err != nil {
+		t.Fatalf("parseClock failed: %v", err)
+	}
+	if hour != 9 || minute != 45 {
+		t.Fatalf("unexpected parsed time: %d:%d", hour, minute)
+	}
+
+	if _, _, err := parseClock("invalid"); err == nil {
+		t.Fatalf("expected parseClock to reject invalid values")
+	}
+}
+
+func TestMaybeRunSkipsOutsideConfiguredWindow(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	now := time.Now()
+	configured := now.Add(1 * time.Minute).Format("15:04")
+	if _, err := db.SQL.Exec(`UPDATE settings SET value = ? WHERE key = 'daily_refresh_time'`, configured); err != nil {
+		t.Fatalf("update settings: %v", err)
+	}
+
+	var called atomic.Int32
+	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL), func(context.Context) error {
+		called.Add(1)
+		return nil
+	})
+	service.maybeRun(context.Background())
+
+	if called.Load() != 0 {
+		t.Fatalf("expected maybeRun to skip outside configured window, called=%d", called.Load())
+	}
+}
+
+func TestMaybeRunStartsOnlyOncePerDay(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	now := time.Now().Format("15:04")
+	if _, err := db.SQL.Exec(`UPDATE settings SET value = ? WHERE key = 'daily_refresh_time'`, now); err != nil {
+		t.Fatalf("update settings: %v", err)
+	}
+
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	var called atomic.Int32
+	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL), func(context.Context) error {
+		called.Add(1)
+		started <- struct{}{}
+		<-release
+		return nil
+	})
+
+	service.maybeRun(context.Background())
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for scheduled run to start")
+	}
+
+	service.maybeRun(context.Background())
+	close(release)
+
+	waitForSchedulerIdle(t, service)
+	if called.Load() != 1 {
+		t.Fatalf("expected exactly one scheduled run, got %d", called.Load())
+	}
+}
+
+func waitForSchedulerIdle(t *testing.T, service *Service) {
+	t.Helper()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		service.mu.Lock()
+		running := service.running
+		service.mu.Unlock()
+		if !running {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for scheduler to become idle")
 }
 
 func newTestDB(t *testing.T) *storage.DB {
