@@ -71,7 +71,7 @@ func (s *Service) List(ctx context.Context) ([]Podcast, error) {
 	}
 	defer rows.Close()
 
-	var podcasts []Podcast
+	podcasts := make([]Podcast, 0)
 	for rows.Next() {
 		podcast, err := scanPodcast(rows)
 		if err != nil {

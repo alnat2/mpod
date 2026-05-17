@@ -38,7 +38,7 @@ func (s *Service) ListByPodcast(ctx context.Context, podcastID int64) ([]Episode
 	}
 	defer rows.Close()
 
-	var items []Episode
+	items := make([]Episode, 0)
 	for rows.Next() {
 		episode, err := scanEpisode(rows)
 		if err != nil {

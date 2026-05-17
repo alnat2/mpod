@@ -24,6 +24,7 @@ import (
 	"github.com/cross/mpod/server/internal/playback"
 	"github.com/cross/mpod/server/internal/playlist"
 	"github.com/cross/mpod/server/internal/podcasts"
+	"github.com/cross/mpod/server/internal/remote"
 	"github.com/cross/mpod/server/internal/scheduler"
 	"github.com/cross/mpod/server/internal/settings"
 	"github.com/cross/mpod/server/internal/storage"
@@ -134,6 +135,19 @@ func TestRegisterRejectsSecondSetupAttempt(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "SETUP_ALREADY_COMPLETE")
 }
 
+func TestRegisterRejectsInvalidJSON(t *testing.T) {
+	handler, _ := newTestRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/auth/register", bytes.NewReader([]byte(`{`)))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "INVALID_JSON")
+}
+
 func TestPodcastGetRejectsInvalidPathParameter(t *testing.T) {
 	handler, cookie := newAuthedRouter(t)
 
@@ -213,6 +227,30 @@ func TestLoginRejectsInvalidJSON(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "INVALID_JSON")
 }
 
+func TestSessionEndpointShowsLoggedOutStateAfterLogout(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	logoutReq := httptest.NewRequest(nethttp.MethodPost, "/api/auth/logout", nil)
+	logoutReq.AddCookie(cookie)
+	logoutRec := httptest.NewRecorder()
+	handler.ServeHTTP(logoutRec, logoutReq)
+	if logoutRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from logout, got %d body=%s", logoutRec.Code, logoutRec.Body.String())
+	}
+
+	sessionReq := httptest.NewRequest(nethttp.MethodGet, "/api/auth/session", nil)
+	sessionReq.AddCookie(cookie)
+	sessionRec := httptest.NewRecorder()
+	handler.ServeHTTP(sessionRec, sessionReq)
+
+	if sessionRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from session endpoint, got %d body=%s", sessionRec.Code, sessionRec.Body.String())
+	}
+	if !strings.Contains(sessionRec.Body.String(), `"authenticated":false`) || !strings.Contains(sessionRec.Body.String(), `"setupRequired":false`) {
+		t.Fatalf("unexpected logged-out session payload: %s", sessionRec.Body.String())
+	}
+}
+
 func TestLogoutClearsCookie(t *testing.T) {
 	handler, cookie := newAuthedRouter(t)
 
@@ -276,6 +314,45 @@ func TestPodcastsListReturnsItems(t *testing.T) {
 	}
 }
 
+func TestPodcastsListReturnsEmptyArrayWhenNoSubscriptions(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"podcasts":[]`) {
+		t.Fatalf("expected empty podcasts array, got %s", rec.Body.String())
+	}
+}
+
+func TestPodcastsListReturnsServerErrorWhenLoadFails(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "PODCAST_LIST_FAILED")
+}
+
 func TestPodcastGetNotFound(t *testing.T) {
 	handler, cookie := newAuthedRouter(t)
 
@@ -289,6 +366,25 @@ func TestPodcastGetNotFound(t *testing.T) {
 		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	assertErrorCode(t, rec.Body.Bytes(), "PODCAST_NOT_FOUND")
+}
+
+func TestPodcastGetReturnsPodcast(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast One', 'https://example.com/feed.xml')`)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/1", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"title":"Podcast One"`) {
+		t.Fatalf("unexpected podcast get payload: %s", rec.Body.String())
+	}
 }
 
 func TestPodcastsCreateImportsFeed(t *testing.T) {
@@ -623,6 +719,45 @@ func TestPlaylistEndpoints(t *testing.T) {
 	}
 }
 
+func TestPlaylistListReturnsEmptyArrayWhenNoItems(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/playlist", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"items":[]`) {
+		t.Fatalf("expected empty playlist array, got %s", rec.Body.String())
+	}
+}
+
+func TestPlaylistListReturnsServerErrorWhenLoadFails(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/playlist", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "PLAYLIST_LIST_FAILED")
+}
+
 func TestPlaylistReorderRejectsInvalidOrder(t *testing.T) {
 	handler, db := newTestRouter(t)
 	cookie := register(t, handler, "admin", "secret")
@@ -653,6 +788,52 @@ func TestPlaylistAddRejectsUnknownEpisode(t *testing.T) {
 		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	assertErrorCode(t, rec.Body.Bytes(), "EPISODE_NOT_FOUND")
+}
+
+func TestPlaylistReorderRejectsInvalidJSON(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPatch, "/api/playlist/reorder", bytes.NewReader([]byte(`{`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "INVALID_JSON")
+}
+
+func TestPlaylistRemoveReturnsServerErrorWhenDownloadDeletionFails(t *testing.T) {
+	downloadsDir := t.TempDir()
+	handler, db := newTestRouterWithConfig(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: downloadsDir,
+	})
+	cookie := register(t, handler, "admin", "secret")
+
+	downloadPath := filepath.Join(downloadsDir, "problem-dir")
+	if err := os.MkdirAll(downloadPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(downloadPath, "nested.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path) VALUES (1, 1, 'ep-1', 'Episode', 'https://example.com/1.mp3', ?)`, downloadPath)
+	mustExecHTTP(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+
+	req := httptest.NewRequest(nethttp.MethodDelete, "/api/playlist/1", nil)
+	req.SetPathValue("episodeId", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "PLAYLIST_REMOVE_FAILED")
 }
 
 func TestPlaybackEndpoints(t *testing.T) {
@@ -709,6 +890,67 @@ func TestPlaybackRejectsUnknownEpisode(t *testing.T) {
 		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	assertErrorCode(t, rec.Body.Bytes(), "EPISODE_NOT_FOUND")
+}
+
+func TestPlaybackRejectsInvalidPosition(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+	seedEpisode(t, db, 1, 1)
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/playback", bytes.NewReader([]byte(`{"episodeId":1,"positionSeconds":-1}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "INVALID_POSITION")
+}
+
+func TestPlaybackGetReturnsSavedState(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+	seedEpisode(t, db, 1, 1)
+	now := time.Date(2026, 4, 24, 8, 0, 0, 0, time.UTC)
+	mustExecHTTP(t, db, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (1, 42, ?)`, now)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/playback/1", nil)
+	req.SetPathValue("episodeId", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"episodeId":1`) || !strings.Contains(rec.Body.String(), `"positionSeconds":42`) {
+		t.Fatalf("unexpected playback payload: %s", rec.Body.String())
+	}
+}
+
+func TestPlaybackGetReturnsServerErrorWhenLoadFails(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/playback/1", nil)
+	req.SetPathValue("episodeId", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "PLAYBACK_LOAD_FAILED")
 }
 
 func TestEpisodeEndpoints(t *testing.T) {
@@ -927,6 +1169,91 @@ func TestEpisodePatchRejectsMissingField(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "INVALID_EPISODE_PATCH")
 }
 
+func TestEpisodePatchRejectsInvalidJSON(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPatch, "/api/episodes/1", bytes.NewReader([]byte(`{`)))
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "INVALID_JSON")
+}
+
+func TestEpisodePatchRejectsUnknownEpisode(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPatch, "/api/episodes/999", bytes.NewReader([]byte(`{"isListened":true}`)))
+	req.SetPathValue("id", "999")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "EPISODE_NOT_FOUND")
+}
+
+func TestEpisodeDownloadReturnsServerErrorOnClientFailure(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return nil, io.EOF
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode', ?)`, "https://cdn.example.com/episode.mp3")
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/episodes/1/download", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "DOWNLOAD_FAILED")
+}
+
+func TestEpisodeDownloadDeleteReturnsServerErrorWhenFileDeletionFails(t *testing.T) {
+	downloadsDir := t.TempDir()
+	handler, db := newTestRouterWithConfig(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: downloadsDir,
+	})
+	cookie := register(t, handler, "admin", "secret")
+
+	downloadPath := filepath.Join(downloadsDir, "problem-dir")
+	if err := os.MkdirAll(downloadPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(downloadPath, "nested.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path) VALUES (1, 1, 'ep-1', 'Episode', 'https://example.com/1.mp3', ?)`, downloadPath)
+
+	req := httptest.NewRequest(nethttp.MethodDelete, "/api/episodes/1/download", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "DOWNLOAD_DELETE_FAILED")
+}
+
 func TestSettingsAndJobsEndpoints(t *testing.T) {
 	handler, cookie := newAuthedRouter(t)
 
@@ -948,6 +1275,55 @@ func TestSettingsAndJobsEndpoints(t *testing.T) {
 	if jobsRec.Code != nethttp.StatusOK {
 		t.Fatalf("expected 200 from jobs status, got %d body=%s", jobsRec.Code, jobsRec.Body.String())
 	}
+	if !strings.Contains(jobsRec.Body.String(), `"state":"idle"`) {
+		t.Fatalf("expected idle scheduler state, got %s", jobsRec.Body.String())
+	}
+}
+
+func TestSettingsGetReturnsServerErrorWhenLoadFails(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/settings", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "SETTINGS_LOAD_FAILED")
+}
+
+func TestJobsStatusReturnsServerErrorWhenLoadFails(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/jobs/status", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "JOBS_STATUS_FAILED")
 }
 
 func TestSettingsPatchRejectsMissingFields(t *testing.T) {
@@ -978,6 +1354,20 @@ func TestSettingsPatchRejectsProxyEnableWithoutRuntimeConfig(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "INVALID_SETTINGS")
 }
 
+func TestSettingsPatchRejectsInvalidJSON(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPatch, "/api/settings", bytes.NewReader([]byte(`{`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "INVALID_JSON")
+}
+
 func TestPodcastEpisodesListAndExportOPML(t *testing.T) {
 	handler, db := newTestRouter(t)
 	cookie := register(t, handler, "admin", "secret")
@@ -1004,6 +1394,52 @@ func TestPodcastEpisodesListAndExportOPML(t *testing.T) {
 	if got := exportRec.Header().Get("Content-Type"); !strings.Contains(got, "text/x-opml") {
 		t.Fatalf("expected OPML content type, got %q", got)
 	}
+	if got := exportRec.Header().Get("Content-Disposition"); !strings.Contains(got, `attachment; filename="mpod-subscriptions.opml"`) {
+		t.Fatalf("expected attachment disposition, got %q", got)
+	}
+}
+
+func TestPodcastEpisodesListReturnsEmptyArrayWhenNoEpisodes(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast One', 'https://example.com/feed.xml')`)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/1/episodes", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"episodes":[]`) {
+		t.Fatalf("expected empty episodes array, got %s", rec.Body.String())
+	}
+}
+
+func TestPodcastEpisodesListReturnsServerErrorWhenLoadFails(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/1/episodes", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "EPISODE_LIST_FAILED")
 }
 
 func TestImportOPMLValidation(t *testing.T) {
@@ -1069,6 +1505,62 @@ func TestImportOPMLRejectsInvalidDocument(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "INVALID_OPML")
 }
 
+func TestImportOPMLImportsFeeds(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		switch req.URL.Path {
+		case "/feed-one.xml":
+			return routerXMLResponse(testRouterRSSFeed("Podcast One", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
+		case "/feed-two.xml":
+			return routerXMLResponse(testRouterRSSFeed("Podcast Two", "Episode Two", "guid-2", "https://cdn.example.com/2.mp3")), nil
+		default:
+			t.Fatalf("unexpected request path %q", req.URL.Path)
+			return nil, nil
+		}
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	fileWriter, err := writer.CreateFormFile("file", "subscriptions.opml")
+	if err != nil {
+		t.Fatalf("CreateFormFile failed: %v", err)
+	}
+	opml := `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <body>
+    <outline text="Podcast One" xmlUrl="https://example.com/feed-one.xml"/>
+    <outline text="Group">
+      <outline text="Podcast Two" xmlUrl="https://example.com/feed-two.xml"/>
+    </outline>
+  </body>
+</opml>`
+	if _, err := fileWriter.Write([]byte(opml)); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close multipart writer failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/import-opml", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"imported":2`) || !strings.Contains(rec.Body.String(), `"skipped":0`) {
+		t.Fatalf("unexpected OPML import payload: %s", rec.Body.String())
+	}
+	assertTableCount(t, db, `SELECT COUNT(*) FROM podcasts`, 2)
+	assertTableCount(t, db, `SELECT COUNT(*) FROM episodes`, 2)
+}
+
 func newAuthedRouter(t *testing.T) (nethttp.Handler, *nethttp.Cookie) {
 	t.Helper()
 
@@ -1104,22 +1596,37 @@ func newTestRouterWithClient(t *testing.T, cfg config.Config, client *nethttp.Cl
 	if client == nil {
 		return NewRouter(log.New(io.Discard, "", 0), cfg, db.SQL, schedulerService), db
 	}
+	return newSplitRouterWithClient(t, cfg, db, db, client), db
+}
 
-	settingsService := settings.NewService(db.SQL, cfg.SOCKS5Host != "")
-	playlistService := playlist.NewService(db.SQL)
-	downloadsService := downloads.NewService(db.SQL, client, cfg.DownloadsDir)
+func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *storage.DB, client *nethttp.Client) nethttp.Handler {
+	t.Helper()
+
+	schedulerService := scheduler.NewService(
+		appDB.SQL,
+		log.New(io.Discard, "", 0),
+		settings.NewService(appDB.SQL, cfg.SOCKS5Host != ""),
+		func(context.Context) error { return nil },
+	)
+	if client == nil {
+		client = newRouterDefaultClient(t, cfg, appDB)
+	}
+
+	settingsService := settings.NewService(appDB.SQL, cfg.SOCKS5Host != "")
+	playlistService := playlist.NewService(appDB.SQL)
+	downloadsService := downloads.NewService(appDB.SQL, client, cfg.DownloadsDir)
 
 	r := &Router{
 		logger:         log.New(io.Discard, "", 0),
 		config:         cfg,
-		db:             db.SQL,
-		auth:           auth.NewService(db.SQL),
-		episodes:       episodes.NewService(db.SQL),
-		episodeActions: episodes.NewActions(db.SQL, downloadsService),
-		playback:       playback.NewService(db.SQL, playlistService, downloadsService),
+		db:             appDB.SQL,
+		auth:           auth.NewService(authDB.SQL),
+		episodes:       episodes.NewService(appDB.SQL),
+		episodeActions: episodes.NewActions(appDB.SQL, downloadsService),
+		playback:       playback.NewService(appDB.SQL, playlistService, downloadsService),
 		playlist:       playlistService,
 		downloads:      downloadsService,
-		podcasts:       podcasts.NewService(db.SQL, client),
+		podcasts:       podcasts.NewService(appDB.SQL, client),
 		settings:       settingsService,
 		scheduler:      schedulerService,
 	}
@@ -1151,7 +1658,21 @@ func newTestRouterWithClient(t *testing.T, cfg config.Config, client *nethttp.Cl
 	mux.HandleFunc("DELETE /api/episodes/{id}/download", r.handleEpisodeDownloadDelete)
 	mux.HandleFunc("GET /api/settings", r.handleSettingsGet)
 	mux.HandleFunc("PATCH /api/settings", r.handleSettingsPatch)
-	return r.recoverAndLog(mux), db
+	return r.recoverAndLog(mux)
+}
+
+func newRouterDefaultClient(t *testing.T, cfg config.Config, appDB *storage.DB) *nethttp.Client {
+	t.Helper()
+
+	settingsService := settings.NewService(appDB.SQL, cfg.SOCKS5Host != "")
+	client, err := remote.NewHTTPClientWithProxyDecider(cfg, func(ctx context.Context) bool {
+		enabled, err := settingsService.ProxyEnabled(ctx)
+		return err == nil && enabled
+	})
+	if err != nil {
+		t.Fatalf("create router default client failed: %v", err)
+	}
+	return client
 }
 
 func newTestDB(t *testing.T) *storage.DB {

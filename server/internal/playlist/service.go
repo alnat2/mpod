@@ -48,7 +48,7 @@ func (s *Service) List(ctx context.Context) ([]Item, error) {
 	}
 	defer rows.Close()
 
-	var items []Item
+	items := make([]Item, 0)
 	for rows.Next() {
 		var item Item
 		var downloadedPath sql.NullString
