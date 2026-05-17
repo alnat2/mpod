@@ -1,27 +1,33 @@
 # Server Testing
 
-The Go backend uses external modules declared in [go.mod](/Users/cross/Documents/mpod/server/go.mod).
-
-## First-time bootstrap
-
-On a machine with network access, download modules first:
-
-```bash
-cd server
-GOCACHE=/tmp/mpod-go-build-cache GOMODCACHE=/tmp/mpod-go-modcache go mod download
-```
+The Go backend vendors its module dependencies under [vendor/](/Users/cross/Documents/mpod/server/vendor:1), so tests do not need a first-run download from `proxy.golang.org`.
 
 ## Run tests
 
-After modules are downloaded, run:
+```bash
+cd server
+go test ./...
+```
+
+If you are running in a restricted environment that blocks Go's default build cache location, redirect `GOCACHE` into `/tmp`:
 
 ```bash
 cd server
-GOCACHE=/tmp/mpod-go-build-cache GOMODCACHE=/tmp/mpod-go-modcache go test ./...
+GOCACHE=/tmp/mpod-go-build-cache go test ./...
+```
+
+## Refresh vendored dependencies
+
+When `go.mod` or `go.sum` changes, refresh the vendor tree on a machine with network access:
+
+```bash
+cd server
+go mod tidy
+go mod vendor
 ```
 
 ## Notes
 
-- Using `GOMODCACHE` is more practical than overriding all of `GOPATH`.
-- A fresh cache on a machine without DNS/network access will fail to resolve modules from `proxy.golang.org`.
-- If offline test execution becomes a regular requirement, vendoring dependencies is the next practical fallback.
+- The committed `vendor/` tree is the source used by `go test` in this module by default.
+- `GOMODCACHE` is no longer required for normal test runs.
+- `go mod tidy` and `go mod vendor` still require network access when adding or updating dependencies.

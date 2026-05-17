@@ -29,9 +29,11 @@ var (
 )
 
 type Service struct {
-	db     *sql.DB
-	client *http.Client
-	parser *gofeed.Parser
+	db          *sql.DB
+	client      *http.Client
+	parser      *gofeed.Parser
+	retryDelays []time.Duration
+	sleep       func(context.Context, time.Duration) error
 }
 
 type Podcast struct {
@@ -49,6 +51,12 @@ func NewService(db *sql.DB, client *http.Client) *Service {
 		db:     db,
 		client: client,
 		parser: gofeed.NewParser(),
+		retryDelays: []time.Duration{
+			30 * time.Second,
+			2 * time.Minute,
+			5 * time.Minute,
+		},
+		sleep: sleepContext,
 	}
 }
 
@@ -136,12 +144,34 @@ func (s *Service) RefreshAll(ctx context.Context) error {
 		return err
 	}
 
+	var failures []string
 	for _, id := range ids {
-		if _, _, err := s.Refresh(ctx, id); err != nil {
-			return err
+		if err := s.refreshWithRetry(ctx, id); err != nil {
+			failures = append(failures, fmt.Sprintf("podcast %d: %v", id, err))
 		}
 	}
+	if len(failures) > 0 {
+		return fmt.Errorf("refresh failures: %s", strings.Join(failures, "; "))
+	}
 	return nil
+}
+
+func (s *Service) refreshWithRetry(ctx context.Context, podcastID int64) error {
+	var lastErr error
+	attempts := len(s.retryDelays) + 1
+	for attempt := 0; attempt < attempts; attempt++ {
+		if attempt > 0 {
+			if err := s.sleep(ctx, s.retryDelays[attempt-1]); err != nil {
+				return err
+			}
+		}
+		if _, _, err := s.Refresh(ctx, podcastID); err != nil {
+			lastErr = err
+			continue
+		}
+		return nil
+	}
+	return lastErr
 }
 
 func (s *Service) Delete(ctx context.Context, podcastID int64) error {
@@ -209,6 +239,18 @@ func (s *Service) fetchFeed(ctx context.Context, normalizedURL string) (*gofeed.
 		return nil, ErrFeedParseFailed
 	}
 	return feed, nil
+}
+
+func sleepContext(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (s *Service) createPodcastFromFeed(ctx context.Context, normalizedURL string, feed *gofeed.Feed) (Podcast, int, error) {

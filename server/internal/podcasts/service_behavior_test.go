@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cross/mpod/server/internal/storage"
 )
@@ -124,6 +125,102 @@ func TestDeleteRemovesFilesAndCascadeData(t *testing.T) {
 	if _, err := os.Stat(downloadPath); !os.IsNotExist(err) {
 		t.Fatalf("expected podcast download file to be removed, stat err=%v", err)
 	}
+}
+
+func TestRefreshAllRetriesTransientFailuresAndContinues(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	mustExecBehavior(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'One', 'https://example.com/one.xml')`)
+	mustExecBehavior(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (2, 'Two', 'https://example.com/two.xml')`)
+
+	attempts := map[string]int{}
+	sleepCalls := 0
+	service := NewService(db.SQL, newPodcastTestClient(func(r *http.Request) (*http.Response, error) {
+		attempts[r.URL.Path]++
+		switch r.URL.Path {
+		case "/one.xml":
+			if attempts[r.URL.Path] < 3 {
+				return nil, io.EOF
+			}
+			return xmlResponse(testRSSFeed("One", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
+		case "/two.xml":
+			return xmlResponse(testRSSFeed("Two", "Episode Two", "guid-2", "https://cdn.example.com/2.mp3")), nil
+		default:
+			t.Fatalf("unexpected request path %q", r.URL.Path)
+			return nil, nil
+		}
+	}))
+	service.retryDelays = []time.Duration{0, 0, 0}
+	service.sleep = func(ctx context.Context, delay time.Duration) error {
+		sleepCalls++
+		return nil
+	}
+
+	if err := service.RefreshAll(context.Background()); err != nil {
+		t.Fatalf("RefreshAll failed: %v", err)
+	}
+
+	if attempts["/one.xml"] != 3 {
+		t.Fatalf("expected three attempts for first podcast, got %d", attempts["/one.xml"])
+	}
+	if attempts["/two.xml"] != 1 {
+		t.Fatalf("expected one attempt for second podcast, got %d", attempts["/two.xml"])
+	}
+	if sleepCalls != 2 {
+		t.Fatalf("expected two retry sleeps, got %d", sleepCalls)
+	}
+
+	assertCount(t, db.SQL, `SELECT COUNT(*) FROM episodes WHERE podcast_id = 1`, 1)
+	assertCount(t, db.SQL, `SELECT COUNT(*) FROM episodes WHERE podcast_id = 2`, 1)
+}
+
+func TestRefreshAllReturnsErrorAfterExhaustingRetriesButContinuesOtherPodcasts(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	mustExecBehavior(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'One', 'https://example.com/one.xml')`)
+	mustExecBehavior(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (2, 'Two', 'https://example.com/two.xml')`)
+
+	attempts := map[string]int{}
+	sleepCalls := 0
+	service := NewService(db.SQL, newPodcastTestClient(func(r *http.Request) (*http.Response, error) {
+		attempts[r.URL.Path]++
+		switch r.URL.Path {
+		case "/one.xml":
+			return nil, io.EOF
+		case "/two.xml":
+			return xmlResponse(testRSSFeed("Two", "Episode Two", "guid-2", "https://cdn.example.com/2.mp3")), nil
+		default:
+			t.Fatalf("unexpected request path %q", r.URL.Path)
+			return nil, nil
+		}
+	}))
+	service.retryDelays = []time.Duration{0, 0, 0}
+	service.sleep = func(ctx context.Context, delay time.Duration) error {
+		sleepCalls++
+		return nil
+	}
+
+	err := service.RefreshAll(context.Background())
+	if err == nil {
+		t.Fatalf("expected RefreshAll to report an aggregate failure")
+	}
+	if !strings.Contains(err.Error(), "podcast 1") {
+		t.Fatalf("expected aggregate error to mention failed podcast, got %v", err)
+	}
+	if attempts["/one.xml"] != 4 {
+		t.Fatalf("expected four attempts for first podcast, got %d", attempts["/one.xml"])
+	}
+	if attempts["/two.xml"] != 1 {
+		t.Fatalf("expected second podcast to continue refreshing, got %d attempts", attempts["/two.xml"])
+	}
+	if sleepCalls != 3 {
+		t.Fatalf("expected three retry sleeps, got %d", sleepCalls)
+	}
+
+	assertCount(t, db.SQL, `SELECT COUNT(*) FROM episodes WHERE podcast_id = 1`, 0)
+	assertCount(t, db.SQL, `SELECT COUNT(*) FROM episodes WHERE podcast_id = 2`, 1)
 }
 
 func newBehaviorTestDB(t *testing.T) *storage.DB {

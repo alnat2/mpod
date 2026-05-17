@@ -3,19 +3,27 @@ package http
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"log"
 	"mime/multipart"
 	nethttp "net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/cross/mpod/server/internal/auth"
 	"github.com/cross/mpod/server/internal/config"
+	"github.com/cross/mpod/server/internal/downloads"
+	"github.com/cross/mpod/server/internal/episodes"
+	"github.com/cross/mpod/server/internal/playback"
+	"github.com/cross/mpod/server/internal/playlist"
+	"github.com/cross/mpod/server/internal/podcasts"
 	"github.com/cross/mpod/server/internal/scheduler"
 	"github.com/cross/mpod/server/internal/settings"
 	"github.com/cross/mpod/server/internal/storage"
@@ -73,6 +81,57 @@ func TestRegisterCreatesSessionAndSessionEndpointReflectsAuth(t *testing.T) {
 	if !payload.Authenticated || payload.SetupRequired || payload.User.Username != "admin" {
 		t.Fatalf("unexpected session payload: %+v", payload)
 	}
+}
+
+func TestSessionEndpointReportsSetupRequiredWhenNoUserExists(t *testing.T) {
+	handler, _ := newTestRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/auth/session", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		Authenticated bool `json:"authenticated"`
+		SetupRequired bool `json:"setupRequired"`
+		User          any  `json:"user"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("Unmarshal session payload failed: %v", err)
+	}
+	if payload.Authenticated || !payload.SetupRequired || payload.User != nil {
+		t.Fatalf("unexpected setup-required payload: %+v", payload)
+	}
+}
+
+func TestRegisterRejectsInvalidPayload(t *testing.T) {
+	handler, _ := newTestRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/auth/register", bytes.NewReader([]byte(`{"username":"admin","password":""}`)))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "INVALID_REGISTRATION")
+}
+
+func TestRegisterRejectsSecondSetupAttempt(t *testing.T) {
+	handler, _ := newTestRouter(t)
+	register(t, handler, "admin", "secret")
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/auth/register", bytes.NewReader([]byte(`{"username":"other","password":"secret"}`)))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "SETUP_ALREADY_COMPLETE")
 }
 
 func TestPodcastGetRejectsInvalidPathParameter(t *testing.T) {
@@ -139,6 +198,19 @@ func TestLoginInvalidCredentials(t *testing.T) {
 		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	assertErrorCode(t, rec.Body.Bytes(), "INVALID_CREDENTIALS")
+}
+
+func TestLoginRejectsInvalidJSON(t *testing.T) {
+	handler, _ := newTestRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/auth/login", bytes.NewReader([]byte(`{`)))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "INVALID_JSON")
 }
 
 func TestLogoutClearsCookie(t *testing.T) {
@@ -219,6 +291,288 @@ func TestPodcastGetNotFound(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "PODCAST_NOT_FOUND")
 }
 
+func TestPodcastsCreateImportsFeed(t *testing.T) {
+	feedBody := testRouterRSSFeed("Test Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return routerXMLResponse(feedBody), nil
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts", bytes.NewReader([]byte(`{"rssUrl":"https://example.com/feed.xml#fragment"}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"title":"Test Podcast"`) || !strings.Contains(rec.Body.String(), `"rssUrl":"https://example.com/feed.xml"`) {
+		t.Fatalf("unexpected podcast create payload: %s", rec.Body.String())
+	}
+
+	assertTableCount(t, db, `SELECT COUNT(*) FROM podcasts`, 1)
+	assertTableCount(t, db, `SELECT COUNT(*) FROM episodes`, 1)
+}
+
+func TestPodcastsCreateRejectsDuplicateSubscription(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return routerXMLResponse(testRouterRSSFeed("Test Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
+	})
+	handler, _ := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	body := []byte(`{"rssUrl":"https://example.com/feed.xml"}`)
+
+	firstReq := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts", bytes.NewReader(body))
+	firstReq.AddCookie(cookie)
+	firstRec := httptest.NewRecorder()
+	handler.ServeHTTP(firstRec, firstReq)
+	if firstRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected first create to succeed, got %d body=%s", firstRec.Code, firstRec.Body.String())
+	}
+
+	secondReq := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts", bytes.NewReader(body))
+	secondReq.AddCookie(cookie)
+	secondRec := httptest.NewRecorder()
+	handler.ServeHTTP(secondRec, secondReq)
+
+	if secondRec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", secondRec.Code, secondRec.Body.String())
+	}
+	assertErrorCode(t, secondRec.Body.Bytes(), "DUPLICATE_SUBSCRIPTION")
+}
+
+func TestPodcastsCreateRejectsInvalidFeedURL(t *testing.T) {
+	handler, _ := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts", bytes.NewReader([]byte(`{"rssUrl":"not-a-url"}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "INVALID_FEED_URL")
+}
+
+func TestPodcastsCreateRejectsFeedFetchFailure(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return nil, io.EOF
+	})
+	handler, _ := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts", bytes.NewReader([]byte(`{"rssUrl":"https://example.com/feed.xml"}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "FEED_FETCH_FAILED")
+}
+
+func TestPodcastsCreateRejectsFeedParseFailure(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return routerXMLResponse("not xml"), nil
+	})
+	handler, _ := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts", bytes.NewReader([]byte(`{"rssUrl":"https://example.com/feed.xml"}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "FEED_PARSE_FAILED")
+}
+
+func TestPodcastsCreateRejectsNoPlayableEpisodes(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return routerXMLResponse(`<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Silent Podcast</title>
+    <item>
+      <title>Episode Without Audio</title>
+      <guid>guid-1</guid>
+    </item>
+  </channel>
+</rss>`), nil
+	})
+	handler, _ := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts", bytes.NewReader([]byte(`{"rssUrl":"https://example.com/feed.xml"}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "NO_PLAYABLE_EPISODES")
+}
+
+func TestPodcastRefreshReturnsNewEpisodes(t *testing.T) {
+	feedBody := testRouterRSSFeed("Test Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return routerXMLResponse(feedBody), nil
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	createReq := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts", bytes.NewReader([]byte(`{"rssUrl":"https://example.com/feed.xml"}`)))
+	createReq.AddCookie(cookie)
+	createRec := httptest.NewRecorder()
+	handler.ServeHTTP(createRec, createReq)
+	if createRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected create to succeed, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+
+	feedBody = testRouterRSSFeedWithTwoEpisodes(
+		"Test Podcast",
+		"Episode One Updated", "guid-1", "https://cdn.example.com/1-new.mp3",
+		"Episode Two", "guid-2", "https://cdn.example.com/2.mp3",
+	)
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/1/refresh", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"success":true`) || !strings.Contains(rec.Body.String(), `"newEpisodes":1`) {
+		t.Fatalf("unexpected podcast refresh payload: %s", rec.Body.String())
+	}
+
+	assertTableCount(t, db, `SELECT COUNT(*) FROM episodes WHERE podcast_id = 1`, 2)
+}
+
+func TestPodcastRefreshRejectsFeedFetchFailure(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return nil, io.EOF
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/1/refresh", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "FEED_FETCH_FAILED")
+}
+
+func TestPodcastRefreshNotFound(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/999/refresh", nil)
+	req.SetPathValue("id", "999")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "PODCAST_NOT_FOUND")
+}
+
+func TestPodcastDeleteRemovesCascadeDataAndFiles(t *testing.T) {
+	downloadsDir := t.TempDir()
+	handler, db := newTestRouterWithConfig(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: downloadsDir,
+	})
+	cookie := register(t, handler, "admin", "secret")
+
+	downloadPath := filepath.Join(downloadsDir, "1", "episode.mp3")
+	if err := os.MkdirAll(filepath.Dir(downloadPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	if err := os.WriteFile(downloadPath, []byte("audio"), 0o644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path) VALUES (1, 1, 'ep-1', 'Episode', 'https://example.com/1.mp3', ?)`, downloadPath)
+	mustExecHTTP(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+	mustExecHTTP(t, db, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (1, 5, CURRENT_TIMESTAMP)`)
+
+	req := httptest.NewRequest(nethttp.MethodDelete, "/api/podcasts/1", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatalf("unexpected podcast delete payload: %s", rec.Body.String())
+	}
+
+	assertTableCount(t, db, `SELECT COUNT(*) FROM podcasts`, 0)
+	assertTableCount(t, db, `SELECT COUNT(*) FROM episodes`, 0)
+	assertTableCount(t, db, `SELECT COUNT(*) FROM playlist`, 0)
+	assertTableCount(t, db, `SELECT COUNT(*) FROM playback`, 0)
+	if _, err := os.Stat(downloadPath); !os.IsNotExist(err) {
+		t.Fatalf("expected download file removal, stat err=%v", err)
+	}
+}
+
+func TestPodcastDeleteNotFound(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodDelete, "/api/podcasts/999", nil)
+	req.SetPathValue("id", "999")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "PODCAST_NOT_FOUND")
+}
+
 func TestPlaylistEndpoints(t *testing.T) {
 	handler, db := newTestRouter(t)
 	cookie := register(t, handler, "admin", "secret")
@@ -287,6 +641,20 @@ func TestPlaylistReorderRejectsInvalidOrder(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "INVALID_PLAYLIST_ORDER")
 }
 
+func TestPlaylistAddRejectsUnknownEpisode(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/playlist", bytes.NewReader([]byte(`{"episodeId":999}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "EPISODE_NOT_FOUND")
+}
+
 func TestPlaybackEndpoints(t *testing.T) {
 	handler, db := newTestRouter(t)
 	cookie := register(t, handler, "admin", "secret")
@@ -329,6 +697,20 @@ func TestPlaybackRejectsInvalidClientUpdatedAt(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "INVALID_CLIENT_UPDATED_AT")
 }
 
+func TestPlaybackRejectsUnknownEpisode(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/playback", bytes.NewReader([]byte(`{"episodeId":999,"positionSeconds":1}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "EPISODE_NOT_FOUND")
+}
+
 func TestEpisodeEndpoints(t *testing.T) {
 	handler, db := newTestRouter(t)
 	cookie := register(t, handler, "admin", "secret")
@@ -360,6 +742,174 @@ func TestEpisodeEndpoints(t *testing.T) {
 	if deleteRec.Code != nethttp.StatusOK {
 		t.Fatalf("expected 200 from download delete, got %d body=%s", deleteRec.Code, deleteRec.Body.String())
 	}
+}
+
+func TestEpisodeDownloadEndpointDownloadsFile(t *testing.T) {
+	downloadsDir := t.TempDir()
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return routerBinaryResponse("audio/mpeg", []byte("audio-bytes")), nil
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: downloadsDir,
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode', ?)`, "https://cdn.example.com/episode.mp3")
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/episodes/1/download", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"success":true`) || !strings.Contains(rec.Body.String(), `"downloaded":true`) {
+		t.Fatalf("unexpected episode download payload: %s", rec.Body.String())
+	}
+
+	var downloadedPath string
+	if err := db.SQL.QueryRow(`SELECT downloaded_path FROM episodes WHERE id = 1`).Scan(&downloadedPath); err != nil {
+		t.Fatalf("load downloaded_path failed: %v", err)
+	}
+	if downloadedPath == "" {
+		t.Fatalf("expected downloaded_path to be stored")
+	}
+	if _, err := os.Stat(downloadedPath); err != nil {
+		t.Fatalf("expected downloaded file to exist, stat err=%v", err)
+	}
+}
+
+func TestAPIFlowSubscribeDownloadPlaylistAndCompletePlayback(t *testing.T) {
+	downloadsDir := t.TempDir()
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		switch req.URL.Path {
+		case "/feed.xml":
+			return routerXMLResponse(testRouterRSSFeed("Flow Podcast", "Flow Episode", "guid-1", "https://cdn.example.com/episode.mp3")), nil
+		case "/episode.mp3":
+			return routerBinaryResponse("audio/mpeg", []byte("audio-bytes")), nil
+		default:
+			t.Fatalf("unexpected request path %q", req.URL.Path)
+			return nil, nil
+		}
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: downloadsDir,
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	createReq := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts", bytes.NewReader([]byte(`{"rssUrl":"https://example.com/feed.xml"}`)))
+	createReq.AddCookie(cookie)
+	createRec := httptest.NewRecorder()
+	handler.ServeHTTP(createRec, createReq)
+	if createRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from podcast create, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+
+	addReq := httptest.NewRequest(nethttp.MethodPost, "/api/playlist", bytes.NewReader([]byte(`{"episodeId":1}`)))
+	addReq.AddCookie(cookie)
+	addRec := httptest.NewRecorder()
+	handler.ServeHTTP(addRec, addReq)
+	if addRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from playlist add, got %d body=%s", addRec.Code, addRec.Body.String())
+	}
+
+	downloadReq := httptest.NewRequest(nethttp.MethodPost, "/api/episodes/1/download", nil)
+	downloadReq.SetPathValue("id", "1")
+	downloadReq.AddCookie(cookie)
+	downloadRec := httptest.NewRecorder()
+	handler.ServeHTTP(downloadRec, downloadReq)
+	if downloadRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from episode download, got %d body=%s", downloadRec.Code, downloadRec.Body.String())
+	}
+
+	playbackReq := httptest.NewRequest(nethttp.MethodPost, "/api/playback", bytes.NewReader([]byte(`{"episodeId":1,"positionSeconds":300,"durationSeconds":300,"completed":true}`)))
+	playbackReq.AddCookie(cookie)
+	playbackRec := httptest.NewRecorder()
+	handler.ServeHTTP(playbackRec, playbackReq)
+	if playbackRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from playback completion, got %d body=%s", playbackRec.Code, playbackRec.Body.String())
+	}
+
+	episodeReq := httptest.NewRequest(nethttp.MethodGet, "/api/episodes/1", nil)
+	episodeReq.SetPathValue("id", "1")
+	episodeReq.AddCookie(cookie)
+	episodeRec := httptest.NewRecorder()
+	handler.ServeHTTP(episodeRec, episodeReq)
+	if episodeRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from episode get, got %d body=%s", episodeRec.Code, episodeRec.Body.String())
+	}
+	if !strings.Contains(episodeRec.Body.String(), `"isListened":true`) || !strings.Contains(episodeRec.Body.String(), `"downloaded":false`) {
+		t.Fatalf("unexpected episode payload after completion: %s", episodeRec.Body.String())
+	}
+
+	playlistReq := httptest.NewRequest(nethttp.MethodGet, "/api/playlist", nil)
+	playlistReq.AddCookie(cookie)
+	playlistRec := httptest.NewRecorder()
+	handler.ServeHTTP(playlistRec, playlistReq)
+	if playlistRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from playlist get, got %d body=%s", playlistRec.Code, playlistRec.Body.String())
+	}
+	if strings.Contains(playlistRec.Body.String(), `"episodeId":1`) {
+		t.Fatalf("expected completed episode to be removed from playlist, got %s", playlistRec.Body.String())
+	}
+
+	var downloadedPath sql.NullString
+	if err := db.SQL.QueryRow(`SELECT downloaded_path FROM episodes WHERE id = 1`).Scan(&downloadedPath); err != nil {
+		t.Fatalf("load downloaded_path failed: %v", err)
+	}
+	if downloadedPath.Valid && downloadedPath.String != "" {
+		t.Fatalf("expected downloaded_path to be cleared, got %q", downloadedPath.String)
+	}
+}
+
+func TestEpisodeGetNotFound(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/episodes/999", nil)
+	req.SetPathValue("id", "999")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "EPISODE_NOT_FOUND")
+}
+
+func TestEpisodeDownloadRejectsUnknownEpisode(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/episodes/999/download", nil)
+	req.SetPathValue("id", "999")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "EPISODE_NOT_FOUND")
+}
+
+func TestEpisodeDownloadDeleteRejectsUnknownEpisode(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodDelete, "/api/episodes/999/download", nil)
+	req.SetPathValue("id", "999")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "EPISODE_NOT_FOUND")
 }
 
 func TestEpisodePatchRejectsMissingField(t *testing.T) {
@@ -398,6 +948,34 @@ func TestSettingsAndJobsEndpoints(t *testing.T) {
 	if jobsRec.Code != nethttp.StatusOK {
 		t.Fatalf("expected 200 from jobs status, got %d body=%s", jobsRec.Code, jobsRec.Body.String())
 	}
+}
+
+func TestSettingsPatchRejectsMissingFields(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPatch, "/api/settings", bytes.NewReader([]byte(`{}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "INVALID_SETTINGS")
+}
+
+func TestSettingsPatchRejectsProxyEnableWithoutRuntimeConfig(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPatch, "/api/settings", bytes.NewReader([]byte(`{"proxyEnabled":true}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "INVALID_SETTINGS")
 }
 
 func TestPodcastEpisodesListAndExportOPML(t *testing.T) {
@@ -463,6 +1041,34 @@ func TestImportOPMLMissingFile(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "OPML_FILE_REQUIRED")
 }
 
+func TestImportOPMLRejectsInvalidDocument(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	fileWriter, err := writer.CreateFormFile("file", "subscriptions.opml")
+	if err != nil {
+		t.Fatalf("CreateFormFile failed: %v", err)
+	}
+	if _, err := fileWriter.Write([]byte("not-opml")); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close multipart writer failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/import-opml", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "INVALID_OPML")
+}
+
 func newAuthedRouter(t *testing.T) (nethttp.Handler, *nethttp.Cookie) {
 	t.Helper()
 
@@ -482,6 +1088,12 @@ func newTestRouter(t *testing.T) (nethttp.Handler, *storage.DB) {
 func newTestRouterWithConfig(t *testing.T, cfg config.Config) (nethttp.Handler, *storage.DB) {
 	t.Helper()
 
+	return newTestRouterWithClient(t, cfg, nil)
+}
+
+func newTestRouterWithClient(t *testing.T, cfg config.Config, client *nethttp.Client) (nethttp.Handler, *storage.DB) {
+	t.Helper()
+
 	db := newTestDB(t)
 	schedulerService := scheduler.NewService(
 		db.SQL,
@@ -489,7 +1101,57 @@ func newTestRouterWithConfig(t *testing.T, cfg config.Config) (nethttp.Handler, 
 		settings.NewService(db.SQL, cfg.SOCKS5Host != ""),
 		func(context.Context) error { return nil },
 	)
-	return NewRouter(log.New(io.Discard, "", 0), cfg, db.SQL, schedulerService), db
+	if client == nil {
+		return NewRouter(log.New(io.Discard, "", 0), cfg, db.SQL, schedulerService), db
+	}
+
+	settingsService := settings.NewService(db.SQL, cfg.SOCKS5Host != "")
+	playlistService := playlist.NewService(db.SQL)
+	downloadsService := downloads.NewService(db.SQL, client, cfg.DownloadsDir)
+
+	r := &Router{
+		logger:         log.New(io.Discard, "", 0),
+		config:         cfg,
+		db:             db.SQL,
+		auth:           auth.NewService(db.SQL),
+		episodes:       episodes.NewService(db.SQL),
+		episodeActions: episodes.NewActions(db.SQL, downloadsService),
+		playback:       playback.NewService(db.SQL, playlistService, downloadsService),
+		playlist:       playlistService,
+		downloads:      downloadsService,
+		podcasts:       podcasts.NewService(db.SQL, client),
+		settings:       settingsService,
+		scheduler:      schedulerService,
+	}
+
+	mux := nethttp.NewServeMux()
+	mux.HandleFunc("GET /api/health", r.handleHealth)
+	mux.HandleFunc("GET /api/auth/session", r.handleSession)
+	mux.HandleFunc("POST /api/auth/register", r.handleRegister)
+	mux.HandleFunc("POST /api/auth/login", r.handleLogin)
+	mux.HandleFunc("POST /api/auth/logout", r.handleLogout)
+	mux.HandleFunc("GET /api/podcasts", r.handlePodcastsList)
+	mux.HandleFunc("POST /api/podcasts", r.handlePodcastsCreate)
+	mux.HandleFunc("GET /api/podcasts/{id}", r.handlePodcastGet)
+	mux.HandleFunc("DELETE /api/podcasts/{id}", r.handlePodcastDelete)
+	mux.HandleFunc("POST /api/podcasts/{id}/refresh", r.handlePodcastRefresh)
+	mux.HandleFunc("GET /api/podcasts/{id}/episodes", r.handlePodcastEpisodesList)
+	mux.HandleFunc("POST /api/podcasts/import-opml", r.handlePodcastsImportOPML)
+	mux.HandleFunc("GET /api/podcasts/export-opml", r.handlePodcastsExportOPML)
+	mux.HandleFunc("GET /api/jobs/status", r.handleJobsStatus)
+	mux.HandleFunc("GET /api/playback/{episodeId}", r.handlePlaybackGet)
+	mux.HandleFunc("POST /api/playback", r.handlePlaybackPost)
+	mux.HandleFunc("GET /api/playlist", r.handlePlaylistList)
+	mux.HandleFunc("POST /api/playlist", r.handlePlaylistAdd)
+	mux.HandleFunc("DELETE /api/playlist/{episodeId}", r.handlePlaylistRemove)
+	mux.HandleFunc("PATCH /api/playlist/reorder", r.handlePlaylistReorder)
+	mux.HandleFunc("GET /api/episodes/{id}", r.handleEpisodeGet)
+	mux.HandleFunc("PATCH /api/episodes/{id}", r.handleEpisodePatch)
+	mux.HandleFunc("POST /api/episodes/{id}/download", r.handleEpisodeDownload)
+	mux.HandleFunc("DELETE /api/episodes/{id}/download", r.handleEpisodeDownloadDelete)
+	mux.HandleFunc("GET /api/settings", r.handleSettingsGet)
+	mux.HandleFunc("PATCH /api/settings", r.handleSettingsPatch)
+	return r.recoverAndLog(mux), db
 }
 
 func newTestDB(t *testing.T) *storage.DB {
@@ -550,4 +1212,99 @@ func mustExecHTTP(t *testing.T, db *storage.DB, query string, args ...any) {
 	if _, err := db.SQL.Exec(query, args...); err != nil {
 		t.Fatalf("Exec %q failed: %v", query, err)
 	}
+}
+
+func assertTableCount(t *testing.T, db *storage.DB, query string, want int) {
+	t.Helper()
+
+	var got int
+	if err := db.SQL.QueryRow(query).Scan(&got); err != nil {
+		t.Fatalf("count query failed: %v", err)
+	}
+	if got != want {
+		t.Fatalf("expected count %d, got %d for query %q", want, got, query)
+	}
+}
+
+func testRouterRSSFeed(title, episodeTitle, guid, audioURL string) string {
+	return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>` + title + `</title>
+    <item>
+      <title>` + episodeTitle + `</title>
+      <guid>` + guid + `</guid>
+      <enclosure url="` + audioURL + `" type="audio/mpeg"/>
+    </item>
+  </channel>
+</rss>`
+}
+
+func testRouterRSSFeedWithTwoEpisodes(title, firstTitle, firstGUID, firstAudioURL, secondTitle, secondGUID, secondAudioURL string) string {
+	var builder strings.Builder
+	builder.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>`)
+	builder.WriteString(title)
+	builder.WriteString(`</title>
+    <item>
+      <title>`)
+	builder.WriteString(firstTitle)
+	builder.WriteString(`</title>
+      <guid>`)
+	builder.WriteString(firstGUID)
+	builder.WriteString(`</guid>
+      <enclosure url="`)
+	builder.WriteString(firstAudioURL)
+	builder.WriteString(`" type="audio/mpeg"/>
+    </item>
+    <item>
+      <title>`)
+	builder.WriteString(secondTitle)
+	builder.WriteString(`</title>
+      <guid>`)
+	builder.WriteString(secondGUID)
+	builder.WriteString(`</guid>
+      <enclosure url="`)
+	builder.WriteString(secondAudioURL)
+	builder.WriteString(`" type="audio/mpeg"/>
+    </item>
+  </channel>
+</rss>`)
+	return builder.String()
+}
+
+func newRouterTestClient(fn func(*nethttp.Request) (*nethttp.Response, error)) *nethttp.Client {
+	return &nethttp.Client{
+		Transport: routerRoundTripperFunc(fn),
+	}
+}
+
+type routerRoundTripperFunc func(*nethttp.Request) (*nethttp.Response, error)
+
+func (fn routerRoundTripperFunc) RoundTrip(req *nethttp.Request) (*nethttp.Response, error) {
+	return fn(req)
+}
+
+func routerXMLResponse(body string) *nethttp.Response {
+	resp := &nethttp.Response{
+		StatusCode: nethttp.StatusOK,
+		Status:     "200 OK",
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     make(nethttp.Header),
+	}
+	resp.Header.Set("Content-Type", "application/rss+xml")
+	return resp
+}
+
+func routerBinaryResponse(contentType string, body []byte) *nethttp.Response {
+	resp := &nethttp.Response{
+		StatusCode: nethttp.StatusOK,
+		Status:     "200 OK",
+		Body:       io.NopCloser(bytes.NewReader(body)),
+		Header:     make(nethttp.Header),
+	}
+	resp.Header.Set("Content-Type", contentType)
+	return resp
 }
