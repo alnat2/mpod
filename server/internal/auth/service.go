@@ -46,9 +46,9 @@ func (s *Service) UserCount(ctx context.Context) (int, error) {
 	return count, err
 }
 
-func (s *Service) RegisterInitial(ctx context.Context, username, password, confirmPassword string) (User, string, error) {
+func (s *Service) RegisterInitial(ctx context.Context, username, password string) (User, string, error) {
 	username = strings.TrimSpace(username)
-	if username == "" || password == "" || confirmPassword == "" || password != confirmPassword {
+	if username == "" || password == "" {
 		return User{}, "", ErrInvalidRegistration
 	}
 

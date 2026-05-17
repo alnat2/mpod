@@ -37,7 +37,7 @@ func TestProtectedRouteRequiresAuth(t *testing.T) {
 func TestRegisterCreatesSessionAndSessionEndpointReflectsAuth(t *testing.T) {
 	handler, _ := newTestRouter(t)
 
-	body := []byte(`{"username":"admin","password":"secret","confirmPassword":"secret"}`)
+	body := []byte(`{"username":"admin","password":"secret"}`)
 	req := httptest.NewRequest(nethttp.MethodPost, "/api/auth/register", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -102,6 +102,29 @@ func TestSettingsPatchRejectsInvalidTime(t *testing.T) {
 		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	assertErrorCode(t, rec.Body.Bytes(), "INVALID_SETTINGS")
+}
+
+func TestSettingsPatchUpdatesProxyEnabledWhenConfigured(t *testing.T) {
+	cfg := config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+		SOCKS5Host:   "127.0.0.1",
+		SOCKS5Port:   "1080",
+	}
+	handler, _ := newTestRouterWithConfig(t, cfg)
+	cookie := register(t, handler, "admin", "secret")
+
+	req := httptest.NewRequest(nethttp.MethodPatch, "/api/settings", bytes.NewReader([]byte(`{"proxyEnabled":true}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"proxyEnabled":true`) || !strings.Contains(rec.Body.String(), `"proxyConfigured":true`) {
+		t.Fatalf("expected proxy-enabled settings payload, got %s", rec.Body.String())
+	}
 }
 
 func TestLoginInvalidCredentials(t *testing.T) {
@@ -364,6 +387,9 @@ func TestSettingsAndJobsEndpoints(t *testing.T) {
 	if settingsRec.Code != nethttp.StatusOK {
 		t.Fatalf("expected 200 from settings get, got %d body=%s", settingsRec.Code, settingsRec.Body.String())
 	}
+	if !strings.Contains(settingsRec.Body.String(), `"proxyEnabled":false`) || !strings.Contains(settingsRec.Body.String(), `"proxyConfigured":false`) {
+		t.Fatalf("expected proxy fields in settings payload, got %s", settingsRec.Body.String())
+	}
 
 	jobsReq := httptest.NewRequest(nethttp.MethodGet, "/api/jobs/status", nil)
 	jobsReq.AddCookie(cookie)
@@ -447,15 +473,20 @@ func newAuthedRouter(t *testing.T) (nethttp.Handler, *nethttp.Cookie) {
 func newTestRouter(t *testing.T) (nethttp.Handler, *storage.DB) {
 	t.Helper()
 
-	db := newTestDB(t)
-	cfg := config.Config{
+	return newTestRouterWithConfig(t, config.Config{
 		Environment:  "development",
 		DownloadsDir: t.TempDir(),
-	}
+	})
+}
+
+func newTestRouterWithConfig(t *testing.T, cfg config.Config) (nethttp.Handler, *storage.DB) {
+	t.Helper()
+
+	db := newTestDB(t)
 	schedulerService := scheduler.NewService(
 		db.SQL,
 		log.New(io.Discard, "", 0),
-		settings.NewService(db.SQL),
+		settings.NewService(db.SQL, cfg.SOCKS5Host != ""),
 		func(context.Context) error { return nil },
 	)
 	return NewRouter(log.New(io.Discard, "", 0), cfg, db.SQL, schedulerService), db
@@ -494,7 +525,7 @@ func assertErrorCode(t *testing.T, body []byte, want string) {
 func register(t *testing.T, handler nethttp.Handler, username, password string) *nethttp.Cookie {
 	t.Helper()
 
-	req := httptest.NewRequest(nethttp.MethodPost, "/api/auth/register", bytes.NewReader([]byte(`{"username":"`+username+`","password":"`+password+`","confirmPassword":"`+password+`"}`)))
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/auth/register", bytes.NewReader([]byte(`{"username":"`+username+`","password":"`+password+`"}`)))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != nethttp.StatusOK {

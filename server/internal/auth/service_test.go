@@ -16,7 +16,7 @@ func TestRegisterInitialCreatesOnlyUserAndSession(t *testing.T) {
 	service := NewService(db.SQL)
 	service.now = func() time.Time { return time.Date(2026, 4, 22, 9, 0, 0, 0, time.UTC) }
 
-	user, sessionID, err := service.RegisterInitial(context.Background(), "admin", "secret", "secret")
+	user, sessionID, err := service.RegisterInitial(context.Background(), "admin", "secret")
 	if err != nil {
 		t.Fatalf("RegisterInitial failed: %v", err)
 	}
@@ -49,11 +49,11 @@ func TestRegisterInitialRejectsSecondRegistration(t *testing.T) {
 	defer db.Close()
 
 	service := NewService(db.SQL)
-	if _, _, err := service.RegisterInitial(context.Background(), "admin", "secret", "secret"); err != nil {
+	if _, _, err := service.RegisterInitial(context.Background(), "admin", "secret"); err != nil {
 		t.Fatalf("first RegisterInitial failed: %v", err)
 	}
 
-	if _, _, err := service.RegisterInitial(context.Background(), "other", "secret", "secret"); err != ErrSetupDisabled {
+	if _, _, err := service.RegisterInitial(context.Background(), "other", "secret"); err != ErrSetupDisabled {
 		t.Fatalf("expected ErrSetupDisabled, got %v", err)
 	}
 }
@@ -63,7 +63,7 @@ func TestLoginValidAndInvalidPassword(t *testing.T) {
 	defer db.Close()
 
 	service := NewService(db.SQL)
-	if _, _, err := service.RegisterInitial(context.Background(), "admin", "secret", "secret"); err != nil {
+	if _, _, err := service.RegisterInitial(context.Background(), "admin", "secret"); err != nil {
 		t.Fatalf("RegisterInitial failed: %v", err)
 	}
 
@@ -85,7 +85,7 @@ func TestLogoutDeletesSession(t *testing.T) {
 	defer db.Close()
 
 	service := NewService(db.SQL)
-	if _, sessionID, err := service.RegisterInitial(context.Background(), "admin", "secret", "secret"); err != nil {
+	if _, sessionID, err := service.RegisterInitial(context.Background(), "admin", "secret"); err != nil {
 		t.Fatalf("RegisterInitial failed: %v", err)
 	} else {
 		if err := service.Logout(context.Background(), sessionID); err != nil {
@@ -110,7 +110,7 @@ func TestCurrentUserRemovesExpiredSession(t *testing.T) {
 	baseTime := time.Date(2026, 4, 22, 9, 0, 0, 0, time.UTC)
 	service.now = func() time.Time { return baseTime }
 
-	_, sessionID, err := service.RegisterInitial(context.Background(), "admin", "secret", "secret")
+	_, sessionID, err := service.RegisterInitial(context.Background(), "admin", "secret")
 	if err != nil {
 		t.Fatalf("RegisterInitial failed: %v", err)
 	}

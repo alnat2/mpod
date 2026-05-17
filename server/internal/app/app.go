@@ -46,12 +46,15 @@ func New(logger *log.Logger) (*App, error) {
 		return nil, err
 	}
 
-	client, err := remote.NewHTTPClient(cfg)
+	settingsService := settings.NewService(db.SQL, cfg.SOCKS5Host != "")
+	client, err := remote.NewHTTPClientWithProxyDecider(cfg, func(ctx context.Context) bool {
+		enabled, err := settingsService.ProxyEnabled(ctx)
+		return err == nil && enabled
+	})
 	if err != nil {
 		_ = db.Close()
 		return nil, err
 	}
-	settingsService := settings.NewService(db.SQL)
 	podcastService := podcasts.NewService(db.SQL, client)
 	schedulerService := scheduler.NewService(db.SQL, logger, settingsService, podcastService.RefreshAll)
 	runCtx, cancel := context.WithCancel(context.Background())

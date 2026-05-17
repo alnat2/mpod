@@ -12,17 +12,35 @@ import (
 )
 
 func NewHTTPClient(cfg config.Config) (*http.Client, error) {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	return NewHTTPClientWithProxyDecider(cfg, nil)
+}
 
-	if cfg.SOCKS5Host != "" {
-		dialer, err := proxy.SOCKS5("tcp", net.JoinHostPort(cfg.SOCKS5Host, cfg.SOCKS5Port), credentials(cfg), proxy.Direct)
-		if err != nil {
-			return nil, fmt.Errorf("create socks5 dialer: %w", err)
-		}
+func NewHTTPClientWithProxyDecider(cfg config.Config, proxyEnabled func(context.Context) bool) (*http.Client, error) {
+	directTransport := http.DefaultTransport.(*http.Transport).Clone()
+	if cfg.SOCKS5Host == "" {
+		return &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: directTransport,
+		}, nil
+	}
 
-		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return dialer.Dial(network, addr)
-		}
+	proxyTransport := directTransport.Clone()
+	dialer, err := proxy.SOCKS5("tcp", net.JoinHostPort(cfg.SOCKS5Host, cfg.SOCKS5Port), credentials(cfg), proxy.Direct)
+	if err != nil {
+		return nil, fmt.Errorf("create socks5 dialer: %w", err)
+	}
+	proxyTransport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		return dialer.Dial(network, addr)
+	}
+
+	transport := http.RoundTripper(proxyTransport)
+	if proxyEnabled != nil {
+		transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			if proxyEnabled(req.Context()) {
+				return proxyTransport.RoundTrip(req)
+			}
+			return directTransport.RoundTrip(req)
+		})
 	}
 
 	return &http.Client{
@@ -39,4 +57,10 @@ func credentials(cfg config.Config) *proxy.Auth {
 		User:     cfg.SOCKS5Username,
 		Password: cfg.SOCKS5Password,
 	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
 }

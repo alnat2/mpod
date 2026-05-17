@@ -18,7 +18,7 @@ func TestRunOnceSuccessUpdatesStatus(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL), func(context.Context) error {
+	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
 		return nil
 	})
 
@@ -42,7 +42,7 @@ func TestRunOnceFailureUpdatesStatus(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL), func(context.Context) error {
+	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
 		return errors.New("refresh failed")
 	})
 
@@ -87,7 +87,7 @@ func TestMaybeRunSkipsOutsideConfiguredWindow(t *testing.T) {
 	}
 
 	var called atomic.Int32
-	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL), func(context.Context) error {
+	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
 		called.Add(1)
 		return nil
 	})
@@ -110,7 +110,7 @@ func TestMaybeRunStartsOnlyOncePerDay(t *testing.T) {
 	started := make(chan struct{}, 1)
 	release := make(chan struct{})
 	var called atomic.Int32
-	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL), func(context.Context) error {
+	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
 		called.Add(1)
 		started <- struct{}{}
 		<-release

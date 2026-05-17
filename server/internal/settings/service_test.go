@@ -12,12 +12,12 @@ func TestGetReturnsStoredValues(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewService(db.SQL)
+	service := NewService(db.SQL, false)
 	values, err := service.Get(context.Background())
 	if err != nil {
 		t.Fatalf("Get failed: %v", err)
 	}
-	if values.DailyRefreshTime != "03:00" {
+	if values.DailyRefreshTime != "03:00" || values.ProxyEnabled || values.ProxyConfigured {
 		t.Fatalf("expected default daily refresh time, got %q", values.DailyRefreshTime)
 	}
 }
@@ -26,8 +26,9 @@ func TestUpdatePersistsValidatedTime(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewService(db.SQL)
-	values, err := service.Update(context.Background(), "08:45")
+	service := NewService(db.SQL, false)
+	refreshTime := "08:45"
+	values, err := service.Update(context.Background(), UpdateInput{DailyRefreshTime: &refreshTime})
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
@@ -48,9 +49,36 @@ func TestUpdateRejectsInvalidTime(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewService(db.SQL)
-	if _, err := service.Update(context.Background(), "25:99"); err == nil {
+	service := NewService(db.SQL, false)
+	refreshTime := "25:99"
+	if _, err := service.Update(context.Background(), UpdateInput{DailyRefreshTime: &refreshTime}); err == nil {
 		t.Fatalf("expected invalid time error")
+	}
+}
+
+func TestUpdatePersistsProxyEnabledWhenConfigured(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	service := NewService(db.SQL, true)
+	enabled := true
+	values, err := service.Update(context.Background(), UpdateInput{ProxyEnabled: &enabled})
+	if err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	if !values.ProxyEnabled || !values.ProxyConfigured {
+		t.Fatalf("unexpected values after proxy update: %+v", values)
+	}
+}
+
+func TestUpdateRejectsEnablingProxyWhenUnavailable(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	service := NewService(db.SQL, false)
+	enabled := true
+	if _, err := service.Update(context.Background(), UpdateInput{ProxyEnabled: &enabled}); err != ErrProxyNotConfigured {
+		t.Fatalf("expected ErrProxyNotConfigured, got %v", err)
 	}
 }
 

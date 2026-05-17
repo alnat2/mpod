@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"log"
@@ -45,7 +46,11 @@ type errorResponse struct {
 }
 
 func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerService *scheduler.Service) nethttp.Handler {
-	client, err := remote.NewHTTPClient(cfg)
+	settingsService := settings.NewService(db, cfg.SOCKS5Host != "")
+	client, err := remote.NewHTTPClientWithProxyDecider(cfg, func(ctx context.Context) bool {
+		enabled, err := settingsService.ProxyEnabled(ctx)
+		return err == nil && enabled
+	})
 	if err != nil {
 		panic(err)
 	}
@@ -64,7 +69,7 @@ func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerServi
 		playlist:       playlistService,
 		downloads:      downloadsService,
 		podcasts:       podcasts.NewService(db, client),
-		settings:       settings.NewService(db),
+		settings:       settingsService,
 		scheduler:      schedulerService,
 	}
 
@@ -131,9 +136,8 @@ func (r *Router) handleSession(w nethttp.ResponseWriter, req *nethttp.Request) {
 
 func (r *Router) handleRegister(w nethttp.ResponseWriter, req *nethttp.Request) {
 	var payload struct {
-		Username        string `json:"username"`
-		Password        string `json:"password"`
-		ConfirmPassword string `json:"confirmPassword"`
+		Username string `json:"username"`
+		Password string `json:"password"`
 	}
 
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
@@ -141,11 +145,11 @@ func (r *Router) handleRegister(w nethttp.ResponseWriter, req *nethttp.Request) 
 		return
 	}
 
-	user, sessionID, err := r.auth.RegisterInitial(req.Context(), payload.Username, payload.Password, payload.ConfirmPassword)
+	user, sessionID, err := r.auth.RegisterInitial(req.Context(), payload.Username, payload.Password)
 	if err != nil {
 		switch err {
 		case auth.ErrInvalidRegistration:
-			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_REGISTRATION", "Username and matching passwords are required")
+			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_REGISTRATION", "Username and password are required")
 		case auth.ErrSetupDisabled:
 			r.writeAPIError(w, nethttp.StatusBadRequest, "SETUP_ALREADY_COMPLETE", "Initial registration is no longer available")
 		default:
@@ -716,16 +720,29 @@ func (r *Router) handleSettingsPatch(w nethttp.ResponseWriter, req *nethttp.Requ
 	}
 
 	var payload struct {
-		DailyRefreshTime string `json:"dailyRefreshTime"`
+		DailyRefreshTime *string `json:"dailyRefreshTime"`
+		ProxyEnabled     *bool   `json:"proxyEnabled"`
 	}
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_JSON", "Request body must be valid JSON")
 		return
 	}
 
-	values, err := r.settings.Update(req.Context(), payload.DailyRefreshTime)
+	values, err := r.settings.Update(req.Context(), settings.UpdateInput{
+		DailyRefreshTime: payload.DailyRefreshTime,
+		ProxyEnabled:     payload.ProxyEnabled,
+	})
 	if err != nil {
-		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_SETTINGS", "dailyRefreshTime must use HH:MM format")
+		switch err {
+		case settings.ErrInvalidSettingsUpdate:
+			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_SETTINGS", "At least one settings field must be provided")
+		case settings.ErrInvalidDailyRefreshTime:
+			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_SETTINGS", "dailyRefreshTime must use HH:MM format")
+		case settings.ErrProxyNotConfigured:
+			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_SETTINGS", "Proxy cannot be enabled without runtime configuration")
+		default:
+			r.writeAPIError(w, nethttp.StatusInternalServerError, "SETTINGS_UPDATE_FAILED", "Failed to update settings")
+		}
 		return
 	}
 
