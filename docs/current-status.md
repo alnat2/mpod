@@ -2,7 +2,7 @@
 
 ## Current State
 
-The project has an active Go backend implementation in progress. The frontend has not been scaffolded yet.
+mpod is a browser-based web application. The project has an active Go backend implementation in progress, and the frontend has not been scaffolded yet.
 
 The starter documentation set is in place:
 - [README.md](/Users/cross/Documents/mpod/README.md)
@@ -34,8 +34,13 @@ The starter documentation set is in place:
 ## Current Focus
 
 The backend MVP implementation is now in place. The main remaining project work has shifted to frontend implementation and UX/UI decisions.
+Suggested project chat lanes for this phase are documented in [chat-map.md](/Users/cross/Documents/mpod/docs/chat-map.md).
 
 User flows and UX/UI decisions are still an active planning area and may continue in parallel with backend work.
+
+Current approved frontend direction:
+- frontend implementation will use `shadcn/ui`
+- Figma design work should use the Sitsiilia `shadcn ui components with variables` library as the primary base library
 
 The Go backend scaffold is now in place with:
 - app/config bootstrap
@@ -58,6 +63,7 @@ The Go backend scaffold is now in place with:
 - episode listened/unlistened patch endpoint
 - shared outbound HTTP client with optional SOCKS5 support
 - settings get/update for `daily_refresh_time`
+- settings proxy on/off switch and proxy-configured status when SOCKS5 runtime configuration is available
 - scheduler status endpoint
 - daily scheduler wiring
 - focused backend tests for playback sync and feed identity behavior

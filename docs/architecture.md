@@ -270,6 +270,7 @@ The scheduling trigger and refresh execution logic should be separated so execut
 Responsible for:
 - reading current app settings
 - updating daily refresh time
+- updating whether configured SOCKS5 proxy usage is enabled
 - exposing configuration values that belong in user-managed settings instead of environment variables
 
 ## Data Model View
@@ -428,10 +429,12 @@ Environment-level configuration:
 
 User-managed application settings:
 - daily refresh time
+- proxy enabled/disabled
 
 Rule:
 - environment variables define infrastructure/runtime behavior
 - database-backed settings define behavior the user can change inside the app
+- SOCKS5 host, port, username, and password stay in environment variables; Settings only controls whether the configured proxy is used
 
 ## Error Handling Principles
 

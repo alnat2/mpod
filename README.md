@@ -1,8 +1,9 @@
 # mpod
 
 mpod is a personal self-hosted web app for managing podcasts. It is designed for a single user and focuses on a simple workflow: subscribe to podcasts, import feeds, download episodes, build a playlist, and resume playback across devices.
+It is a browser-based application, not a CLI tool or a native desktop/mobile app.
 
-This repository is currently in the planning stage. The core product scope is defined in [prd.md](/Users/cross/Documents/mpod/prd.md), with implementation decisions in [docs/product-decisions.md](/Users/cross/Documents/mpod/docs/product-decisions.md) and system structure in [docs/architecture.md](/Users/cross/Documents/mpod/docs/architecture.md).
+This repository has a completed Go backend MVP and is now focused on frontend scaffold, UX/UI decisions, and integration. The core product scope is defined in [prd.md](/Users/cross/Documents/mpod/prd.md), with implementation decisions in [docs/product-decisions.md](/Users/cross/Documents/mpod/docs/product-decisions.md) and system structure in [docs/architecture.md](/Users/cross/Documents/mpod/docs/architecture.md).
 
 ## Goals
 
@@ -22,6 +23,13 @@ This repository is currently in the planning stage. The core product scope is de
 - Database: SQLite
 - File storage: local filesystem
 - Deployment: Docker Compose
+
+## Application Shape
+
+- Product type: browser-based web application
+- Frontend: React SPA served by the backend
+- Backend: Go HTTP API and static asset host
+- API base path: `/api`
 
 ## Product Scope
 
@@ -51,6 +59,7 @@ Out of scope for MVP:
 - Product requirements: [prd.md](/Users/cross/Documents/mpod/prd.md)
 - Product decisions: [docs/product-decisions.md](/Users/cross/Documents/mpod/docs/product-decisions.md)
 - Architecture: [docs/architecture.md](/Users/cross/Documents/mpod/docs/architecture.md)
+- Suggested project chat lanes: [docs/chat-map.md](/Users/cross/Documents/mpod/docs/chat-map.md)
 
 ## Planned Runtime Defaults
 
@@ -74,6 +83,8 @@ Expected runtime configuration:
 - `SOCKS5_USERNAME`
 - `SOCKS5_PASSWORD`
 
+Proxy host, port, username, and password remain runtime configuration. When proxy configuration is available, the user can turn proxy usage on or off from Settings.
+
 ## Repository Status
 
 The backend MVP is implemented in Go and the frontend has not been scaffolded yet.
@@ -87,7 +98,10 @@ Current backend capabilities include:
 - playlist add/remove/reorder
 - episode download/delete
 - playback sync endpoints
-- daily refresh settings and scheduler status
+- daily refresh settings, proxy on/off settings, and scheduler status
+
+Backend test/bootstrap notes:
+- see [server/TESTING.md](/Users/cross/Documents/mpod/server/TESTING.md)
 
 The next expected additions are:
 - frontend application scaffold

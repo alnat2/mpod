@@ -1,0 +1,7 @@
+interface:
+  display_name: "mpod Frontend Implementation"
+  short_description: "Implement ready mpod Figma designs in React."
+  default_prompt: "Use $frontend-implementation to implement mpod frontend components only from Ready for Development Figma sections."
+
+policy:
+  allow_implicit_invocation: true

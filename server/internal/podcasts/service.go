@@ -1,6 +1,7 @@
 package podcasts
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/xml"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +29,13 @@ var (
 	ErrInvalidOPML             = errors.New("invalid opml")
 	ErrPodcastNotFound         = errors.New("podcast not found")
 )
+
+const (
+	feedUserAgent = "mpod/1.0 (+self-hosted podcast client)"
+	feedAccept    = "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.1"
+)
+
+var unsupportedFeedURIAttrPattern = regexp.MustCompile(`\buri="at://[^"]*"`)
 
 type Service struct {
 	db          *sql.DB
@@ -226,19 +235,57 @@ func (s *Service) fetchFeed(ctx context.Context, normalizedURL string) (*gofeed.
 	if err != nil {
 		return nil, fmt.Errorf("build feed request: %w", err)
 	}
+	req.Header.Set("User-Agent", feedUserAgent)
+	req.Header.Set("Accept", feedAccept)
+
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, ErrFeedFetchFailed
+		return nil, fmt.Errorf("%w: %v", ErrFeedFetchFailed, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, ErrFeedFetchFailed
+		return nil, fmt.Errorf("%w: status=%s", ErrFeedFetchFailed, resp.Status)
 	}
-	feed, err := s.parser.Parse(resp.Body)
+
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, ErrFeedParseFailed
+		return nil, fmt.Errorf("%w: read body: %v", ErrFeedFetchFailed, err)
+	}
+
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if looksLikeHTMLResponse(contentType, body) {
+		return nil, fmt.Errorf("%w: content-type=%q preview=%q", ErrFeedParseFailed, contentType, bodyPreview(body))
+	}
+
+	sanitizedBody := sanitizeUnsupportedFeedURIs(body)
+	feed, err := s.parser.Parse(bytes.NewReader(sanitizedBody))
+	if err != nil {
+		return nil, fmt.Errorf("%w: content-type=%q parse=%v preview=%q", ErrFeedParseFailed, contentType, err, bodyPreview(body))
 	}
 	return feed, nil
+}
+
+func looksLikeHTMLResponse(contentType string, body []byte) bool {
+	lowerType := strings.ToLower(contentType)
+	if strings.Contains(lowerType, "text/html") || strings.Contains(lowerType, "application/xhtml+xml") {
+		return true
+	}
+
+	trimmed := strings.ToLower(strings.TrimSpace(string(body)))
+	return strings.HasPrefix(trimmed, "<!doctype html") || strings.HasPrefix(trimmed, "<html")
+}
+
+func bodyPreview(body []byte) string {
+	preview := strings.TrimSpace(strings.ToValidUTF8(string(body), ""))
+	preview = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ").Replace(preview)
+	if len(preview) > 120 {
+		return preview[:120]
+	}
+	return preview
+}
+
+func sanitizeUnsupportedFeedURIs(body []byte) []byte {
+	return unsupportedFeedURIAttrPattern.ReplaceAll(body, []byte(`uri=""`))
 }
 
 func sleepContext(ctx context.Context, delay time.Duration) error {

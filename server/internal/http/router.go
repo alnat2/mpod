@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	nethttp "net/http"
 	"strconv"
@@ -235,16 +236,17 @@ func (r *Router) handlePodcastsCreate(w nethttp.ResponseWriter, req *nethttp.Req
 
 	podcast, err := r.podcasts.CreateFromFeed(req.Context(), payload.RSSURL)
 	if err != nil {
-		switch err {
-		case podcasts.ErrInvalidFeedURL:
+		r.logger.Printf("podcast create failed for %q: %v", payload.RSSURL, err)
+		switch {
+		case errors.Is(err, podcasts.ErrInvalidFeedURL):
 			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_FEED_URL", "RSS URL is invalid")
-		case podcasts.ErrDuplicateSubscription:
+		case errors.Is(err, podcasts.ErrDuplicateSubscription):
 			r.writeAPIError(w, nethttp.StatusBadRequest, "DUPLICATE_SUBSCRIPTION", "Podcast is already subscribed")
-		case podcasts.ErrFeedFetchFailed:
+		case errors.Is(err, podcasts.ErrFeedFetchFailed):
 			r.writeAPIError(w, nethttp.StatusBadRequest, "FEED_FETCH_FAILED", "Failed to fetch feed")
-		case podcasts.ErrFeedParseFailed:
+		case errors.Is(err, podcasts.ErrFeedParseFailed):
 			r.writeAPIError(w, nethttp.StatusBadRequest, "FEED_PARSE_FAILED", "Feed could not be parsed")
-		case podcasts.ErrNoPlayableEpisodesFound:
+		case errors.Is(err, podcasts.ErrNoPlayableEpisodesFound):
 			r.writeAPIError(w, nethttp.StatusBadRequest, "NO_PLAYABLE_EPISODES", "Feed does not contain playable episodes")
 		default:
 			r.writeAPIError(w, nethttp.StatusInternalServerError, "PODCAST_CREATE_FAILED", "Failed to create podcast")
@@ -316,12 +318,13 @@ func (r *Router) handlePodcastRefresh(w nethttp.ResponseWriter, req *nethttp.Req
 
 	newEpisodes, checkedAt, err := r.podcasts.Refresh(req.Context(), podcastID)
 	if err != nil {
-		switch err {
-		case podcasts.ErrPodcastNotFound:
+		r.logger.Printf("podcast refresh failed for id=%d: %v", podcastID, err)
+		switch {
+		case errors.Is(err, podcasts.ErrPodcastNotFound):
 			r.writeAPIError(w, nethttp.StatusNotFound, "PODCAST_NOT_FOUND", "Podcast was not found")
-		case podcasts.ErrFeedFetchFailed:
+		case errors.Is(err, podcasts.ErrFeedFetchFailed):
 			r.writeAPIError(w, nethttp.StatusBadRequest, "FEED_FETCH_FAILED", "Failed to fetch feed")
-		case podcasts.ErrFeedParseFailed:
+		case errors.Is(err, podcasts.ErrFeedParseFailed):
 			r.writeAPIError(w, nethttp.StatusBadRequest, "FEED_PARSE_FAILED", "Feed could not be parsed")
 		default:
 			r.writeAPIError(w, nethttp.StatusInternalServerError, "PODCAST_REFRESH_FAILED", "Failed to refresh podcast")

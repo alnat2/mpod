@@ -119,6 +119,10 @@ Needs:
 - Manual refresh
 - Scheduled updates
 
+### Settings
+- Configure daily refresh time
+- Enable or disable use of the configured SOCKS5 proxy
+
 ### Episodes
 - Download episodes
 - Manage playlist
@@ -160,6 +164,7 @@ Needs:
 ## Network
 
 - Supports SOCKS5 proxy
+- User can enable or disable proxy usage in Settings when proxy configuration is available
 
 Environment variables:
 
@@ -170,7 +175,9 @@ SOCKS5_PASSWORD (optional)
 
 Used for:
 - RSS feed fetching
+- Episode streaming
 - Episode downloads
+- Manual and scheduled feed refresh
 
 ---
 

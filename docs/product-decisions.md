@@ -21,7 +21,6 @@ mpod is a single-user personal application with no public multi-user registratio
 - Setup mode contains a single registration form:
   - `username`
   - `password`
-  - `confirm password`
 - After successful registration:
   - the user record is created
   - the password is hashed before storage
@@ -76,8 +75,7 @@ Request:
 ```json
 {
   "username": "admin",
-  "password": "secret",
-  "confirmPassword": "secret"
+  "password": "secret"
 }
 ```
 
@@ -338,7 +336,7 @@ Success response:
 Rules:
 - `PATCH /api/episodes/:id` is used only for simple state changes such as listened/unlistened
 - If marking listened triggers file deletion by default, that behavior belongs to file lifecycle rules
-- Marking unlistened does not restore a deleted file
+- Marking unlistened does not restore a file that was already deleted by a committed action
 
 ### Playlist Endpoints
 
@@ -464,7 +462,9 @@ Response:
 ```json
 {
   "settings": {
-    "dailyRefreshTime": "03:00"
+    "dailyRefreshTime": "03:00",
+    "proxyEnabled": true,
+    "proxyConfigured": true
   }
 }
 ```
@@ -474,7 +474,8 @@ Response:
 Request:
 ```json
 {
-  "dailyRefreshTime": "03:00"
+  "dailyRefreshTime": "03:00",
+  "proxyEnabled": true
 }
 ```
 
@@ -482,10 +483,18 @@ Response:
 ```json
 {
   "settings": {
-    "dailyRefreshTime": "03:00"
+    "dailyRefreshTime": "03:00",
+    "proxyEnabled": true,
+    "proxyConfigured": true
   }
 }
 ```
+
+Rules:
+- `proxyConfigured` is read-only and comes from runtime SOCKS5 environment configuration.
+- `proxyEnabled` is user-editable and persisted in database-backed settings.
+- If proxy configuration is incomplete or unavailable, `proxyConfigured` is `false` and the UI should not allow enabling proxy usage.
+- Host, port, username, and password remain environment configuration and must not be edited from the UI for MVP.
 
 ### System Endpoints
 
@@ -595,6 +604,7 @@ Example:
 
 ### Decision
 Downloaded episode files are temporary local copies. By default, removing an episode from the playlist deletes its downloaded file, and marking an episode as listened deletes its downloaded file.
+For manual UI actions that offer undo, the app keeps the downloaded file during the undo window and applies the file-deleting change only after the undo window expires.
 
 ### Rules
 - Downloaded files are stored on local disk.
@@ -622,15 +632,29 @@ Downloaded episode files are temporary local copies. By default, removing an epi
 - `PATCH /api/episodes/:id` with `isListened = true` deletes the local file by default and clears `downloaded_path`.
 - If there is no local file, these actions still succeed as state updates.
 
+### Undo Window For Manual UI Actions
+- Manual UI actions that expose `Undo` should keep the previous backend/file state during the 15-second undo window.
+- During the undo window, the UI may show a pending listened or pending removed state, but the downloaded file remains saved and `downloaded_path` remains valid.
+- If the user clicks `Undo`, cancel the pending action; the episode returns to its previous state and remains downloaded if it was downloaded before the action.
+- If the undo window expires, commit the action and apply the normal file lifecycle rule.
+- The simplest MVP implementation is to keep the action pending in the frontend and send the backend mutation only when the undo window expires.
+- This pending undo rule applies to manual actions from the UI, not automatic playback completion.
+
 ### Marking Listened
 - Marking an episode as listened updates `is_listened = true`.
 - By default, marking listened also deletes the downloaded file.
-- Marking an episode as unlistened does not restore a deleted file.
+- When manual mark-listened is shown with `Undo`, the downloaded file is deleted only after the 15-second undo window expires.
+- If the user clicks `Undo` before the window expires, the episode remains unlistened and downloaded.
+- Marking an episode as unlistened does not restore a file that was already deleted by a committed action.
 - If playback completion marks an episode as listened, the same file deletion rule applies.
+- A frontend `Mark all listened` action may mark all affected unlistened episodes for the selected podcast as listened.
+- `Mark all listened` follows the same manual undo and file lifecycle rules as individual mark-listened actions.
+- A separate bulk backend endpoint is not required for MVP; the frontend may keep the bulk action pending during the undo window and then commit individual mark-listened mutations after the window expires.
 
 ### Playlist Behavior
 - Adding an episode to playlist does not download it automatically.
 - Removing an episode from playlist deletes its local file by default.
+- When manual remove-from-playlist is shown with `Undo`, the downloaded file is deleted only after the 15-second undo window expires.
 - Removing an episode from playlist does not delete the episode database record.
 
 ### Podcast Deletion
@@ -874,10 +898,13 @@ Optional:
 
 ### Proxy Behavior
 - SOCKS5 proxy configuration is optional.
-- If proxy variables are provided, they are used for:
+- If proxy variables are provided and proxy usage is enabled in Settings, they are used for:
   - RSS feed fetching
+  - episode streaming
   - episode downloads
-- If proxy variables are not provided, network requests use direct connection.
+- If proxy variables are not provided, or if proxy usage is disabled in Settings, network requests use direct connection.
+- The Settings screen must provide a proxy on/off switch when proxy configuration is available.
+- The proxy switch controls whether configured proxy settings are used; it does not edit proxy host, port, username, or password.
 - Partial proxy configuration should be treated as invalid if required proxy host/port values are incomplete.
 
 ### Timezone Behavior
@@ -941,6 +968,7 @@ The initial schema should include a few fields and tables beyond the PRD so the 
 - `podcasts.description` stores feed-level podcast description when available.
 - `podcasts.image_url` stores feed artwork URL when available.
 - `settings` must persist `daily_refresh_time`.
+- `settings` must persist `proxy_enabled`.
 - Scheduler state persistence must store enough information to expose:
   - `lastRunAt`
   - `lastSuccessAt`

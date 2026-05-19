@@ -1,10 +1,13 @@
 package podcasts
 
 import (
+	"compress/gzip"
 	"context"
 	"database/sql"
+	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,6 +56,57 @@ func TestCreateFromFeedRejectsDuplicateSubscription(t *testing.T) {
 	}
 	if _, err := service.CreateFromFeed(context.Background(), "https://example.com/feed.xml"); err != ErrDuplicateSubscription {
 		t.Fatalf("expected ErrDuplicateSubscription, got %v", err)
+	}
+}
+
+func TestCreateFromFeedParsesRealTransistorFixture(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	fixture := firstCompleteTransistorFixture(t)
+	service := NewService(db.SQL, newPodcastTestClient(func(r *http.Request) (*http.Response, error) {
+		return xmlResponse(fixture), nil
+	}))
+
+	podcast, err := service.CreateFromFeed(context.Background(), "https://feeds.transistor.fm/build-your-saas")
+	if err != nil {
+		t.Fatalf("CreateFromFeed failed: %v", err)
+	}
+	if podcast.Title != "Build Your SaaS" {
+		t.Fatalf("expected real feed title to be imported, got %q", podcast.Title)
+	}
+
+	var episodeCount int
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM episodes WHERE podcast_id = ?`, podcast.ID).Scan(&episodeCount); err != nil {
+		t.Fatalf("count imported episodes: %v", err)
+	}
+	if episodeCount == 0 {
+		t.Fatalf("expected real feed fixture to import episodes")
+	}
+}
+
+func TestCreateFromFeedRejectsHTMLLandingPageFixture(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	fixture := readPodcastFixture(t, "simplecast_that_creative_life.html")
+	service := NewService(db.SQL, newPodcastTestClient(func(r *http.Request) (*http.Response, error) {
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader(fixture)),
+			Header:     make(http.Header),
+		}
+		resp.Header.Set("Content-Type", "text/html; charset=utf-8")
+		return resp, nil
+	}))
+
+	_, err := service.CreateFromFeed(context.Background(), "https://thatcreativelife.simplecast.com")
+	if !errors.Is(err, ErrFeedParseFailed) {
+		t.Fatalf("expected ErrFeedParseFailed, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "text/html") || !strings.Contains(strings.ToLower(err.Error()), "<!doctype html>") {
+		t.Fatalf("expected parse error to preserve HTML diagnostic context, got %v", err)
 	}
 }
 
@@ -223,6 +277,79 @@ func TestRefreshAllReturnsErrorAfterExhaustingRetriesButContinuesOtherPodcasts(t
 	assertCount(t, db.SQL, `SELECT COUNT(*) FROM episodes WHERE podcast_id = 2`, 1)
 }
 
+func TestCreateFromFeedFollowsRedirectsAndSendsFeedHeaders(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	fixture := firstCompleteTransistorFixture(t)
+	var seenUserAgent string
+	var seenAccept string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/redirect":
+			http.Redirect(w, r, "/feed.xml", http.StatusMovedPermanently)
+		case "/feed.xml":
+			seenUserAgent = r.Header.Get("User-Agent")
+			seenAccept = r.Header.Get("Accept")
+			w.Header().Set("Content-Type", "application/rss+xml")
+			_, _ = io.WriteString(w, fixture)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	service := NewService(db.SQL, server.Client())
+	if _, err := service.CreateFromFeed(context.Background(), server.URL+"/redirect"); err != nil {
+		t.Fatalf("CreateFromFeed failed: %v", err)
+	}
+	if seenUserAgent != feedUserAgent {
+		t.Fatalf("expected user agent %q, got %q", feedUserAgent, seenUserAgent)
+	}
+	if seenAccept != feedAccept {
+		t.Fatalf("expected accept header %q, got %q", feedAccept, seenAccept)
+	}
+}
+
+func TestCreateFromFeedParsesGzipResponse(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	fixture := firstCompleteTransistorFixture(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		w.Header().Set("Content-Encoding", "gzip")
+
+		gz := gzip.NewWriter(w)
+		defer gz.Close()
+		_, _ = io.WriteString(gz, fixture)
+	}))
+	defer server.Close()
+
+	service := NewService(db.SQL, server.Client())
+	if _, err := service.CreateFromFeed(context.Background(), server.URL+"/feed.xml"); err != nil {
+		t.Fatalf("CreateFromFeed failed for gzip feed: %v", err)
+	}
+}
+
+func TestCreateFromFeedParsesTLSResponse(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	fixture := firstCompleteTransistorFixture(t)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = io.WriteString(w, fixture)
+	}))
+	defer server.Close()
+
+	service := NewService(db.SQL, server.Client())
+	if _, err := service.CreateFromFeed(context.Background(), server.URL+"/feed.xml"); err != nil {
+		t.Fatalf("CreateFromFeed failed for TLS feed: %v", err)
+	}
+}
+
 func newBehaviorTestDB(t *testing.T) *storage.DB {
 	t.Helper()
 
@@ -325,4 +452,31 @@ func xmlResponse(body string) *http.Response {
 	}
 	resp.Header.Set("Content-Type", "application/rss+xml")
 	return resp
+}
+
+func readPodcastFixture(t *testing.T, name string) string {
+	t.Helper()
+
+	path := filepath.Join("testdata", name)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile %q failed: %v", name, err)
+	}
+	return string(data)
+}
+
+func firstCompleteTransistorFixture(t *testing.T) string {
+	t.Helper()
+
+	raw := readPodcastFixture(t, "transistor_build_your_saas.xml")
+	if !strings.Contains(raw, `uri="at://`) {
+		t.Fatalf("expected raw Transistor fixture to include at:// social URI")
+	}
+
+	end := strings.Index(raw, "</item>")
+	if end == -1 {
+		t.Fatalf("expected Transistor fixture to contain a complete first item")
+	}
+
+	return raw[:end+len("</item>")] + "\n  </channel>\n</rss>\n"
 }

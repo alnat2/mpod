@@ -5,6 +5,8 @@ This file defines project-specific guidance for coding agents working in this re
 ## Project Context
 
 mpod is a single-user personal web application for podcast management.
+It is a browser-based web app with a React frontend and a Go backend.
+It is not a CLI tool, desktop app, native mobile app, browser extension, or terminal UI.
 
 Primary capabilities:
 - one-time initial registration for the only user
@@ -35,10 +37,12 @@ If this file conflicts with those documents, follow:
 - Do not introduce cloud or distributed infrastructure.
 - Keep the MVP aligned with the approved docs.
 - Avoid speculative features unless explicitly requested.
+- When a task is complete, simply state that the task is finished. Describe what was done only if the user specifically asks for that detail.
 
 ## Product Constraints
 
 - The app is single-user only.
+- The product is a web app accessed through a browser.
 - Registration is allowed only once, when no user exists yet.
 - Authentication is session-based.
 - SQLite is the only database for MVP.
@@ -46,6 +50,7 @@ If this file conflicts with those documents, follow:
 - Removing an episode from playlist deletes its local file by default.
 - Marking an episode as listened deletes its local file by default.
 - Scheduler runs once per day at a single global configured time.
+- If SOCKS5 proxy runtime configuration is available, proxy usage can be enabled or disabled from Settings.
 - The app listens on port `5050`.
 
 ## Architecture Constraints
@@ -66,6 +71,28 @@ If this file conflicts with those documents, follow:
 - Avoid over-engineering around scale that does not exist in this project.
 - Prefer explicit code paths over heavy indirection.
 - Add small comments only when they clarify non-obvious behavior.
+
+## Figma Console MCP Usage Rules
+
+When using Console Figma MCP tools:
+- Wait 2-3 seconds between each tool call.
+- Never make more than 3 Figma API calls in a row without pausing.
+- Break large tasks into smaller steps, for example colors first, then typography, then spacing.
+- Always verify the Desktop Bridge plugin is running in Figma before starting.
+- Prefer targeted queries over broad "extract everything" requests.
+
+## Project Skills
+
+Project-owned skills live in `skills/`.
+
+For mpod Figma component work, follow:
+- `skills/figma-library-components/SKILL.md`
+
+For frontend implementation from Figma:
+- Only elements from Figma sections marked `Ready for Development` should be included in the development process.
+- Before implementing a component, analyze the referenced Figma layout and confirm it is development-ready.
+- Follow the same discipline used for Figma component creation: reuse approved primitives and tokens, do not invent missing behavior or visuals, and ask when the source is unclear.
+- Follow `skills/frontend-implementation/SKILL.md`.
 
 ## API Guidance
 

@@ -1,0 +1,217 @@
+# Frontend Decisions
+
+This document captures approved frontend decisions for mpod so the frontend implementation chat can use them without rediscovering context from status notes.
+
+If this document conflicts with higher-priority product docs, follow:
+1. [docs/product-decisions.md](product-decisions.md)
+2. [docs/architecture.md](architecture.md)
+3. [prd.md](../prd.md)
+4. this document
+
+## Current Scope
+
+This document is for:
+- frontend stack choices
+- UI library choices
+- design library choices
+- implementation guidance for the frontend chat
+
+Related frontend planning notes:
+- [docs/uf.md](uf.md)
+- [docs/screens.md](screens.md)
+
+This document is not for:
+- re-deciding approved backend behavior
+- changing API behavior unless explicitly approved
+- implementation details that should live in the frontend codebase
+
+## Approved Decisions
+
+### Frontend UI Library
+
+Decision:
+- frontend implementation will use `shadcn/ui`
+
+Reasoning:
+- it fits the planned React frontend
+- it supports a simple, maintainable component approach
+- it keeps component code local and customizable instead of pushing the project into a heavyweight package-driven UI system
+- it is a good fit for a small single-user self-hosted web app
+
+### Figma Library
+
+Decision:
+- Figma design work will use the Sitsiilia `shadcn ui components with variables` library as the base design library
+- Figma screen design should use Auto Layout by default
+
+Reasoning:
+- it aligns more directly with a `shadcn/ui` plus Tailwind-style implementation approach
+- it is practical for screen design and handoff without introducing unnecessary design-system overhead
+- it is the chosen design source for mpod screen work
+- defaulting to Auto Layout should keep screens easier to maintain, adapt, and translate into responsive frontend implementation
+
+Rule:
+- do not use the Obra kit for mpod
+- in mpod design and implementation notes, refer to common UI primitives by their simple component names, such as `Button`, `Input`, `Card`, `Dialog`, `Tabs`, `Badge`, and `Switch`
+- descriptive annotation pills used to explain a design state, such as `first run`, `empty`, or `error`, should be placed outside the actual app screen/frame in Figma
+- annotation pills are not part of the product UI unless they represent a real user-facing status badge
+
+### Responsive Design Targets
+
+Decision:
+- MVP design work will cover desktop and mobile versions
+- a separate tablet-specific design is not required for MVP
+
+Desktop sizing:
+- desktop Figma screens should use a `1440px` wide frame
+- main page content should use a centered maximum width of `1200px`
+- at `1440px`, the remaining width creates `120px` gutters on the left and right
+- app shell surfaces such as the page background and persistent player may span the full desktop frame, but their inner content should align to the same centered `1200px` content width where practical
+
+Mobile sizing:
+- mobile screens should be designed separately from desktop screens
+- mobile content should use mobile-safe side padding and layouts appropriate to the smaller viewport
+
+Tablet:
+- tablet layouts are out of scope for MVP as separate mockups
+- implementation may interpolate between desktop and mobile behavior, but tablet is not a separate design target
+
+### shadcn Skills
+
+Decision:
+- use `shadcn/ui` Skills during frontend implementation after the frontend scaffold exists and `components.json` is present
+
+Reasoning:
+- it should help coding agents stay aligned with the local `shadcn/ui` setup
+- it reduces mistakes around component patterns, CLI usage, and project configuration
+
+### shadcn MCP
+
+Decision:
+- `shadcn/ui` MCP is not part of the initial project setup
+
+Reasoning:
+- mpod does not currently need multi-registry browsing or registry-driven component discovery
+- adding MCP early would increase setup complexity without clear MVP benefit
+
+Rule:
+- reconsider MCP later only if registry browsing becomes a real repeated need during frontend implementation
+
+### Destructive Action Pattern
+
+Decision:
+- prefer an undo pattern instead of blocking confirmation dialogs for destructive or high-impact UI actions
+
+Reasoning:
+- mpod is a task-first personal tool, so frequent confirmation dialogs would slow down common queue and library work
+- undo keeps the interaction fast while still giving the user a short recovery path
+- this fits the product direction of fewer modal interruptions and more inline feedback
+
+Rules:
+- undo must be a real recovery path, not just reassuring copy
+- destructive-action undo feedback should remain available for 15 seconds
+- manual UI actions that expose undo and delete downloaded files should keep the downloaded file during the undo window
+- if the user clicks `Undo`, cancel the pending action and restore the previous row state, including downloaded state
+- if the undo window expires, commit the action and let the backend apply the approved file lifecycle rule
+- simplest MVP implementation: keep the action pending in frontend state and send the backend mutation only when the undo window expires
+- if an action cannot be safely undone, the UI must clearly communicate the consequence at the action point
+- use concise toast, banner, or inline feedback with an `Undo` action where practical
+- avoid modal confirmations by default unless a future product decision explicitly requires one
+
+### Manual Listened State Actions
+
+Decision:
+- expose manual `mark listened` and `mark unlistened` actions in the frontend UI
+- expose a selected-podcast `Mark all listened` action in the Subscriptions episode-list header when the selected podcast has unlistened episodes in the current episode-list scope
+- do not expose a separate `Delete` or `Delete download` action in the MVP UI
+- do not use `Show listened` or `Show unlistened` filter buttons for episode rows in the MVP UI
+
+Reasoning:
+- the backend already supports listened/unlistened state changes
+- a personal podcast queue benefits from quick manual correction when the user finishes elsewhere, skips an episode, or wants to restore an episode to the active/unlistened set
+- this keeps the user in control without moving listened-state business rules into the frontend
+- downloaded episode files are disposable, and the MVP cleanup path is marking an episode listened or completing playback
+
+Rules:
+- the backend remains the source of truth for listened state and file lifecycle behavior
+- episode rows should expose `Mark listened` and `Mark unlistened` only where relevant for manual listened-state changes
+- icon-only episode-row actions should use tooltips with state-specific labels:
+  - `Download`
+  - `Downloaded`
+  - `Add to playlist`
+  - `Remove from playlist`
+  - `Mark as listened`
+- `Mark all listened` applies to the selected podcast episode list, not to every subscription in the app
+- in default Subscriptions mode, `Mark all listened` marks the selected podcast's currently shown unlistened episodes as listened
+- in `Show all` mode, `Mark all listened` marks only the selected podcast's unlistened episodes; episodes that are already listened are unchanged
+- if there are no unlistened episodes in the selected podcast's current episode-list scope, hide or disable `Mark all listened`
+- marking listened should communicate that the downloaded file is deleted by default
+- downloaded files are cleaned up through playback completion or manual `mark listened`, not through a separate delete-download control
+- prefer undo feedback over confirmation when the manual listened action has destructive side effects
+- during the 15-second undo window after manual `Mark listened`, keep the file and show the row as a pending listened action
+- if the user clicks `Undo`, the row should return to `Mark listened` and keep its downloaded state
+- if the undo window expires, commit `Mark listened` and remove the downloaded file through backend lifecycle behavior
+- `Mark all listened` should use one bulk undo feedback window; during that window, keep affected downloaded files and previous backend/file state recoverable
+- if the user clicks `Undo` for `Mark all listened`, cancel the pending action for all affected episodes and restore their previous row states, including downloaded state
+- if the undo window expires, commit the affected mark-listened changes and let backend lifecycle behavior delete downloaded files as appropriate
+- marking unlistened should not imply that a file deleted by an already committed action will be restored
+
+### Subscription List Defaults
+
+Decision:
+- subscription browsing should show podcasts with unlistened episodes by default
+- by default, the selected podcast episode list should also show only unlistened episodes
+- podcast cards may expose a manual refresh control for refreshing a single subscription
+- provide a `Show all` action to remove the default podcast filter and show every subscribed podcast, regardless of whether it currently has unlistened episodes
+- when `Show all` is active, the selected podcast episode list should also show all episodes for that podcast, including listened and unlistened episodes
+- when all podcasts are visible, provide `Show unlistened podcasts` to return both the podcast cards and the selected podcast episode list to the default unlistened-only filtered output
+- the `Show all` / `Show unlistened podcasts` state is local to the Subscriptions screen and does not need to persist after leaving that screen
+- while `Show all` is active, selecting a different podcast keeps the selected podcast episode list in all-episodes mode until the user returns to `Show unlistened podcasts`
+- the subscriptions page podcast-card container should show a visible area of two card rows
+- if podcast cards do not fit inside that two-row visible area, enable scrolling inside the podcast-card container instead of expanding the visible area or adding a `Show less` collapse action
+
+Reasoning:
+- this keeps the main subscriptions view focused on podcasts that currently need attention
+- it still gives access to the full subscription list without adding a separate route or advanced filter UI
+
+### Download Failure Feedback
+
+Decision:
+- when an episode download fails, show a notification at the top of the screen
+- the notification should be dismissible and should close automatically after 10 seconds
+- in the affected episode row, show the normal inline `Download` action again
+- this 10-second failure notification timeout is separate from the 15-second destructive-action undo window
+
+Reasoning:
+- the notification makes the failure visible without overloading the row
+- returning the row to `Download` keeps retry behavior simple and avoids introducing a separate retry control for MVP
+
+### Playback Speed Control
+
+Decision:
+- the player should expose these playback speed options:
+  - `Speed 0.5x`
+  - `Speed 0.75x`
+  - `Speed 1x`
+  - `Speed 1.3x`
+  - `Speed 1.5x`
+  - `Speed 2x`
+- default playback speed is `Speed 1x`
+
+Rules:
+- speed selection is a frontend audio playback control
+- backend playback progress remains stored in seconds and should not depend on the selected speed label
+- do not add extra speed options unless the product decision changes
+
+## Guidance For Frontend Implementation
+
+- keep the frontend simple and maintainable
+- treat the backend API as the source of truth
+- keep business rules on the backend
+- avoid building a large custom design system up front
+- use `shadcn/ui` as the component base, then keep mpod-specific UI pieces local and focused
+- keep design decisions aligned with the chosen Sitsiilia Figma library
+- only Figma elements from sections marked `Ready for Development` should be included in the development process
+- before implementing a component, analyze the referenced Figma layout and confirm it is development-ready
+- when implementing components from Figma, follow the same discipline used when creating Figma components: use existing primitives and tokens, do not invent missing behavior or visuals, and ask when the source is unclear
+- use [docs/uf.md](uf.md) and [docs/screens.md](screens.md) as the current working references for overall user flow and screen structure

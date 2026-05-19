@@ -13,6 +13,9 @@ server/coverage.out
 client/node_modules/
 client/dist/
 client/build/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
 
 # Local tool caches
 .tmp/

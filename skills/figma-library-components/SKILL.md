@@ -1,0 +1,1 @@
+/Users/cross/.codex/skills/mpod-figma-library-components/SKILL.md
