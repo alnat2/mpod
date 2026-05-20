@@ -36,7 +36,7 @@ func New(logger *log.Logger) (*App, error) {
 		return nil, err
 	}
 
-	if err := storage.Migrate(db.SQL, "server/migrations"); err != nil {
+	if err := storage.Migrate(db.SQL, "migrations"); err != nil {
 		_ = db.Close()
 		return nil, err
 	}

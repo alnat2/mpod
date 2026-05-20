@@ -1,8 +1,12 @@
+import { useMemo } from "react";
 import type { ComponentProps, ReactNode } from "react";
 
+import { usePlayback } from "@/lib/playback-context";
 import { cn } from "@/lib/utils";
+import { formatClock } from "@/screens/screen-utils";
 
 import { PageHeader } from "./page-header";
+import { Player } from "./player";
 import { TopNav } from "./top-nav";
 
 type AppShellProps = {
@@ -24,6 +28,17 @@ export function AppShell({
   pageSubtitle,
   pageTitle,
 }: AppShellProps) {
+  const playback = usePlayback();
+  const currentEpisode = playback.currentEpisode;
+
+  const progressValue = useMemo(() => {
+    if (!playback.durationSeconds) return 0;
+    return Math.min(
+      100,
+      Math.round((playback.positionSeconds / playback.durationSeconds) * 100)
+    );
+  }, [playback.positionSeconds, playback.durationSeconds]);
+
   return (
     <div
       className={cn(
@@ -36,6 +51,26 @@ export function AppShell({
         <PageHeader actions={pageActions} subtitle={pageSubtitle} title={pageTitle} />
         <div className="min-h-0 flex-1 rounded-lg">{children}</div>
       </main>
+      {currentEpisode ? (
+        <div className="flex items-center justify-center w-full bg-muted/50 backdrop-blur-sm border-t border-border px-4 py-2">
+          <Player
+            title={currentEpisode.title}
+            podcastTitle={currentEpisode.podcastTitle}
+            artworkUrl={currentEpisode.podcastImageUrl ?? undefined}
+            elapsedLabel={formatClock(playback.positionSeconds)}
+            durationLabel={formatClock(playback.durationSeconds)}
+            playing={playback.playing}
+            progressValue={progressValue}
+            speedLabel={playback.speedLabel}
+            notesDisabled
+            onBack={playback.seekBackward}
+            onForward={playback.seekForward}
+            onPlay={playback.playToggle}
+            onNotes={() => {}}
+            onSpeedChange={playback.setSpeedLabel}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -150,36 +150,40 @@ export const api = {
     logout: () =>
       apiRequest<{ success: true }>("/api/auth/logout", { method: "POST" }),
   },
-  podcasts: {
-    list: () => apiRequest<{ podcasts: MaybeArray<Podcast> }>("/api/podcasts"),
-    create: (rssUrl: string) =>
-      apiRequest<{ podcast: Podcast }>("/api/podcasts", {
-        method: "POST",
-        body: { rssUrl },
-      }),
-    remove: (podcastId: number) =>
-      apiRequest<{ success: true }>(`/api/podcasts/${podcastId}`, {
-        method: "DELETE",
-      }),
-    refresh: (podcastId: number) =>
-      apiRequest<{ success: true; newEpisodes: number; lastChecked: string }>(
-        `/api/podcasts/${podcastId}/refresh`,
-        { method: "POST" }
-      ),
-    episodes: (podcastId: number) =>
-      apiRequest<{ episodes: MaybeArray<Episode> }>(
-        `/api/podcasts/${podcastId}/episodes`
-      ),
-    importOPML: (file: File) => {
-      const body = new FormData();
-      body.append("file", file);
-      return apiRequest<{ success: true; imported: number; skipped: number }>(
-        "/api/podcasts/import-opml",
-        { method: "POST", body }
-      );
-    },
-    exportOPMLPath: "/api/podcasts/export-opml",
-  },
+   podcasts: {
+     list: () => apiRequest<{ podcasts: MaybeArray<Podcast> }>("/api/podcasts"),
+     create: (rssUrl: string) =>
+       apiRequest<{ podcast: Podcast }>("/api/podcasts", {
+         method: "POST",
+         body: { rssUrl },
+       }),
+     remove: (podcastId: number) =>
+       apiRequest<{ success: true }>(`/api/podcasts/${podcastId}`, {
+         method: "DELETE",
+       }),
+     refresh: (podcastId: number) =>
+       apiRequest<{ success: true; newEpisodes: number; lastChecked: string }>(
+         `/api/podcasts/${podcastId}/refresh`,
+         { method: "POST" }
+       ),
+     refreshAll: () =>
+       apiRequest<{ success: true }>("/api/podcasts/refresh-all", {
+         method: "POST"
+       }),
+     episodes: (podcastId: number) =>
+       apiRequest<{ episodes: MaybeArray<Episode> }>(
+         `/api/podcasts/${podcastId}/episodes`
+       ),
+     importOPML: (file: File) => {
+       const body = new FormData();
+       body.append("file", file);
+       return apiRequest<{ success: true; imported: number; skipped: number }>(
+         "/api/podcasts/import-opml",
+         { method: "POST", body }
+       );
+     },
+     exportOPMLPath: "/api/podcasts/export-opml",
+   },
   episodes: {
     get: (episodeId: number) =>
       apiRequest<{ episode: Episode }>(`/api/episodes/${episodeId}`),

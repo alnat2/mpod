@@ -6,7 +6,7 @@ export type PendingDelayedAction = {
   id: string;
   message: string;
   episodeIds: number[];
-  kind: "mark-listened" | "remove-playlist";
+  kind: "mark-listened" | "mark-unlistened" | "remove-playlist";
 };
 
 type ScheduleDelayedActionInput = Omit<PendingDelayedAction, "id"> & {

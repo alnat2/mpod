@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mmcdole/gofeed"
@@ -28,6 +29,7 @@ var (
 	ErrNoPlayableEpisodesFound = errors.New("feed contains no playable episodes")
 	ErrInvalidOPML             = errors.New("invalid opml")
 	ErrPodcastNotFound         = errors.New("podcast not found")
+	ErrRefreshAlreadyRunning   = errors.New("podcast refresh already running")
 )
 
 const (
@@ -43,6 +45,8 @@ type Service struct {
 	parser      *gofeed.Parser
 	retryDelays []time.Duration
 	sleep       func(context.Context, time.Duration) error
+	refreshMu   sync.Mutex
+	refreshing  map[int64]struct{}
 }
 
 type Podcast struct {
@@ -65,7 +69,8 @@ func NewService(db *sql.DB, client *http.Client) *Service {
 			2 * time.Minute,
 			5 * time.Minute,
 		},
-		sleep: sleepContext,
+		sleep:      sleepContext,
+		refreshing: make(map[int64]struct{}),
 	}
 }
 
@@ -127,6 +132,11 @@ func (s *Service) Refresh(ctx context.Context, podcastID int64) (int, time.Time,
 	if err != nil {
 		return 0, time.Time{}, err
 	}
+	if !s.beginRefresh(podcastID) {
+		return 0, time.Time{}, ErrRefreshAlreadyRunning
+	}
+	defer s.endRefresh(podcastID)
+
 	feed, err := s.fetchFeed(ctx, podcast.RSSURL)
 	if err != nil {
 		return 0, time.Time{}, err
@@ -153,14 +163,14 @@ func (s *Service) RefreshAll(ctx context.Context) error {
 		return err
 	}
 
-	var failures []string
+	var failures []error
 	for _, id := range ids {
 		if err := s.refreshWithRetry(ctx, id); err != nil {
-			failures = append(failures, fmt.Sprintf("podcast %d: %v", id, err))
+			failures = append(failures, fmt.Errorf("podcast %d: %w", id, err))
 		}
 	}
 	if len(failures) > 0 {
-		return fmt.Errorf("refresh failures: %s", strings.Join(failures, "; "))
+		return fmt.Errorf("refresh failures: %w", errors.Join(failures...))
 	}
 	return nil
 }
@@ -175,12 +185,33 @@ func (s *Service) refreshWithRetry(ctx context.Context, podcastID int64) error {
 			}
 		}
 		if _, _, err := s.Refresh(ctx, podcastID); err != nil {
+			if errors.Is(err, ErrRefreshAlreadyRunning) {
+				return err
+			}
 			lastErr = err
 			continue
 		}
 		return nil
 	}
 	return lastErr
+}
+
+func (s *Service) beginRefresh(podcastID int64) bool {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+
+	if _, ok := s.refreshing[podcastID]; ok {
+		return false
+	}
+	s.refreshing[podcastID] = struct{}{}
+	return true
+}
+
+func (s *Service) endRefresh(podcastID int64) {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+
+	delete(s.refreshing, podcastID)
 }
 
 func (s *Service) Delete(ctx context.Context, podcastID int64) error {

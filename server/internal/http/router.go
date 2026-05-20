@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log"
 	nethttp "net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -88,6 +89,7 @@ func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerServi
 	mux.HandleFunc("GET /api/podcasts/{id}/episodes", r.handlePodcastEpisodesList)
 	mux.HandleFunc("POST /api/podcasts/import-opml", r.handlePodcastsImportOPML)
 	mux.HandleFunc("GET /api/podcasts/export-opml", r.handlePodcastsExportOPML)
+	mux.HandleFunc("POST /api/podcasts/refresh-all", r.handlePodcastsRefreshAll)
 	mux.HandleFunc("GET /api/jobs/status", r.handleJobsStatus)
 	mux.HandleFunc("GET /api/playback/{episodeId}", r.handlePlaybackGet)
 	mux.HandleFunc("POST /api/playback", r.handlePlaybackPost)
@@ -101,6 +103,19 @@ func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerServi
 	mux.HandleFunc("DELETE /api/episodes/{id}/download", r.handleEpisodeDownloadDelete)
 	mux.HandleFunc("GET /api/settings", r.handleSettingsGet)
 	mux.HandleFunc("PATCH /api/settings", r.handleSettingsPatch)
+	mux.HandleFunc("GET /api/episodes/{id}/audio", r.handleEpisodeAudio)
+
+	fs := nethttp.FileServer(nethttp.Dir("frontend/dist"))
+	mux.Handle("/", nethttp.HandlerFunc(func(w nethttp.ResponseWriter, req *nethttp.Request) {
+		path := req.URL.Path
+		if path != "/" {
+			if _, err := os.Stat("frontend/dist" + path); err == nil {
+				fs.ServeHTTP(w, req)
+				return
+			}
+		}
+		nethttp.ServeFile(w, req, "frontend/dist/index.html")
+	}))
 
 	return r.recoverAndLog(mux)
 }
@@ -326,6 +341,8 @@ func (r *Router) handlePodcastRefresh(w nethttp.ResponseWriter, req *nethttp.Req
 			r.writeAPIError(w, nethttp.StatusBadRequest, "FEED_FETCH_FAILED", "Failed to fetch feed")
 		case errors.Is(err, podcasts.ErrFeedParseFailed):
 			r.writeAPIError(w, nethttp.StatusBadRequest, "FEED_PARSE_FAILED", "Feed could not be parsed")
+		case errors.Is(err, podcasts.ErrRefreshAlreadyRunning):
+			r.writeAPIError(w, nethttp.StatusConflict, "REFRESH_ALREADY_RUNNING", "Podcast refresh is already running")
 		default:
 			r.writeAPIError(w, nethttp.StatusInternalServerError, "PODCAST_REFRESH_FAILED", "Failed to refresh podcast")
 		}
@@ -424,6 +441,24 @@ func (r *Router) handleJobsStatus(w nethttp.ResponseWriter, req *nethttp.Request
 	}
 
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{"scheduler": status})
+}
+
+func (r *Router) handlePodcastsRefreshAll(w nethttp.ResponseWriter, req *nethttp.Request) {
+	if _, ok := r.requireUser(w, req); !ok {
+		return
+	}
+
+	if err := r.podcasts.RefreshAll(req.Context()); err != nil {
+		r.logger.Printf("podcasts refresh all failed: %v", err)
+		if errors.Is(err, podcasts.ErrRefreshAlreadyRunning) {
+			r.writeAPIError(w, nethttp.StatusConflict, "REFRESH_ALREADY_RUNNING", "One or more podcast refreshes are already running")
+			return
+		}
+		r.writeAPIError(w, nethttp.StatusInternalServerError, "PODCASTS_REFRESH_ALL_FAILED", "Failed to refresh all podcasts")
+		return
+	}
+
+	r.writeJSON(w, nethttp.StatusOK, map[string]any{"success": true})
 }
 
 func (r *Router) handlePlaybackGet(w nethttp.ResponseWriter, req *nethttp.Request) {
@@ -607,33 +642,6 @@ func (r *Router) handleEpisodeGet(w nethttp.ResponseWriter, req *nethttp.Request
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{"episode": episode})
 }
 
-func (r *Router) handleEpisodeDownload(w nethttp.ResponseWriter, req *nethttp.Request) {
-	if _, ok := r.requireUser(w, req); !ok {
-		return
-	}
-
-	episodeID, ok := r.pathInt64(w, req, "id")
-	if !ok {
-		return
-	}
-
-	item, err := r.downloads.Download(req.Context(), episodeID)
-	if err != nil {
-		switch err {
-		case downloads.ErrEpisodeNotFound:
-			r.writeAPIError(w, nethttp.StatusNotFound, "EPISODE_NOT_FOUND", "Episode was not found")
-		default:
-			r.writeAPIError(w, nethttp.StatusInternalServerError, "DOWNLOAD_FAILED", "Failed to download episode")
-		}
-		return
-	}
-
-	r.writeJSON(w, nethttp.StatusOK, map[string]any{
-		"success": true,
-		"episode": item,
-	})
-}
-
 func (r *Router) handleEpisodePatch(w nethttp.ResponseWriter, req *nethttp.Request) {
 	if _, ok := r.requireUser(w, req); !ok {
 		return
@@ -674,6 +682,33 @@ func (r *Router) handleEpisodePatch(w nethttp.ResponseWriter, req *nethttp.Reque
 	})
 }
 
+func (r *Router) handleEpisodeDownload(w nethttp.ResponseWriter, req *nethttp.Request) {
+	if _, ok := r.requireUser(w, req); !ok {
+		return
+	}
+
+	episodeID, ok := r.pathInt64(w, req, "id")
+	if !ok {
+		return
+	}
+
+	item, err := r.downloads.Download(req.Context(), episodeID)
+	if err != nil {
+		switch err {
+		case downloads.ErrEpisodeNotFound:
+			r.writeAPIError(w, nethttp.StatusNotFound, "EPISODE_NOT_FOUND", "Episode was not found")
+		default:
+			r.writeAPIError(w, nethttp.StatusInternalServerError, "DOWNLOAD_FAILED", "Failed to download episode")
+		}
+		return
+	}
+
+	r.writeJSON(w, nethttp.StatusOK, map[string]any{
+		"success": true,
+		"episode": item,
+	})
+}
+
 func (r *Router) handleEpisodeDownloadDelete(w nethttp.ResponseWriter, req *nethttp.Request) {
 	if _, ok := r.requireUser(w, req); !ok {
 		return
@@ -699,6 +734,36 @@ func (r *Router) handleEpisodeDownloadDelete(w nethttp.ResponseWriter, req *neth
 		"success": true,
 		"episode": item,
 	})
+}
+
+func (r *Router) handleEpisodeAudio(w nethttp.ResponseWriter, req *nethttp.Request) {
+	if _, ok := r.requireUser(w, req); !ok {
+		return
+	}
+
+	episodeID, ok := r.pathInt64(w, req, "id")
+	if !ok {
+		return
+	}
+
+	path, err := r.downloads.GetLocalPath(req.Context(), episodeID)
+	if err != nil && err != downloads.ErrEpisodeNotFound {
+		r.writeAPIError(w, nethttp.StatusInternalServerError, "AUDIO_LOAD_FAILED", "Failed to check local audio")
+		return
+	}
+
+	if path != "" {
+		nethttp.ServeFile(w, req, path)
+		return
+	}
+
+	episode, err := r.episodes.GetByID(req.Context(), episodeID)
+	if err != nil {
+		r.writeAPIError(w, nethttp.StatusNotFound, "EPISODE_NOT_FOUND", "Episode was not found")
+		return
+	}
+
+	nethttp.Redirect(w, req, episode.AudioURL, nethttp.StatusFound)
 }
 
 func (r *Router) handleSettingsGet(w nethttp.ResponseWriter, req *nethttp.Request) {

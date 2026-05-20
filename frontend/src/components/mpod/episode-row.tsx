@@ -122,7 +122,7 @@ export function EpisodeRow({
         className
       )}
       data-episode-row-id={episodeRowId}
-      draggable={draggable}
+      draggable={false}
       aria-grabbed={dragging || undefined}
       onDragStart={onDragStart}
       onDragOver={onDragOver}

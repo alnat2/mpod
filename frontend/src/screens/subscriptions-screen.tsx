@@ -22,7 +22,6 @@ import { Button } from "@/components/ui/button";
 import { api, type Episode, type Podcast } from "@/lib/api";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
-import { featuredEpisode } from "./mock-data";
 import { EmptyState, ErrorBanner, ListLoadingState } from "./screen-states";
 import { UndoBanner } from "./screen-states";
 import {
@@ -126,7 +125,7 @@ export function SubscriptionsScreen() {
     () =>
       new Set(
         pendingActions
-          .filter((action) => action.kind === "mark-listened")
+          .filter((action) => action.kind === "mark-listened" || action.kind === "mark-unlistened")
           .flatMap((action) => action.episodeIds)
       ),
     [pendingActions]
@@ -191,7 +190,8 @@ export function SubscriptionsScreen() {
   }
 
   function scheduleMarkListened(
-    episodes: Array<Pick<Episode, "id" | "title">>
+    episodes: Array<Pick<Episode, "id" | "title">>,
+    isListened: boolean
   ) {
     setActionError(null);
     const actionableEpisodes = episodes.filter(
@@ -202,16 +202,16 @@ export function SubscriptionsScreen() {
     }
 
     scheduleAction({
-      kind: "mark-listened",
+      kind: isListened ? "mark-listened" : "mark-unlistened",
       episodeIds: actionableEpisodes.map((episode) => episode.id),
       message:
         actionableEpisodes.length === 1
-          ? `Marked "${actionableEpisodes[0].title}" as listened.`
-          : `Marked ${actionableEpisodes.length} episodes as listened.`,
+          ? `${isListened ? "Marked" : "Marked"} "${actionableEpisodes[0].title}" as ${isListened ? "listened" : "unlistened"}`
+          : `${isListened ? "Marked" : "Marked"} ${actionableEpisodes.length} episodes as ${isListened ? "listened" : "unlistened"}`,
       commit: async () => {
         await Promise.all(
           actionableEpisodes.map((episode) =>
-            api.episodes.setListened(episode.id, true)
+            api.episodes.setListened(episode.id, isListened)
           )
         );
       },
@@ -296,7 +296,7 @@ export function SubscriptionsScreen() {
                       title={podcast.title}
                       description={podcast.description ?? podcast.rssUrl}
                       episodeCountLabel={episodeCountLabel(unlistenedCount)}
-                      artworkUrl={podcast.imageUrl ?? featuredEpisode.artworkUrl}
+                      artworkUrl={podcast.imageUrl ?? undefined}
                       artworkAlt={`${podcast.title} artwork`}
                       onSelect={() => setSelectedPodcastId(podcast.id)}
                       onRefresh={() =>
@@ -308,19 +308,38 @@ export function SubscriptionsScreen() {
               </div>
               <PlaylistQueue
                 summary={`${selectedPodcast.title} episodes`}
-                headerAction={
-                  <Button
-                    variant="link"
-                    type="button"
-                    onClick={() =>
-                      scheduleMarkListened(
-                        visibleEpisodes.filter((episode) => !episode.isListened)
-                      )
-                    }
-                  >
-                    Mark all listened
-                  </Button>
-                }
+                 headerAction={
+                   <>
+                     {visibleEpisodes.some(episode => !episode.isListened) && (
+                       <Button
+                         variant="link"
+                         type="button"
+                         onClick={() =>
+                           scheduleMarkListened(
+                             visibleEpisodes.filter((episode) => !episode.isListened),
+                             true
+                           )
+                         }
+                       >
+                         Mark all listened
+                       </Button>
+                     )}
+                     {visibleEpisodes.some(episode => episode.isListened) && (
+                       <Button
+                         variant="link"
+                         type="button"
+                         onClick={() =>
+                           scheduleMarkListened(
+                             visibleEpisodes.filter((episode) => episode.isListened),
+                             false
+                           )
+                         }
+                       >
+                         Mark all unlistened
+                       </Button>
+                     )}
+                   </>
+                 }
               >
                 {visibleEpisodes.map((episode) => {
                   const duration = formatDuration(episode.duration);
@@ -333,9 +352,7 @@ export function SubscriptionsScreen() {
                       podcastTitle={selectedPodcast.title}
                       dateLabel={publishedAt ? `${publishedAt} ·` : undefined}
                       durationLabel={duration || undefined}
-                      thumbnailUrl={
-                        selectedPodcast.imageUrl ?? featuredEpisode.artworkUrl
-                      }
+                      thumbnailUrl={selectedPodcast.imageUrl ?? undefined}
                       thumbnailAlt={`${selectedPodcast.title} artwork`}
                       actions={[
                         {
@@ -362,20 +379,18 @@ export function SubscriptionsScreen() {
                               ? scheduleRemoveFromPlaylist(episode)
                               : void runAction(() => api.playlist.add(episode.id)),
                         },
-                        {
-                          label: episode.isListened
-                            ? "Mark unlistened"
-                            : "Mark as listened",
-                          icon: episode.isListened
-                            ? ViewOffIcon
-                            : CheckmarkCircle01Icon,
-                          onClick: () =>
-                            episode.isListened
-                              ? void runAction(() =>
-                                  api.episodes.setListened(episode.id, false)
-                                )
-                              : scheduleMarkListened([episode]),
-                        },
+                         {
+                           label: episode.isListened
+                             ? "Mark unlistened"
+                             : "Mark as listened",
+                           icon: episode.isListened
+                             ? ViewOffIcon
+                             : CheckmarkCircle01Icon,
+                           onClick: () =>
+                             episode.isListened
+                               ? scheduleMarkListened([episode], false)
+                               : scheduleMarkListened([episode], true),
+                         },
                       ]}
                     />
                   );

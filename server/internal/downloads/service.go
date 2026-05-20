@@ -145,6 +145,19 @@ func (s *Service) loadEpisodeMeta(ctx context.Context, episodeID int64) (episode
 	return meta, nil
 }
 
+func (s *Service) GetLocalPath(ctx context.Context, episodeID int64) (string, error) {
+	meta, err := s.loadEpisodeMeta(ctx, episodeID)
+	if err != nil {
+		return "", err
+	}
+	if meta.DownloadedPath.Valid && meta.DownloadedPath.String != "" {
+		if _, err := os.Stat(meta.DownloadedPath.String); err == nil {
+			return meta.DownloadedPath.String, nil
+		}
+	}
+	return "", nil
+}
+
 var invalidFilenameChars = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 
 func buildFilename(id int64, title, audioURL string) string {

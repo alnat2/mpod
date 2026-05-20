@@ -277,6 +277,73 @@ func TestRefreshAllReturnsErrorAfterExhaustingRetriesButContinuesOtherPodcasts(t
 	assertCount(t, db.SQL, `SELECT COUNT(*) FROM episodes WHERE podcast_id = 2`, 1)
 }
 
+func TestRefreshRejectsConcurrentRefreshForSamePodcast(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	mustExecBehavior(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	service := NewService(db.SQL, newPodcastTestClient(func(r *http.Request) (*http.Response, error) {
+		close(requestStarted)
+		<-releaseRequest
+		return xmlResponse(testRSSFeed("Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
+	}))
+
+	firstErr := make(chan error, 1)
+	go func() {
+		_, _, err := service.Refresh(context.Background(), 1)
+		firstErr <- err
+	}()
+
+	<-requestStarted
+	_, _, err := service.Refresh(context.Background(), 1)
+	if !errors.Is(err, ErrRefreshAlreadyRunning) {
+		t.Fatalf("expected ErrRefreshAlreadyRunning, got %v", err)
+	}
+
+	close(releaseRequest)
+	if err := <-firstErr; err != nil {
+		t.Fatalf("first Refresh failed: %v", err)
+	}
+}
+
+func TestRefreshAllowsConcurrentRefreshForDifferentPodcasts(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	mustExecBehavior(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'One', 'https://example.com/one.xml')`)
+	mustExecBehavior(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (2, 'Two', 'https://example.com/two.xml')`)
+
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	service := NewService(db.SQL, newPodcastTestClient(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/one.xml" {
+			close(requestStarted)
+			<-releaseRequest
+			return xmlResponse(testRSSFeed("One", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
+		}
+		return xmlResponse(testRSSFeed("Two", "Episode Two", "guid-2", "https://cdn.example.com/2.mp3")), nil
+	}))
+
+	firstErr := make(chan error, 1)
+	go func() {
+		_, _, err := service.Refresh(context.Background(), 1)
+		firstErr <- err
+	}()
+
+	<-requestStarted
+	if _, _, err := service.Refresh(context.Background(), 2); err != nil {
+		t.Fatalf("expected second podcast refresh to proceed, got %v", err)
+	}
+
+	close(releaseRequest)
+	if err := <-firstErr; err != nil {
+		t.Fatalf("first Refresh failed: %v", err)
+	}
+}
+
 func TestCreateFromFeedFollowsRedirectsAndSendsFeedHeaders(t *testing.T) {
 	db := newBehaviorTestDB(t)
 	defer db.Close()

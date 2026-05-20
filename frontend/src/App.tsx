@@ -10,6 +10,7 @@ import { LoginScreen, SetupScreen } from "@/screens/auth-screens";
 import { ComponentPreview } from "@/screens/component-preview";
 import { HomeScreen } from "@/screens/home-screen";
 import { SettingsScreen } from "@/screens/settings-screen";
+import { PlaybackProvider } from "@/lib/playback-context";
 import { SubscriptionsScreen } from "@/screens/subscriptions-screen";
 
 function LoadingScreen() {
@@ -176,7 +177,9 @@ export default function App() {
   return (
     <TooltipProvider>
       <BrowserRouter>
-        <AppRoutes />
+        <PlaybackProvider>
+          <AppRoutes />
+        </PlaybackProvider>
       </BrowserRouter>
     </TooltipProvider>
   );

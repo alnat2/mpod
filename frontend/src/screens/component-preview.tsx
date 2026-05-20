@@ -13,7 +13,22 @@ import {
 } from "@/components/mpod";
 import { Button } from "@/components/ui/button";
 
-import { featuredEpisode, queueEpisodes, showNotesText } from "./mock-data";
+const featuredEpisode = {
+  title: "Mock Episode Title",
+  podcastTitle: "Mock Podcast Title",
+  artworkUrl: undefined,
+  artworkAlt: "Artwork",
+  elapsedLabel: "10:00",
+  durationLabel: "45:00",
+  progressValue: 22,
+};
+
+const queueEpisodes = [
+  { title: "Ep 1", podcastTitle: "Podcast 1", durationLabel: "10m", current: true },
+  { title: "Ep 2", podcastTitle: "Podcast 2", durationLabel: "20m" },
+];
+
+const showNotesText = "Mock notes";
 
 function PreviewSection({
   title,

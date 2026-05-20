@@ -611,6 +611,83 @@ func TestPodcastRefreshNotFound(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "PODCAST_NOT_FOUND")
 }
 
+func TestPodcastsRefreshAllRefreshesSubscribedPodcasts(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		switch req.URL.Path {
+		case "/one.xml":
+			return routerXMLResponse(testRouterRSSFeed("One", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
+		case "/two.xml":
+			return routerXMLResponse(testRouterRSSFeed("Two", "Episode Two", "guid-2", "https://cdn.example.com/2.mp3")), nil
+		default:
+			t.Fatalf("unexpected feed request path %q", req.URL.Path)
+			return nil, nil
+		}
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'One', 'https://example.com/one.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (2, 'Two', 'https://example.com/two.xml')`)
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/refresh-all", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"success":true`) {
+		t.Fatalf("unexpected refresh-all payload: %s", rec.Body.String())
+	}
+	assertTableCount(t, db, `SELECT COUNT(*) FROM episodes`, 2)
+}
+
+func TestPodcastRefreshRejectsConcurrentRefresh(t *testing.T) {
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		close(requestStarted)
+		<-releaseRequest
+		return routerXMLResponse(testRouterRSSFeed("Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+
+	firstDone := make(chan int, 1)
+	go func() {
+		req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/1/refresh", nil)
+		req.SetPathValue("id", "1")
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		firstDone <- rec.Code
+	}()
+
+	<-requestStarted
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/1/refresh", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusConflict {
+		t.Fatalf("expected 409, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "REFRESH_ALREADY_RUNNING")
+
+	close(releaseRequest)
+	if code := <-firstDone; code != nethttp.StatusOK {
+		t.Fatalf("expected first refresh to finish with 200, got %d", code)
+	}
+}
+
 func TestPodcastDeleteRemovesCascadeDataAndFiles(t *testing.T) {
 	downloadsDir := t.TempDir()
 	handler, db := newTestRouterWithConfig(t, config.Config{
@@ -1022,6 +1099,57 @@ func TestEpisodeDownloadEndpointDownloadsFile(t *testing.T) {
 	}
 	if _, err := os.Stat(downloadedPath); err != nil {
 		t.Fatalf("expected downloaded file to exist, stat err=%v", err)
+	}
+}
+
+func TestEpisodeAudioServesDownloadedFile(t *testing.T) {
+	downloadsDir := t.TempDir()
+	handler, db := newTestRouterWithConfig(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: downloadsDir,
+	})
+	cookie := register(t, handler, "admin", "secret")
+
+	downloadPath := filepath.Join(downloadsDir, "1", "episode.mp3")
+	if err := os.MkdirAll(filepath.Dir(downloadPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	if err := os.WriteFile(downloadPath, []byte("local-audio"), 0o644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path) VALUES (1, 1, 'ep-1', 'Episode', 'https://cdn.example.com/episode.mp3', ?)`, downloadPath)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/episodes/1/audio", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != "local-audio" {
+		t.Fatalf("expected local audio body, got %q", rec.Body.String())
+	}
+}
+
+func TestEpisodeAudioRedirectsToRemoteAudioWhenNotDownloaded(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+	seedEpisode(t, db, 1, 1)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/episodes/1/audio", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusFound {
+		t.Fatalf("expected 302, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Location"); got != "https://cdn.example.com/audio.mp3" {
+		t.Fatalf("expected redirect to remote audio, got %q", got)
 	}
 }
 
@@ -1645,6 +1773,7 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 	mux.HandleFunc("GET /api/podcasts/{id}/episodes", r.handlePodcastEpisodesList)
 	mux.HandleFunc("POST /api/podcasts/import-opml", r.handlePodcastsImportOPML)
 	mux.HandleFunc("GET /api/podcasts/export-opml", r.handlePodcastsExportOPML)
+	mux.HandleFunc("POST /api/podcasts/refresh-all", r.handlePodcastsRefreshAll)
 	mux.HandleFunc("GET /api/jobs/status", r.handleJobsStatus)
 	mux.HandleFunc("GET /api/playback/{episodeId}", r.handlePlaybackGet)
 	mux.HandleFunc("POST /api/playback", r.handlePlaybackPost)
@@ -1656,6 +1785,7 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 	mux.HandleFunc("PATCH /api/episodes/{id}", r.handleEpisodePatch)
 	mux.HandleFunc("POST /api/episodes/{id}/download", r.handleEpisodeDownload)
 	mux.HandleFunc("DELETE /api/episodes/{id}/download", r.handleEpisodeDownloadDelete)
+	mux.HandleFunc("GET /api/episodes/{id}/audio", r.handleEpisodeAudio)
 	mux.HandleFunc("GET /api/settings", r.handleSettingsGet)
 	mux.HandleFunc("PATCH /api/settings", r.handleSettingsPatch)
 	return r.recoverAndLog(mux)

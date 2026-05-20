@@ -5,21 +5,23 @@ import {
   PauseIcon,
   PlayIcon,
   PlayListRemoveIcon,
+  VolumeUpIcon,
+  VolumeOffIcon,
+  DownloadSquare01Icon,
+  DownloadSquare02Icon,
 } from "@hugeicons/core-free-icons";
 
 import {
   AppShell,
   EpisodeRow,
   ModalScreen,
-  Player,
-  type PlaybackSpeedLabel,
   PlaylistQueue,
   ShowNotes,
 } from "@/components/mpod";
-import { api, type Episode, type PlaybackState, type Podcast } from "@/lib/api";
+import { api, type Episode } from "@/lib/api";
+import { usePlayback, type QueueEpisode } from "@/lib/playback-context";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
-import { featuredEpisode, showNotesText } from "./mock-data";
 import {
   CenterLoadingState,
   EmptyState,
@@ -27,22 +29,10 @@ import {
   UndoBanner,
 } from "./screen-states";
 import {
-  formatClock,
   formatDuration,
   getErrorMessage,
 } from "./screen-utils";
 import { useDelayedActions } from "./use-delayed-actions";
-
-type QueueEpisode = Episode & {
-  podcastTitle: string;
-  podcastImageUrl?: string | null;
-  playback: PlaybackState | null;
-};
-
-type LocalPlayback = {
-  episodeId: number;
-  positionSeconds: number;
-};
 
 function queueSummary(episodes: QueueEpisode[]) {
   const totalSeconds = episodes.reduce(
@@ -52,97 +42,34 @@ function queueSummary(episodes: QueueEpisode[]) {
   return `${episodes.length} ${episodes.length === 1 ? "episode" : "episodes"} · ${formatDuration(totalSeconds)}`;
 }
 
-function findPodcast(podcasts: Podcast[], podcastId: number) {
-  return podcasts.find((podcast) => podcast.id === podcastId);
-}
-
-function playbackRateFromLabel(label: PlaybackSpeedLabel) {
-  return Number(label.replace("Speed ", "").replace("x", "")) || 1;
-}
-
-function clampPosition(positionSeconds: number, durationSeconds?: number | null) {
-  const nonNegativePosition = Math.max(0, positionSeconds);
-
-  if (!durationSeconds) {
-    return nonNegativePosition;
-  }
-
-  return Math.min(durationSeconds, nonNegativePosition);
-}
-
 export function HomeScreen() {
+  const {
+    queue,
+    updateQueue: setQueue,
+    loading,
+    reloadQueue,
+    playing,
+    playToggle,
+  } = usePlayback();
   const [modal, setModal] = useState<AddPodcastModalMode | "show-notes">(null);
-  const [queue, setQueue] = useState<QueueEpisode[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const error: string | null = null;
   const [actionError, setActionError] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [playingEpisodeId, setPlayingEpisodeId] = useState<number | null>(null);
-  const [localPlayback, setLocalPlayback] = useState<LocalPlayback | null>(null);
-  const [speedLabel, setSpeedLabel] =
-    useState<PlaybackSpeedLabel>("Speed 1x");
   const [draggedEpisodeId, setDraggedEpisodeId] = useState<number | null>(null);
   const [reordering, setReordering] = useState(false);
-  const positionSecondsRef = useRef(0);
   const queueRef = useRef<QueueEpisode[]>([]);
   const dragOriginQueueRef = useRef<QueueEpisode[]>([]);
   const dragMovedRef = useRef(false);
-  const lastDragPointRef = useRef<{ x: number; y: number } | null>(null);
+  const downloadErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { pendingActions, scheduleAction, undoAction } = useDelayedActions({
     onCommitted: () => setReloadKey((current) => current + 1),
     onError: (caught) => setActionError(getErrorMessage(caught)),
   });
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadHome() {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const [playlistResponse, podcastResponse] = await Promise.all([
-          api.playlist.list(),
-          api.podcasts.list(),
-        ]);
-        const items = playlistResponse.items ?? [];
-        const podcasts = podcastResponse.podcasts ?? [];
-        const fullEpisodes = await Promise.all(
-          items.map((item) => api.episodes.get(item.episodeId))
-        );
-        const playbackResults = await Promise.all(
-          items.map((item) => api.playback.get(item.episodeId))
-        );
-        const nextQueue = fullEpisodes.map(({ episode }, index) => {
-          const podcast = findPodcast(podcasts, episode.podcastId);
-          return {
-            ...episode,
-            podcastTitle: podcast?.title ?? "Podcast",
-            podcastImageUrl: podcast?.imageUrl,
-            playback: playbackResults[index].playback,
-          };
-        });
-
-        if (!cancelled) {
-          setQueue(nextQueue);
-        }
-      } catch (caught) {
-        if (!cancelled) {
-          setError(getErrorMessage(caught));
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadHome();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey]);
+    void reloadQueue();
+  }, [reloadKey, reloadQueue]);
 
   const pendingPlaylistRemoveEpisodeIds = useMemo(
     () =>
@@ -163,110 +90,37 @@ export function HomeScreen() {
   );
 
   const currentEpisode = visibleQueue[0];
-  const currentEpisodeId = currentEpisode?.id;
-  const currentEpisodeDuration = currentEpisode?.duration ?? 0;
-  const playing = currentEpisodeId !== undefined && playingEpisodeId === currentEpisodeId;
-  const positionSeconds =
-    currentEpisodeId !== undefined && localPlayback?.episodeId === currentEpisodeId
-      ? localPlayback.positionSeconds
-      : currentEpisode?.playback?.positionSeconds ?? 0;
-  const progressValue = useMemo(() => {
-    if (!currentEpisodeDuration) {
-      return 0;
+
+  useEffect(() => {
+    if (draggedEpisodeId === null) {
+      queueRef.current = queue;
     }
-    return Math.min(
-      100,
-      Math.round((positionSeconds / currentEpisodeDuration) * 100)
-    );
-  }, [currentEpisodeDuration, positionSeconds]);
+  }, [draggedEpisodeId, queue]);
 
   useEffect(() => {
-    positionSecondsRef.current = positionSeconds;
-  }, [positionSeconds]);
-
-  useEffect(() => {
-    queueRef.current = queue;
-  }, [queue]);
-
-  const commitPlayback = useCallback(
-    async (
-      nextPositionSeconds: number,
-      options: { completed?: boolean; didSeek?: boolean } = {}
-    ) => {
-      if (!currentEpisode) {
-        return;
+    return () => {
+      if (downloadErrorTimeoutRef.current) {
+        window.clearTimeout(downloadErrorTimeoutRef.current);
       }
+    };
+  }, []);
 
-      try {
-        const response = await api.playback.update({
-          episodeId: currentEpisode.id,
-          positionSeconds: Math.round(
-            clampPosition(nextPositionSeconds, currentEpisode.duration)
-          ),
-          durationSeconds: currentEpisode.duration ?? 0,
-          completed: options.completed ?? false,
-          didSeek: options.didSeek ?? false,
-          clientUpdatedAt: new Date().toISOString(),
-        });
-
-        if (response.playback.episodeId === currentEpisode.id) {
-          setLocalPlayback({
-            episodeId: response.playback.episodeId,
-            positionSeconds: response.playback.positionSeconds,
-          });
-        }
-      } catch (caught) {
-        setActionError(getErrorMessage(caught));
+  async function downloadEpisode(episodeId: number) {
+    setActionError(null);
+    setDownloadError(null);
+    try {
+      await api.episodes.download(episodeId);
+      setReloadKey((current) => current + 1);
+    } catch (caught) {
+      setDownloadError(getErrorMessage(caught));
+      if (downloadErrorTimeoutRef.current) {
+        window.clearTimeout(downloadErrorTimeoutRef.current);
       }
-    },
-    [currentEpisode]
-  );
-
-  useEffect(() => {
-    if (!playing || !currentEpisodeId) {
-      return;
+      downloadErrorTimeoutRef.current = window.setTimeout(() => {
+        setDownloadError(null);
+      }, 10_000);
     }
-
-    const intervalId = window.setInterval(() => {
-      setLocalPlayback((currentPlayback) => {
-        const currentPosition =
-          currentPlayback?.episodeId === currentEpisodeId
-            ? currentPlayback.positionSeconds
-            : positionSecondsRef.current;
-        const nextPosition = clampPosition(
-          currentPosition + playbackRateFromLabel(speedLabel),
-          currentEpisodeDuration
-        );
-
-        if (currentEpisodeDuration && nextPosition >= currentEpisodeDuration) {
-          setPlayingEpisodeId(null);
-          void commitPlayback(nextPosition, { completed: true });
-        }
-
-        return { episodeId: currentEpisodeId, positionSeconds: nextPosition };
-      });
-    }, 1000);
-
-    return () => window.clearInterval(intervalId);
-  }, [
-    commitPlayback,
-    currentEpisodeDuration,
-    currentEpisodeId,
-    playing,
-    speedLabel,
-  ]);
-
-  useEffect(() => {
-    if (!playing || !currentEpisodeId) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      void commitPlayback(positionSecondsRef.current);
-    }, 15000);
-
-    return () => window.clearInterval(intervalId);
-  }, [commitPlayback, currentEpisodeId, playing]);
+  }
 
   function scheduleRemoveFromPlaylist(episode: Pick<Episode, "id" | "title">) {
     setActionError(null);
@@ -282,40 +136,33 @@ export function HomeScreen() {
     });
   }
 
-  function handlePlayToggle() {
-    if (!currentEpisode) {
+  function scheduleMarkListened(
+    episode: Pick<Episode, "id" | "title">,
+    isListened: boolean
+  ) {
+    setActionError(null);
+    if (
+      pendingActions.some(
+        (action) =>
+          (action.kind === "mark-listened" ||
+            action.kind === "mark-unlistened") &&
+          action.episodeIds.includes(episode.id)
+      )
+    ) {
       return;
     }
 
-    setActionError(null);
-    setPlayingEpisodeId((current) =>
-      current === currentEpisode.id ? null : currentEpisode.id
-    );
-    void commitPlayback(positionSecondsRef.current);
-  }
+    const actionKind = isListened ? "mark-listened" : "mark-unlistened";
+    const actionMessage = isListened
+      ? `Marked "${episode.title}" as listened`
+      : `Marked "${episode.title}" as unlistened`;
 
-  function handleBack() {
-    const nextPosition = clampPosition(
-      positionSecondsRef.current - 10,
-      currentEpisodeDuration
-    );
-    setActionError(null);
-    if (currentEpisodeId !== undefined) {
-      setLocalPlayback({ episodeId: currentEpisodeId, positionSeconds: nextPosition });
-    }
-    void commitPlayback(nextPosition, { didSeek: true });
-  }
-
-  function handleForward() {
-    const nextPosition = clampPosition(
-      positionSecondsRef.current + 15,
-      currentEpisodeDuration
-    );
-    setActionError(null);
-    if (currentEpisodeId !== undefined) {
-      setLocalPlayback({ episodeId: currentEpisodeId, positionSeconds: nextPosition });
-    }
-    void commitPlayback(nextPosition, { didSeek: true });
+    scheduleAction({
+      kind: actionKind,
+      episodeIds: [episode.id],
+      message: actionMessage,
+      commit: () => api.episodes.setListened(episode.id, isListened),
+    });
   }
 
   const moveQueueItem = useCallback((
@@ -356,28 +203,7 @@ export function HomeScreen() {
     } finally {
       setReordering(false);
     }
-  }, []);
-
-  async function reorderQueue(sourceEpisodeId: number, targetEpisodeId: number) {
-    if (
-      sourceEpisodeId === targetEpisodeId ||
-      pendingActions.length > 0 ||
-      reordering
-    ) {
-      return;
-    }
-
-    const previousQueue = queueRef.current;
-    const nextQueue = moveQueueItem(previousQueue, sourceEpisodeId, targetEpisodeId);
-
-    if (nextQueue === previousQueue) {
-      return;
-    }
-
-    queueRef.current = nextQueue;
-    setQueue(nextQueue);
-    await commitQueueOrder(nextQueue, previousQueue);
-  }
+  }, [setQueue]);
 
   function beginPointerReorder(
     event: PointerEvent<HTMLDivElement>,
@@ -390,7 +216,6 @@ export function HomeScreen() {
 
     dragOriginQueueRef.current = queueRef.current;
     dragMovedRef.current = false;
-    lastDragPointRef.current = { x: event.clientX, y: event.clientY };
     setDraggedEpisodeId(episodeId);
     event.currentTarget.setPointerCapture(event.pointerId);
   }
@@ -407,7 +232,6 @@ export function HomeScreen() {
     event.preventDefault();
     dragOriginQueueRef.current = queueRef.current;
     dragMovedRef.current = false;
-    lastDragPointRef.current = { x: event.clientX, y: event.clientY };
     setDraggedEpisodeId(episodeId);
   }
 
@@ -425,7 +249,7 @@ export function HomeScreen() {
       setQueue(nextQueue);
     }
 
-  }, [draggedEpisodeId, moveQueueItem]);
+  }, [draggedEpisodeId, moveQueueItem, setQueue]);
 
   const finishPointerReorder = useCallback(() => {
     if (draggedEpisodeId === null) {
@@ -479,7 +303,6 @@ export function HomeScreen() {
     }
 
     function previewFromPoint(clientX: number, clientY: number) {
-      lastDragPointRef.current = { x: clientX, y: clientY };
       const targetEpisodeId = findEpisodeIdNearPoint(clientX, clientY);
 
       if (targetEpisodeId !== null) {
@@ -501,13 +324,13 @@ export function HomeScreen() {
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", finishPointerReorder);
 
-    return () => {
-      document.removeEventListener("pointermove", handlePointerMove);
-      document.removeEventListener("pointerup", finishPointerReorder);
-      document.removeEventListener("pointercancel", finishPointerReorder);
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", finishPointerReorder);
-    };
+     return () => {
+       document.removeEventListener("pointermove", handlePointerMove);
+       document.removeEventListener("pointerup", finishPointerReorder);
+       document.removeEventListener("pointercancel", finishPointerReorder);
+       document.removeEventListener("mousemove", handleMouseMove);
+       document.removeEventListener("mouseup", finishPointerReorder);
+     };
   }, [
     draggedEpisodeId,
     findEpisodeIdNearPoint,
@@ -524,44 +347,30 @@ export function HomeScreen() {
         pageSubtitle=""
         pageActions={[]}
       >
-        <div className="flex h-full min-h-[712px] w-full flex-col items-center gap-4 overflow-hidden rounded-lg p-6">
-          {error ? (
-            <ErrorBanner className="w-full max-w-[1040px]">{error}</ErrorBanner>
-          ) : null}
-          {actionError ? (
-            <ErrorBanner className="w-full max-w-[1040px]">
-              {actionError}
-            </ErrorBanner>
-          ) : null}
-          {pendingActions.map((action) => (
-            <UndoBanner
-              key={action.id}
-              message={`${action.message} Applying in 15 seconds.`}
-              onUndo={() => undoAction(action.id)}
-            />
-          ))}
+         <div className="flex h-full min-h-[712px] w-full flex-col items-center gap-4 overflow-hidden rounded-lg p-6">
+           {error ? (
+             <ErrorBanner className="w-full max-w-[1040px]">{error}</ErrorBanner>
+           ) : null}
+           {actionError ? (
+             <ErrorBanner className="w-full max-w-[1040px]">
+               {actionError}
+             </ErrorBanner>
+           ) : null}
+           {downloadError ? (
+             <ErrorBanner className="w-full max-w-[1040px]">
+               {downloadError}
+             </ErrorBanner>
+           ) : null}
+           {pendingActions.map((action) => (
+             <UndoBanner
+               key={action.id}
+               message={`${action.message} Applying in 15 seconds.`}
+               onUndo={() => undoAction(action.id)}
+             />
+           ))}
           {loading ? (
             <CenterLoadingState label="Loading playlist" />
           ) : currentEpisode ? (
-            <>
-              <Player
-                title={currentEpisode.title}
-                podcastTitle={currentEpisode.podcastTitle}
-                artworkUrl={currentEpisode.podcastImageUrl ?? featuredEpisode.artworkUrl}
-                artworkAlt={`${currentEpisode.podcastTitle} artwork`}
-                elapsedLabel={formatClock(
-                  positionSeconds
-                )}
-                durationLabel={formatClock(currentEpisode.duration)}
-                progressValue={progressValue}
-                playing={playing}
-                speedLabel={speedLabel}
-                notesDisabled
-                onBack={handleBack}
-                onForward={handleForward}
-                onPlay={handlePlayToggle}
-                onSpeedChange={setSpeedLabel}
-              />
               <PlaylistQueue
                 summary={queueSummary(visibleQueue)}
                 className="max-w-[1040px]"
@@ -575,7 +384,7 @@ export function HomeScreen() {
                       title={episode.title}
                       podcastTitle={episode.podcastTitle}
                       durationLabel={formatDuration(episode.duration)}
-                      thumbnailUrl={episode.podcastImageUrl ?? featuredEpisode.artworkUrl}
+                      thumbnailUrl={episode.podcastImageUrl ?? undefined}
                       thumbnailAlt={`${episode.podcastTitle} artwork`}
                       episodeRowId={episode.id}
                       draggable={canReorder}
@@ -595,99 +404,40 @@ export function HomeScreen() {
                         previewPointerReorder(episode.id, canReorder)
                       }
                       onMouseUp={finishPointerReorder}
-                      onDragStart={(event) => {
-                        if (!canReorder) {
-                          event.preventDefault();
-                          return;
-                        }
-
-                        dragOriginQueueRef.current = queueRef.current;
-                        dragMovedRef.current = false;
-                        lastDragPointRef.current = {
-                          x: event.clientX,
-                          y: event.clientY,
-                        };
-                        setDraggedEpisodeId(episode.id);
-                        event.dataTransfer.effectAllowed = "move";
-                        event.dataTransfer.setData(
-                          "text/plain",
-                          String(episode.id)
-                        );
-                      }}
-                      onDragOver={(event) => {
-                        if (!canReorder) {
-                          return;
-                        }
-
-                        event.preventDefault();
-                        event.dataTransfer.dropEffect = "move";
-                        lastDragPointRef.current = {
-                          x: event.clientX,
-                          y: event.clientY,
-                        };
-                        previewPointerReorder(episode.id, canReorder);
-                      }}
-                      onDrop={(event) => {
-                        if (!canReorder) {
-                          return;
-                        }
-
-                        event.preventDefault();
-                        const sourceEpisodeId = Number(
-                          event.dataTransfer.getData("text/plain") ||
-                            draggedEpisodeId
-                        );
-                        const finalPoint = lastDragPointRef.current ?? {
-                          x: event.clientX,
-                          y: event.clientY,
-                        };
-                        const targetEpisodeId =
-                          findEpisodeIdNearPoint(finalPoint.x, finalPoint.y) ??
-                          episode.id;
-                        const previousQueue = dragOriginQueueRef.current;
-                        const nextQueue = moveQueueItem(
-                          previousQueue,
-                          sourceEpisodeId,
-                          targetEpisodeId
-                        );
-                        setDraggedEpisodeId(null);
-                        lastDragPointRef.current = null;
-
-                        if (nextQueue !== previousQueue) {
-                          queueRef.current = nextQueue;
-                          setQueue(nextQueue);
-                          void commitQueueOrder(nextQueue, previousQueue);
-                          dragMovedRef.current = false;
-                        } else if (dragMovedRef.current) {
-                          dragMovedRef.current = false;
-                          void commitQueueOrder(queueRef.current, previousQueue);
-                        } else {
-                          void reorderQueue(sourceEpisodeId, targetEpisodeId);
-                        }
-                      }}
-                      onDragEnd={() => {
-                        setDraggedEpisodeId(null);
-                        dragMovedRef.current = false;
-                        lastDragPointRef.current = null;
-                      }}
-                      actions={[
-                        {
-                          label: index === 0 && playing ? "Pause" : "Play",
-                          icon: index === 0 && playing ? PauseIcon : PlayIcon,
-                          onClick: index === 0 ? handlePlayToggle : undefined,
-                        },
-                        {
-                          label: "Remove from playlist",
-                          icon: PlayListRemoveIcon,
-                          onClick: () => scheduleRemoveFromPlaylist(episode),
-                        },
-                      ]}
+                        actions={[
+                          {
+                            label: index === 0 && playing ? "Pause" : "Play",
+                            icon: index === 0 && playing ? PauseIcon : PlayIcon,
+                            onClick: index === 0 ? playToggle : undefined,
+                          },
+                          {
+                            label: episode.isListened ? "Mark as unlistened" : "Mark as listened",
+                            icon: episode.isListened ? VolumeOffIcon : VolumeUpIcon,
+                            onClick: () => {
+                              setActionError(null);
+                              scheduleMarkListened(episode, !episode.isListened);
+                            },
+                          },
+                          {
+                            label: "Remove from playlist",
+                            icon: PlayListRemoveIcon,
+                            onClick: () => scheduleRemoveFromPlaylist(episode),
+                          },
+                          {
+                            label: episode.downloaded ? "Downloaded" : "Download",
+                            icon: episode.downloaded
+                              ? DownloadSquare02Icon
+                              : DownloadSquare01Icon,
+                            onClick: episode.downloaded
+                              ? undefined
+                              : () => void downloadEpisode(episode.id),
+                          },
+                        ]}
                       key={episode.id}
                     />
                   );
                 })}
               </PlaylistQueue>
-            </>
           ) : (
             <EmptyState
               title="Playlist is empty"
@@ -699,10 +449,10 @@ export function HomeScreen() {
       {modal === "show-notes" ? (
         <ModalScreen>
           <ShowNotes
-            podcastTitle={currentEpisode?.podcastTitle ?? featuredEpisode.podcastTitle}
-            episodeTitle={currentEpisode?.title ?? featuredEpisode.title}
+            podcastTitle={currentEpisode?.podcastTitle ?? ""}
+            episodeTitle={currentEpisode?.title ?? ""}
           >
-            {showNotesText}
+            No show notes available.
           </ShowNotes>
         </ModalScreen>
       ) : null}
