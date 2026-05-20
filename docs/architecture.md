@@ -413,6 +413,14 @@ Both manual refresh and scheduled refresh should reuse the same core flow:
 - update `last_checked` and status fields
 
 This avoids subtle differences between manual and scheduled behavior.
+Manual refresh may target a single podcast or all podcasts, but the backend must prevent overlapping refreshes for the same podcast.
+
+## Episode Audio Delivery
+
+Playback uses a backend audio endpoint instead of exposing storage paths to the frontend.
+When a downloaded file exists locally, the backend serves that file.
+When no local file exists, the backend redirects to the remote episode audio URL.
+This keeps file storage decisions on the backend while still allowing streaming before download.
 
 ## Configuration Boundaries
 

@@ -4,6 +4,7 @@
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.log
 
 # Go
 server/bin/

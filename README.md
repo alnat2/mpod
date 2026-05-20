@@ -87,16 +87,16 @@ Proxy host, port, username, and password remain runtime configuration. When prox
 
 ## Repository Status
 
-The backend MVP is implemented in Go and the frontend has not been scaffolded yet.
+The backend MVP is implemented in Go and the React frontend scaffold is now in place.
 
 Current backend capabilities include:
 - one-time registration and session-based auth
-- podcast add/list/detail/delete/refresh
+- podcast add/list/detail/delete/refresh/refresh-all
 - RSS import on subscription
 - OPML import/export
 - episode listing and detail
 - playlist add/remove/reorder
-- episode download/delete
+- episode download/delete and authenticated audio playback delivery
 - playback sync endpoints
 - daily refresh settings, proxy on/off settings, and scheduler status
 
@@ -104,9 +104,9 @@ Backend test/bootstrap notes:
 - see [server/TESTING.md](/Users/cross/Documents/mpod/server/TESTING.md)
 
 The next expected additions are:
-- frontend application scaffold
-- UI implementation against the existing API
-- broader tests and polish
+- continued frontend/backend integration polish
+- broader end-to-end QA
+- production packaging polish
 
 ## Development Approach
 

@@ -2,7 +2,7 @@
 
 ## Current State
 
-mpod is a browser-based web application. The project has an active Go backend implementation in progress, and the frontend has not been scaffolded yet.
+mpod is a browser-based web application. The Go backend MVP is in place, and the React frontend scaffold is now connected to the existing API.
 
 The starter documentation set is in place:
 - [README.md](/Users/cross/Documents/mpod/README.md)
@@ -54,11 +54,11 @@ The Go backend scaffold is now in place with:
 - podcast creation from RSS feed with initial episode import
 - OPML import with immediate fetch for new subscriptions
 - OPML export for current subscriptions
-- podcast detail, delete, and manual refresh
+- podcast detail, delete, manual refresh, and refresh all
 - podcast episode listing
 - episode detail
 - playlist list/add/remove/reorder
-- episode download and download deletion
+- episode download, download deletion, and authenticated audio playback delivery
 - playback get/update with sync conflict rules
 - episode listened/unlistened patch endpoint
 - shared outbound HTTP client with optional SOCKS5 support
@@ -71,10 +71,10 @@ The Go backend scaffold is now in place with:
 ## Ready For Later
 
 When implementation resumes, the next likely steps are:
-1. define or refine user flows and UX/UI decisions
-2. scaffold frontend
-3. connect frontend to the existing backend API
-4. add broader backend test coverage and polish where needed
+1. continue frontend/backend integration polish
+2. verify critical user flows against real backend data
+3. add broader end-to-end QA where needed
+4. polish Docker/runtime packaging
 
 ## Open Topics
 

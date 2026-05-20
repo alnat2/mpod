@@ -233,6 +233,20 @@ Success response:
 }
 ```
 
+#### `POST /api/podcasts/refresh-all`
+
+Success response:
+```json
+{
+  "success": true
+}
+```
+
+Rules:
+- Refreshes all subscribed podcasts using the same logic as per-podcast refresh and scheduled refresh
+- Failure of one podcast must not stop refresh attempts for other podcasts
+- If a refresh for the same podcast is already running, the request should be rejected for MVP
+
 #### `POST /api/podcasts/import-opml`
 Request is `multipart/form-data` with one OPML file.
 
@@ -300,6 +314,17 @@ Success response:
   }
 }
 ```
+
+#### `GET /api/episodes/:id/audio`
+
+Response:
+- If a valid local download exists, serves the downloaded audio file
+- If no local download exists, redirects to the episode's remote `audioUrl`
+
+Rules:
+- The endpoint requires authentication
+- The endpoint is for playback only; it does not mark the episode as downloaded
+- Missing episodes return `404 Not Found`
 
 #### `DELETE /api/episodes/:id/download`
 
