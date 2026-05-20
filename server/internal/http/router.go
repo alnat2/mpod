@@ -8,7 +8,9 @@ import (
 	"log"
 	nethttp "net/http"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cross/mpod/server/internal/auth"
@@ -105,16 +107,17 @@ func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerServi
 	mux.HandleFunc("PATCH /api/settings", r.handleSettingsPatch)
 	mux.HandleFunc("GET /api/episodes/{id}/audio", r.handleEpisodeAudio)
 
-	fs := nethttp.FileServer(nethttp.Dir("frontend/dist"))
+	staticDir := firstExistingDir("frontend/dist", "../frontend/dist")
+	fs := nethttp.FileServer(nethttp.Dir(staticDir))
 	mux.Handle("/", nethttp.HandlerFunc(func(w nethttp.ResponseWriter, req *nethttp.Request) {
-		path := req.URL.Path
-		if path != "/" {
-			if _, err := os.Stat("frontend/dist" + path); err == nil {
+		cleanPath := filepath.Clean(strings.TrimPrefix(req.URL.Path, "/"))
+		if cleanPath != "." {
+			if _, err := os.Stat(filepath.Join(staticDir, cleanPath)); err == nil {
 				fs.ServeHTTP(w, req)
 				return
 			}
 		}
-		nethttp.ServeFile(w, req, "frontend/dist/index.html")
+		nethttp.ServeFile(w, req, filepath.Join(staticDir, "index.html"))
 	}))
 
 	return r.recoverAndLog(mux)
@@ -122,6 +125,18 @@ func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerServi
 
 func (r *Router) handleHealth(w nethttp.ResponseWriter, req *nethttp.Request) {
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{"ok": true})
+}
+
+func firstExistingDir(candidates ...string) string {
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			return candidate
+		}
+	}
+	if len(candidates) == 0 {
+		return ""
+	}
+	return candidates[0]
 }
 
 func (r *Router) handleSession(w nethttp.ResponseWriter, req *nethttp.Request) {

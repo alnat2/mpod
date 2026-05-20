@@ -18,9 +18,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /out/mpod ./cmd/mpod
 
 # Final image
 FROM alpine:3.22
-RUN adduser -D -h /app mpod
+RUN adduser -D -h /app mpod \
+    && mkdir -p /data /app \
+    && chown -R mpod:mpod /data /app
 WORKDIR /app
 COPY --from=frontend-builder /src/frontend/dist ./frontend/dist
+COPY server/migrations ./migrations
 COPY --from=backend-builder /out/mpod /usr/local/bin/mpod
 USER mpod
 EXPOSE 5050

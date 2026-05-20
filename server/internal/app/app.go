@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/cross/mpod/server/internal/config"
@@ -36,7 +37,7 @@ func New(logger *log.Logger) (*App, error) {
 		return nil, err
 	}
 
-	if err := storage.Migrate(db.SQL, "migrations"); err != nil {
+	if err := storage.Migrate(db.SQL, firstExistingDir("migrations", "server/migrations")); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -92,4 +93,16 @@ func (a *App) Shutdown(ctx context.Context) error {
 		return err
 	}
 	return a.db.Close()
+}
+
+func firstExistingDir(candidates ...string) string {
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			return candidate
+		}
+	}
+	if len(candidates) == 0 {
+		return ""
+	}
+	return candidates[0]
 }
