@@ -478,6 +478,7 @@ func (r *Router) handlePodcastsImportOPML(w nethttp.ResponseWriter, req *nethttp
 		case podcasts.ErrInvalidOPML:
 			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_OPML", "OPML file could not be parsed")
 		default:
+			r.logger.Printf("opml import failed: %v", err)
 			r.writeAPIError(w, nethttp.StatusInternalServerError, "OPML_IMPORT_FAILED", "Failed to import OPML")
 		}
 		return

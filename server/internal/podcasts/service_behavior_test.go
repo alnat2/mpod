@@ -418,6 +418,54 @@ func TestCreateFromFeedParsesTLSResponse(t *testing.T) {
 	}
 }
 
+func TestImportOPMLUnexpectedErrorIncludesFeedURL(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	fixture := firstCompleteTransistorFixture(t)
+
+	if err := db.Close(); err != nil {
+		t.Fatalf("db.Close failed: %v", err)
+	}
+
+	service := NewService(db.SQL, newPodcastTestClient(func(r *http.Request) (*http.Response, error) {
+		return xmlResponse(fixture), nil
+	}))
+
+	_, err := service.ImportOPML(context.Background(), strings.NewReader(`<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <body>
+    <outline text="Build Your SaaS" xmlUrl="https://feeds.transistor.fm/build-your-saas"/>
+  </body>
+</opml>`))
+	if err == nil {
+		t.Fatalf("expected import error from closed database")
+	}
+	if !strings.Contains(err.Error(), `import feed "https://feeds.transistor.fm/build-your-saas"`) {
+		t.Fatalf("expected feed url context in import error, got %v", err)
+	}
+}
+
+func TestImportOPMLSkipsWrappedFeedFetchFailures(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	service := NewService(db.SQL, newPodcastTestClient(func(r *http.Request) (*http.Response, error) {
+		return nil, net.ErrClosed
+	}))
+
+	result, err := service.ImportOPML(context.Background(), strings.NewReader(`<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <body>
+    <outline text="Broken Feed" xmlUrl="https://feeds.feedburner.com/Radio-t"/>
+  </body>
+</opml>`))
+	if err != nil {
+		t.Fatalf("expected wrapped fetch failure to be skipped, got %v", err)
+	}
+	if result.Imported != 0 || result.Skipped != 1 {
+		t.Fatalf("unexpected import result: %+v", result)
+	}
+}
+
 func newBehaviorTestDB(t *testing.T) *storage.DB {
 	t.Helper()
 

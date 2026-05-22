@@ -429,11 +429,15 @@ func (s *Service) ImportOPML(ctx context.Context, reader io.Reader) (ImportResul
 	result := ImportResult{}
 	for _, feedURL := range feedURLs {
 		if _, err := s.CreateFromFeed(ctx, feedURL); err != nil {
-			switch err {
-			case ErrDuplicateSubscription, ErrInvalidFeedURL, ErrFeedFetchFailed, ErrFeedParseFailed, ErrNoPlayableEpisodesFound:
+			switch {
+			case errors.Is(err, ErrDuplicateSubscription),
+				errors.Is(err, ErrInvalidFeedURL),
+				errors.Is(err, ErrFeedFetchFailed),
+				errors.Is(err, ErrFeedParseFailed),
+				errors.Is(err, ErrNoPlayableEpisodesFound):
 				result.Skipped++
 			default:
-				return ImportResult{}, err
+				return ImportResult{}, fmt.Errorf("import feed %q: %w", feedURL, err)
 			}
 			continue
 		}
