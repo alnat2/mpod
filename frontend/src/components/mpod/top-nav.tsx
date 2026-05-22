@@ -1,5 +1,5 @@
 import { HugeiconsIcon } from "@hugeicons/react";
-import { AddIcon } from "@hugeicons/core-free-icons";
+import { PlusSignSquareIcon } from "@hugeicons/core-free-icons";
 import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
@@ -54,7 +54,7 @@ export function TopNav({
         <div className="min-w-0 flex-1" />
         <Button className="px-3" type="button" variant="secondary" onClick={onAdd}>
           <HugeiconsIcon
-            icon={AddIcon}
+            icon={PlusSignSquareIcon}
             className="size-4"
             data-icon="inline-start"
             aria-hidden="true"

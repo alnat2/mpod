@@ -2,27 +2,37 @@ import { useEffect, useMemo, useState } from "react";
 
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  CheckmarkCircle01Icon,
   DownloadSquare01Icon,
   DownloadSquare02Icon,
   EyeIcon,
-  FolderSyncIcon,
+  Loading02Icon,
+  NoteIcon,
   PlayListAddIcon,
   PlayListRemoveIcon,
+  RefreshDotIcon,
+  ViewIcon,
   ViewOffIcon,
 } from "@hugeicons/core-free-icons";
 
 import {
   AppShell,
   EpisodeRow,
+  ModalScreen,
   PlaylistQueue,
   PodcastCard,
+  ShowNotes,
 } from "@/components/mpod";
 import { Button } from "@/components/ui/button";
 import { api, type Episode, type Podcast } from "@/lib/api";
+import { usePlayback } from "@/lib/playback-context";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
-import { EmptyState, ErrorBanner, ListLoadingState } from "./screen-states";
+import {
+  EmptyState,
+  ErrorBanner,
+  ListLoadingState,
+  ScreenBannerStack,
+} from "./screen-states";
 import { UndoBanner } from "./screen-states";
 import {
   formatDuration,
@@ -51,6 +61,19 @@ function formatLastRefresh(podcasts: PodcastWithEpisodes[]) {
   }
 
   const lastChecked = new Date(Math.max(...timestamps));
+  const now = new Date();
+  const isSameDay =
+    lastChecked.getFullYear() === now.getFullYear() &&
+    lastChecked.getMonth() === now.getMonth() &&
+    lastChecked.getDate() === now.getDate();
+
+  if (isSameDay) {
+    return `Last refresh · today ${new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(lastChecked)}`;
+  }
+
   return `Last refresh · ${new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
@@ -60,10 +83,15 @@ function formatLastRefresh(podcasts: PodcastWithEpisodes[]) {
 }
 
 export function SubscriptionsScreen() {
+  const { reloadQueue } = usePlayback();
   const [showAll, setShowAll] = useState(false);
   const [selectedPodcastId, setSelectedPodcastId] = useState<number | null>(null);
-  const [modal, setModal] = useState<AddPodcastModalMode>(null);
+  const [modal, setModal] = useState<AddPodcastModalMode | "show-notes">(null);
+  const [showNotesEpisodeId, setShowNotesEpisodeId] = useState<number | null>(null);
   const [podcasts, setPodcasts] = useState<PodcastWithEpisodes[]>([]);
+  const [downloadingEpisodeIds, setDownloadingEpisodeIds] = useState<Set<number>>(
+    () => new Set()
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -141,17 +169,30 @@ export function SubscriptionsScreen() {
     [pendingActions]
   );
 
+  const pendingUnsubscribePodcastIds = useMemo(
+    () =>
+      new Set(
+        pendingActions
+          .filter((action) => action.kind === "unsubscribe-podcast")
+          .map((action) => action.podcastId)
+          .filter((podcastId): podcastId is number => podcastId !== undefined)
+      ),
+    [pendingActions]
+  );
+
   const podcastsWithPending = useMemo(
     () =>
-      podcasts.map((podcast) => ({
-        ...podcast,
-        episodes: podcast.episodes.map((episode) => ({
-          ...episode,
-          inPlaylist:
-            episode.inPlaylist && !pendingPlaylistRemoveEpisodeIds.has(episode.id),
+      podcasts
+        .filter((podcast) => !pendingUnsubscribePodcastIds.has(podcast.id))
+        .map((podcast) => ({
+          ...podcast,
+          episodes: podcast.episodes.map((episode) => ({
+            ...episode,
+            inPlaylist:
+              episode.inPlaylist && !pendingPlaylistRemoveEpisodeIds.has(episode.id),
+          })),
         })),
-      })),
-    [pendingPlaylistRemoveEpisodeIds, podcasts]
+    [pendingPlaylistRemoveEpisodeIds, pendingUnsubscribePodcastIds, podcasts]
   );
 
   const visiblePodcasts = useMemo(
@@ -171,6 +212,10 @@ export function SubscriptionsScreen() {
     visiblePodcasts.find((podcast) => podcast.id === selectedPodcastId) ??
     visiblePodcasts[0];
 
+  const showNotesEpisode =
+    selectedPodcast?.episodes.find((episode) => episode.id === showNotesEpisodeId) ??
+    null;
+
   const visibleEpisodes =
     selectedPodcast?.episodes.filter(
       (episode) =>
@@ -187,6 +232,52 @@ export function SubscriptionsScreen() {
     } catch (caught) {
       setActionError(getErrorMessage(caught));
     }
+  }
+
+  async function downloadFromSubscription(episodeId: number) {
+    setActionError(null);
+    setDownloadingEpisodeIds((current) => new Set(current).add(episodeId));
+
+    try {
+      await api.episodes.download(episodeId);
+      setPodcasts((current) =>
+        current.map((podcast) => ({
+          ...podcast,
+          episodes: podcast.episodes.map((episode) =>
+            episode.id === episodeId
+              ? { ...episode, downloaded: true }
+              : episode
+          ),
+        }))
+      );
+      setReloadKey((current) => current + 1);
+    } catch (caught) {
+      setActionError(getErrorMessage(caught));
+    } finally {
+      setDownloadingEpisodeIds((current) => {
+        const next = new Set(current);
+        next.delete(episodeId);
+        return next;
+      });
+    }
+  }
+
+  function scheduleUnsubscribePodcast(podcast: Pick<Podcast, "id" | "title">) {
+    setActionError(null);
+    if (pendingUnsubscribePodcastIds.has(podcast.id)) {
+      return;
+    }
+
+    scheduleAction({
+      kind: "unsubscribe-podcast",
+      episodeIds: [],
+      podcastId: podcast.id,
+      message: `Unsubscribed from "${podcast.title}". Episodes, playlist entries, playback state, and downloads will be removed.`,
+      commit: async () => {
+        await api.podcasts.remove(podcast.id);
+        await reloadQueue();
+      },
+    });
   }
 
   function scheduleMarkListened(
@@ -209,11 +300,9 @@ export function SubscriptionsScreen() {
           ? `${isListened ? "Marked" : "Marked"} "${actionableEpisodes[0].title}" as ${isListened ? "listened" : "unlistened"}`
           : `${isListened ? "Marked" : "Marked"} ${actionableEpisodes.length} episodes as ${isListened ? "listened" : "unlistened"}`,
       commit: async () => {
-        await Promise.all(
-          actionableEpisodes.map((episode) =>
-            api.episodes.setListened(episode.id, isListened)
-          )
-        );
+        for (const episode of actionableEpisodes) {
+          await api.episodes.setListened(episode.id, isListened);
+        }
       },
     });
   }
@@ -241,47 +330,70 @@ export function SubscriptionsScreen() {
         onAddPodcast={() => setModal("rss")}
         pageTitle="Subscriptions"
         pageSubtitle={formatLastRefresh(podcasts)}
-        pageActions={[
-          {
-            label: "Refresh all",
-            icon: (
-              <HugeiconsIcon icon={FolderSyncIcon} data-icon="inline-start" />
-            ),
-            onClick: () =>
-              void runAction(async () => {
-                await Promise.all(
-                  podcasts.map((podcast) => api.podcasts.refresh(podcast.id))
-                );
-              }),
-            variant: "secondary",
-          },
-          {
-            label: showAll ? "Show unlistened podcasts" : "Show all",
-            icon: <HugeiconsIcon icon={EyeIcon} data-icon="inline-start" />,
-            onClick: () => setShowAll((current) => !current),
-            variant: "default",
-          },
-        ]}
+        pageActions={[]}
+        pageHeaderVisible={false}
       >
-        <div className="flex h-full min-h-[686px] w-full flex-col gap-5 overflow-y-auto rounded-lg py-6">
-          {error ? (
-            <ErrorBanner>{error}</ErrorBanner>
-          ) : null}
-          {actionError ? (
-            <ErrorBanner>{actionError}</ErrorBanner>
-          ) : null}
-          {pendingActions.map((action) => (
-            <UndoBanner
-              key={action.id}
-              message={`${action.message} Applying in 15 seconds.`}
-              onUndo={() => undoAction(action.id)}
-            />
-          ))}
-          {loading ? (
-            <ListLoadingState label="Loading subscriptions" />
-          ) : visiblePodcasts.length > 0 ? (
-            <>
-              <div className="grid max-h-[860px] grid-cols-[repeat(4,285px)] gap-5 overflow-y-auto pr-1">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-md border border-border bg-card px-10 py-5">
+          <div className="flex w-full items-center gap-6">
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
+              <h1 className="truncate text-3xl leading-9 font-semibold tracking-normal text-foreground">
+                Subscriptions
+              </h1>
+              <p className="truncate text-base leading-6 font-medium text-muted-foreground">
+                {formatLastRefresh(podcasts)}
+              </p>
+            </div>
+            <div className="flex h-[34px] shrink-0 items-center gap-2 overflow-hidden">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() =>
+                  void runAction(async () => {
+                    await api.podcasts.refreshAll();
+                  })
+                }
+              >
+                <HugeiconsIcon
+                  icon={RefreshDotIcon}
+                  data-icon="inline-start"
+                />
+                Refresh all
+              </Button>
+              <Button
+                type="button"
+                variant="default"
+                className="shadow-xs"
+                onClick={() => setShowAll((current) => !current)}
+              >
+                <HugeiconsIcon icon={ViewIcon} data-icon="inline-start" />
+                {showAll ? "Show unlistened podcasts" : "Show all"}
+              </Button>
+            </div>
+          </div>
+          <ScreenBannerStack>
+            {error ? (
+              <ErrorBanner onClose={() => setError(null)}>{error}</ErrorBanner>
+            ) : null}
+            {actionError ? (
+              <ErrorBanner onClose={() => setActionError(null)}>
+                {actionError}
+              </ErrorBanner>
+            ) : null}
+            {pendingActions.map((action) => (
+              <UndoBanner
+                key={action.id}
+                expiresAt={action.expiresAt}
+                message={action.message}
+                onUndo={() => undoAction(action.id)}
+              />
+            ))}
+          </ScreenBannerStack>
+          <div className="min-h-0 flex-1 overflow-y-auto py-6">
+            {loading ? (
+              <ListLoadingState label="Loading subscriptions" />
+            ) : visiblePodcasts.length > 0 ? (
+              <div className="flex w-full flex-col gap-6">
+                <div className="flex shrink-0 flex-wrap gap-5">
                 {visiblePodcasts.map((podcast) => {
                   const unlistenedCount = podcast.episodes.filter(
                     (episode) =>
@@ -296,131 +408,168 @@ export function SubscriptionsScreen() {
                       title={podcast.title}
                       description={podcast.description ?? podcast.rssUrl}
                       episodeCountLabel={episodeCountLabel(unlistenedCount)}
-                      artworkUrl={podcast.imageUrl ?? undefined}
+                      artworkUrl={
+                        podcast.imageUrl
+                          ? api.podcasts.imagePath(podcast.id)
+                          : undefined
+                      }
                       artworkAlt={`${podcast.title} artwork`}
                       onSelect={() => setSelectedPodcastId(podcast.id)}
                       onRefresh={() =>
                         void runAction(() => api.podcasts.refresh(podcast.id))
                       }
+                      onUnsubscribe={() => scheduleUnsubscribePodcast(podcast)}
                     />
                   );
                 })}
-              </div>
-              <PlaylistQueue
-                summary={`${selectedPodcast.title} episodes`}
-                 headerAction={
-                   <>
-                     {visibleEpisodes.some(episode => !episode.isListened) && (
-                       <Button
-                         variant="link"
-                         type="button"
-                         onClick={() =>
-                           scheduleMarkListened(
-                             visibleEpisodes.filter((episode) => !episode.isListened),
-                             true
-                           )
-                         }
-                       >
-                         Mark all listened
-                       </Button>
-                     )}
-                     {visibleEpisodes.some(episode => episode.isListened) && (
-                       <Button
-                         variant="link"
-                         type="button"
-                         onClick={() =>
-                           scheduleMarkListened(
-                             visibleEpisodes.filter((episode) => episode.isListened),
-                             false
-                           )
-                         }
-                       >
-                         Mark all unlistened
-                       </Button>
-                     )}
-                   </>
-                 }
-              >
-                {visibleEpisodes.map((episode) => {
-                  const duration = formatDuration(episode.duration);
-                  const publishedAt = formatEpisodeDate(episode.publishedAt);
+                </div>
+                <PlaylistQueue
+                  className="h-[400px] shrink-0"
+                  bodyClassName="h-[350px] min-h-0 overflow-y-auto"
+                  summary={`${selectedPodcast.title} episodes`}
+                  headerAction={
+                    <>
+                      {visibleEpisodes.some((episode) => !episode.isListened) && (
+                        <Button
+                          variant="link"
+                          type="button"
+                          onClick={() =>
+                            scheduleMarkListened(
+                              visibleEpisodes.filter((episode) => !episode.isListened),
+                              true
+                            )
+                          }
+                        >
+                          Mark all listened
+                        </Button>
+                      )}
+                    </>
+                  }
+                >
+                  {visibleEpisodes.map((episode) => {
+                    const duration = formatDuration(episode.duration);
+                    const publishedAt = formatEpisodeDate(episode.publishedAt);
+                    const downloading = downloadingEpisodeIds.has(episode.id);
+                    const subtitle = episode.downloaded
+                      ? episode.inPlaylist
+                        ? "Downloaded · In playlist"
+                        : "Downloaded"
+                      : episode.inPlaylist
+                        ? "In playlist"
+                        : selectedPodcast.title;
 
-                  return (
-                    <EpisodeRow
-                      key={episode.id}
-                      title={episode.title}
-                      podcastTitle={selectedPodcast.title}
-                      dateLabel={publishedAt ? `${publishedAt} ·` : undefined}
-                      durationLabel={duration || undefined}
-                      thumbnailUrl={selectedPodcast.imageUrl ?? undefined}
-                      thumbnailAlt={`${selectedPodcast.title} artwork`}
-                      actions={[
-                        {
-                          label: episode.downloaded ? "Downloaded" : "Download",
-                          icon: episode.downloaded
-                            ? DownloadSquare02Icon
-                            : DownloadSquare01Icon,
-                          onClick: episode.downloaded
-                            ? undefined
-                            : () =>
-                                void runAction(() =>
-                                  api.episodes.download(episode.id)
-                                ),
-                        },
-                        {
-                          label: episode.inPlaylist
-                            ? "Remove from playlist"
-                            : "Add to playlist",
-                          icon: episode.inPlaylist
-                            ? PlayListRemoveIcon
-                            : PlayListAddIcon,
-                          onClick: () =>
-                            episode.inPlaylist
-                              ? scheduleRemoveFromPlaylist(episode)
-                              : void runAction(() => api.playlist.add(episode.id)),
-                        },
-                         {
-                           label: episode.isListened
-                             ? "Mark unlistened"
-                             : "Mark as listened",
-                           icon: episode.isListened
-                             ? ViewOffIcon
-                             : CheckmarkCircle01Icon,
-                           onClick: () =>
-                             episode.isListened
-                               ? scheduleMarkListened([episode], false)
-                               : scheduleMarkListened([episode], true),
-                         },
-                      ]}
-                    />
-                  );
-                })}
-              </PlaylistQueue>
-            </>
-          ) : (
-            <EmptyState
-              title="No podcasts yet"
-              description="Add one RSS feed or bring subscriptions from another podcast app with OPML."
-              actions={
-                <>
-                  <Button type="button" onClick={() => setModal("rss")}>
-                    Add RSS feed
-                  </Button>
-                  <Button
-                    variant="outline"
-                    type="button"
-                    onClick={() => setModal("opml")}
-                  >
-                    Import OPML
-                  </Button>
-                </>
-              }
-            />
-          )}
+                    return (
+                      <EpisodeRow
+                        key={episode.id}
+                        showDragHandle={false}
+                        title={episode.title}
+                        podcastTitle={selectedPodcast.title}
+                        subtitle={subtitle}
+                        dateLabel={publishedAt ? `${publishedAt} ·` : undefined}
+                        durationLabel={duration || undefined}
+                        thumbnailUrl={
+                          selectedPodcast.imageUrl
+                            ? api.podcasts.imagePath(selectedPodcast.id)
+                            : undefined
+                        }
+                        thumbnailAlt={`${selectedPodcast.title} artwork`}
+                        actions={[
+                          {
+                            label: downloading
+                              ? "Downloading"
+                              : episode.downloaded
+                                ? "Downloaded"
+                                : "Download",
+                            icon: downloading
+                              ? Loading02Icon
+                              : episode.downloaded
+                                ? DownloadSquare02Icon
+                                : DownloadSquare01Icon,
+                            iconClassName: downloading
+                              ? "animate-spin"
+                              : episode.downloaded
+                                ? "text-muted-foreground"
+                                : undefined,
+                            disabled: downloading,
+                            onClick: episode.downloaded || downloading
+                              ? undefined
+                              : () => void downloadFromSubscription(episode.id),
+                          },
+                          {
+                            label: episode.inPlaylist
+                              ? "Remove from playlist"
+                              : "Add to playlist",
+                            icon: episode.inPlaylist
+                              ? PlayListRemoveIcon
+                              : PlayListAddIcon,
+                            onClick: () =>
+                              episode.inPlaylist
+                                ? scheduleRemoveFromPlaylist(episode)
+                                : void runAction(() => api.playlist.add(episode.id)),
+                          },
+                          {
+                            label: "Show notes",
+                            icon: NoteIcon,
+                            onClick: () => {
+                              setShowNotesEpisodeId(episode.id);
+                              setModal("show-notes");
+                            },
+                          },
+                          {
+                            label: episode.isListened
+                              ? "Mark as unlistened"
+                              : "Mark as listened",
+                            icon: episode.isListened ? ViewOffIcon : EyeIcon,
+                            onClick: () =>
+                              episode.isListened
+                                ? scheduleMarkListened([episode], false)
+                                : scheduleMarkListened([episode], true),
+                          },
+                        ]}
+                      />
+                    );
+                  })}
+                </PlaylistQueue>
+              </div>
+            ) : (
+              <EmptyState
+                title="No podcasts yet"
+                description="Add one RSS feed or bring subscriptions from another podcast app with OPML."
+                actions={
+                  <>
+                    <Button type="button" onClick={() => setModal("rss")}>
+                      Add RSS feed
+                    </Button>
+                    <Button
+                      variant="outline"
+                      type="button"
+                      onClick={() => setModal("opml")}
+                    >
+                      Import OPML
+                    </Button>
+                  </>
+                }
+              />
+            )}
+          </div>
         </div>
       </AppShell>
+      {modal === "show-notes" && showNotesEpisode && selectedPodcast ? (
+        <ModalScreen>
+          <ShowNotes
+            podcastTitle={selectedPodcast.title}
+            episodeTitle={showNotesEpisode.title}
+            onClose={() => {
+              setModal(null);
+              setShowNotesEpisodeId(null);
+            }}
+          >
+            {showNotesEpisode.description?.trim() || "No show notes available."}
+          </ShowNotes>
+        </ModalScreen>
+      ) : null}
       <AddPodcastModal
-        mode={modal}
+        mode={modal === "show-notes" ? null : modal}
         onClose={() => setModal(null)}
         onComplete={() => setReloadKey((current) => current + 1)}
         onModeChange={setModal}

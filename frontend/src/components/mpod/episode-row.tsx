@@ -23,9 +23,13 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
+import { Artwork } from "./artwork";
+
 type EpisodeRowAction = {
+  disabled?: boolean;
   label: string;
   icon: IconSvgElement;
+  iconClassName?: string;
   onClick?: () => void;
 };
 
@@ -34,11 +38,13 @@ type EpisodeRowProps = {
   current?: boolean;
   title: string;
   podcastTitle?: string;
+  subtitle?: string;
   dateLabel?: string;
   durationLabel?: string;
   thumbnailUrl?: string;
   thumbnailAlt?: string;
   episodeRowId?: number;
+  showDragHandle?: boolean;
   draggable?: boolean;
   dragging?: boolean;
   onDragStart?: DragEventHandler<HTMLDivElement>;
@@ -62,15 +68,20 @@ function EpisodeIconButton({ action }: { action: EpisodeRowAction }) {
       <TooltipTrigger asChild>
         <Button
           aria-label={action.label}
-          className="text-primary"
+          className="rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary"
+          disabled={action.disabled}
           variant="outline"
-          size="icon"
+          size="icon-lg"
           type="button"
           onMouseDown={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={action.onClick}
         >
-          <HugeiconsIcon icon={action.icon} className="size-4" aria-hidden="true" />
+          <HugeiconsIcon
+            icon={action.icon}
+            className={cn("size-4", action.iconClassName)}
+            aria-hidden="true"
+          />
         </Button>
       </TooltipTrigger>
       <TooltipContent>{action.label}</TooltipContent>
@@ -83,11 +94,13 @@ export function EpisodeRow({
   current,
   title,
   podcastTitle,
+  subtitle,
   dateLabel,
   durationLabel,
   thumbnailUrl,
   thumbnailAlt = "",
   episodeRowId,
+  showDragHandle = true,
   draggable,
   dragging,
   onDragStart,
@@ -111,18 +124,25 @@ export function EpisodeRow({
       { label: "Remove from playlist", icon: PlayListRemoveIcon },
       { label: "Show notes", icon: ViewIcon },
     ];
+  const resolvedSubtitle =
+    subtitle ??
+    (podcastTitle
+      ? current
+        ? `${podcastTitle} · now playing`
+        : podcastTitle
+      : undefined);
 
   return (
     <div
       className={cn(
-        "flex h-[70px] w-full items-center justify-center gap-3 border border-border bg-card px-3 text-foreground",
+        "flex h-[70px] w-full shrink-0 items-center justify-center gap-3 border border-border bg-card px-3 text-foreground",
         draggable && "cursor-grab",
         dragging && "opacity-60",
         current && "bg-accent",
         className
       )}
       data-episode-row-id={episodeRowId}
-      draggable={false}
+      draggable={draggable}
       aria-grabbed={dragging || undefined}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
@@ -136,31 +156,30 @@ export function EpisodeRow({
       onMouseEnter={onMouseEnter}
       onMouseUp={onMouseUp}
     >
-      <div
-        className="flex size-6 shrink-0 items-center justify-center"
-        aria-hidden="true"
-      >
-        <HugeiconsIcon icon={DragDropVerticalIcon} className="size-6" />
-      </div>
-      <div className="size-10 shrink-0 overflow-hidden rounded-md border border-border bg-muted">
-        {thumbnailUrl ? (
-          <img
-            className="size-full object-cover"
-            src={thumbnailUrl}
-            alt={thumbnailAlt}
-          />
-        ) : null}
-      </div>
+      {showDragHandle ? (
+        <div
+          className="flex size-6 shrink-0 items-center justify-center"
+          aria-hidden="true"
+        >
+          <HugeiconsIcon icon={DragDropVerticalIcon} className="size-6" />
+        </div>
+      ) : null}
+      <Artwork
+        className="size-10"
+        src={thumbnailUrl}
+        alt={thumbnailAlt}
+        title={podcastTitle ?? resolvedSubtitle}
+      />
       <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
         <p className="truncate text-sm leading-5 font-semibold">{title}</p>
-        {podcastTitle ? (
+        {resolvedSubtitle ? (
           <p
             className={cn(
               "truncate text-xs leading-4 text-muted-foreground",
               current && "text-chart-5"
             )}
           >
-            {current ? `${podcastTitle} · now playing` : podcastTitle}
+            {resolvedSubtitle}
           </p>
         ) : null}
       </div>

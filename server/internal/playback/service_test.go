@@ -102,6 +102,86 @@ func TestUpdateCompletionAppliesSideEffects(t *testing.T) {
 	}
 }
 
+func TestUpdateAdvancesPositionWhenProgressMovesForward(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3')`)
+	currentTime := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+	mustExec(t, db.SQL, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (1, 120, ?)`, currentTime)
+
+	service := NewService(db.SQL, playlist.NewService(db.SQL), downloads.NewService(db.SQL, nil, t.TempDir()))
+	service.now = func() time.Time { return currentTime.Add(5 * time.Minute) }
+
+	state, err := service.Update(context.Background(), UpdateInput{
+		EpisodeID:       1,
+		PositionSeconds: 180,
+	})
+	if err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	if state.PositionSeconds != 180 {
+		t.Fatalf("expected position to advance to 180, got %d", state.PositionSeconds)
+	}
+	if !state.LastUpdated.Equal(currentTime.Add(5 * time.Minute)) {
+		t.Fatalf("expected last updated to move forward, got %v", state.LastUpdated)
+	}
+}
+
+func TestUpdateAllowsLargeBackwardSeekWhenExplicit(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3')`)
+	currentTime := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+	mustExec(t, db.SQL, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (1, 240, ?)`, currentTime)
+
+	service := NewService(db.SQL, playlist.NewService(db.SQL), downloads.NewService(db.SQL, nil, t.TempDir()))
+	service.now = func() time.Time { return currentTime.Add(5 * time.Minute) }
+
+	state, err := service.Update(context.Background(), UpdateInput{
+		EpisodeID:       1,
+		PositionSeconds: 120,
+		DidSeek:         true,
+	})
+	if err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	if state.PositionSeconds != 120 {
+		t.Fatalf("expected explicit seek to persist position 120, got %d", state.PositionSeconds)
+	}
+}
+
+func TestUpdateIgnoresBackwardDriftWithoutSeek(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3')`)
+	currentTime := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+	mustExec(t, db.SQL, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (1, 240, ?)`, currentTime)
+
+	service := NewService(db.SQL, playlist.NewService(db.SQL), downloads.NewService(db.SQL, nil, t.TempDir()))
+	service.now = func() time.Time { return currentTime.Add(5 * time.Minute) }
+
+	state, err := service.Update(context.Background(), UpdateInput{
+		EpisodeID:       1,
+		PositionSeconds: 120,
+		DidSeek:         false,
+	})
+	if err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+
+	if state.PositionSeconds != 240 {
+		t.Fatalf("expected drifted backward update to preserve position 240, got %d", state.PositionSeconds)
+	}
+}
+
 func newTestDB(t *testing.T) *storage.DB {
 	t.Helper()
 

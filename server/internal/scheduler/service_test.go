@@ -62,6 +62,40 @@ func TestRunOnceFailureUpdatesStatus(t *testing.T) {
 	}
 }
 
+func TestRunNowRejectsOverlappingRuns(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
+		started <- struct{}{}
+		<-release
+		return nil
+	})
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- service.RunNow(context.Background())
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for scheduler run to start")
+	}
+
+	if err := service.RunNow(context.Background()); !errors.Is(err, ErrAlreadyRunning) {
+		t.Fatalf("expected ErrAlreadyRunning, got %v", err)
+	}
+
+	close(release)
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("expected first RunNow to complete successfully, got %v", err)
+	}
+}
+
 func TestParseClock(t *testing.T) {
 	hour, minute, err := parseClock("09:45")
 	if err != nil {

@@ -1,4 +1,4 @@
-import logoMark from "@/assets/logo-mark.svg";
+import logo from "@/assets/logo.svg";
 import { cn } from "@/lib/utils";
 
 type LogoProps = {
@@ -7,14 +7,10 @@ type LogoProps = {
 
 export function Logo({ className }: LogoProps) {
   return (
-    <div
-      className={cn("flex shrink-0 items-center gap-2 overflow-hidden p-1", className)}
-      aria-label="mpod"
-    >
-      <img className="h-8 w-10 shrink-0" src={logoMark} alt="" />
-      <span className="font-['Rajdhani'] text-[28px] leading-none font-bold text-foreground">
-        mpod
-      </span>
-    </div>
+    <img
+      className={cn("h-11 w-[123px] shrink-0 overflow-hidden p-1", className)}
+      src={logo}
+      alt="mpod"
+    />
   );
 }

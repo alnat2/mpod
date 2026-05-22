@@ -1,5 +1,6 @@
 export { AppShell } from "./app-shell";
 export { AddPodcast } from "./add-podcast";
+export { Artwork } from "./artwork";
 export { AuthCard } from "./auth-card";
 export { AuthShell } from "./auth-shell";
 export { EpisodeRow } from "./episode-row";

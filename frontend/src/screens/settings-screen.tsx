@@ -1,37 +1,134 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
-import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  CalendarSyncIcon,
-  FileExportIcon,
-  FolderSyncIcon,
-  Logout03Icon,
-} from "@hugeicons/core-free-icons";
 import { useNavigate } from "react-router-dom";
 
-import { AppShell, SettingItem } from "@/components/mpod";
-import { Badge } from "@/components/ui/badge";
+import { AppShell } from "@/components/mpod";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
   api,
+  type ProxyRuntimeStatus,
   type SchedulerStatus,
   type SettingsValues,
 } from "@/lib/api";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
-import { ErrorBanner } from "./screen-states";
-import { formatDateTime, getErrorMessage } from "./screen-utils";
+import { ErrorBanner, ScreenBannerStack } from "./screen-states";
+import { getErrorMessage } from "./screen-utils";
 
 type SettingsScreenProps = {
   onSessionChange?: () => void | Promise<void>;
 };
 
+function formatSchedulerRefresh(status: SchedulerStatus | null) {
+  const lastRefreshAt =
+    status?.lastRunAt ?? status?.lastSuccessAt ?? status?.lastFailureAt ?? null;
+
+  if (!lastRefreshAt) {
+    return `Status: ${status?.state ?? "idle"} · last refresh never`;
+  }
+
+  const refreshDate = new Date(lastRefreshAt);
+  const now = new Date();
+  const isSameDay =
+    refreshDate.getFullYear() === now.getFullYear() &&
+    refreshDate.getMonth() === now.getMonth() &&
+    refreshDate.getDate() === now.getDate();
+
+  const timeLabel = new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(refreshDate);
+
+  if (isSameDay) {
+    return `Status: ${status?.state ?? "idle"} · last refresh today at ${timeLabel}`;
+  }
+
+  const dateLabel = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+  }).format(refreshDate);
+
+  return `Status: ${status?.state ?? "idle"} · last refresh ${dateLabel} at ${timeLabel}`;
+}
+
+function formatProxyDescription(
+  settings: SettingsValues | null,
+  proxyStatus: ProxyRuntimeStatus | null
+) {
+  if (!settings?.proxyConfigured) {
+    return "Proxy runtime configuration is not available.";
+  }
+
+  if (!settings.proxyEnabled || proxyStatus?.status === "off") {
+    return "Proxy is off";
+  }
+
+  if (proxyStatus?.status === "ok") {
+    const parts: string[] = [];
+
+    if (proxyStatus.externalIp) {
+      parts.push(`Current IP: ${proxyStatus.externalIp}`);
+    }
+
+    if (proxyStatus.country) {
+      parts.push(`Geo: ${proxyStatus.country}`);
+    }
+
+    if (parts.length > 0) {
+      return parts.join(" • ");
+    }
+  }
+
+  if (proxyStatus?.status === "error" && proxyStatus.error) {
+    return "Proxy status unavailable";
+  }
+
+  return "Checking proxy status...";
+}
+
+type SettingsCardProps = {
+  title: string;
+  description: string;
+  action?: ReactNode;
+  children?: ReactNode;
+  className?: string;
+};
+
+function SettingsCard({
+  title,
+  description,
+  action,
+  children,
+  className,
+}: SettingsCardProps) {
+  return (
+    <Card
+      className={`w-full rounded-md border border-border bg-card p-4 shadow-none ${className ?? ""}`}
+    >
+      <div className="flex w-full items-start gap-4">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base leading-6 font-semibold text-card-foreground">
+            {title}
+          </h2>
+          <p className="mt-1 text-sm leading-5 text-muted-foreground">
+            {description}
+          </p>
+        </div>
+        {action ? <div className="shrink-0">{action}</div> : null}
+      </div>
+      {children ? <div className="mt-5">{children}</div> : null}
+    </Card>
+  );
+}
+
 export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
   const navigate = useNavigate();
   const [modal, setModal] = useState<AddPodcastModalMode>(null);
   const [settings, setSettings] = useState<SettingsValues | null>(null);
+  const [proxyStatus, setProxyStatus] = useState<ProxyRuntimeStatus | null>(null);
   const [scheduler, setScheduler] = useState<SchedulerStatus | null>(null);
   const [dailyRefreshTime, setDailyRefreshTime] = useState("03:00");
   const [loading, setLoading] = useState(true);
@@ -48,13 +145,15 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
       setError(null);
 
       try {
-        const [{ settings: values }, { scheduler: status }] = await Promise.all([
+        const [{ settings: values }, { scheduler: status }, { proxy }] = await Promise.all([
           api.settings.get(),
           api.jobs.status(),
+          api.settings.proxyStatus(),
         ]);
 
         if (!cancelled) {
           setSettings(values);
+          setProxyStatus(proxy);
           setDailyRefreshTime(values.dailyRefreshTime);
           setScheduler(status);
         }
@@ -73,6 +172,35 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
 
     return () => {
       cancelled = true;
+    };
+  }, [reloadKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshSchedulerStatus() {
+      try {
+        const [{ scheduler: status }, { proxy }] = await Promise.all([
+          api.jobs.status(),
+          api.settings.proxyStatus(),
+        ]);
+        if (!cancelled) {
+          setScheduler(status);
+          setProxyStatus(proxy);
+        }
+      } catch {
+        // Keep the last known status visible instead of turning transient polling
+        // failures into persistent screen errors.
+      }
+    }
+
+    const interval = window.setInterval(() => {
+      void refreshSchedulerStatus();
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
     };
   }, [reloadKey]);
 
@@ -104,6 +232,8 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
     try {
       const { settings: values } = await api.settings.update({ proxyEnabled });
       setSettings(values);
+      const { proxy } = await api.settings.proxyStatus();
+      setProxyStatus(proxy);
     } catch (caught) {
       setActionError(getErrorMessage(caught));
     }
@@ -127,136 +257,102 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
         activeNavItem="Settings"
         onAddPodcast={() => setModal("rss")}
         pageTitle="Settings"
-        pageSubtitle="Manage import, refresh, proxy, and session settings."
+        pageSubtitle=""
         pageActions={[]}
+        pageHeaderVisible={false}
       >
-        <div className="flex h-full min-h-[686px] w-full overflow-y-auto rounded-lg py-6">
-          <div className="flex w-full max-w-[760px] flex-col gap-4">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-md border border-border bg-card px-10 py-5">
+          <div className="flex w-full items-center gap-6">
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
+              <h1 className="truncate text-3xl leading-9 font-semibold text-foreground">
+                Settings
+              </h1>
+            </div>
+          </div>
+          <ScreenBannerStack>
             {error ? (
-              <ErrorBanner>{error}</ErrorBanner>
+              <ErrorBanner onClose={() => setError(null)}>{error}</ErrorBanner>
             ) : null}
             {actionError ? (
-              <ErrorBanner>{actionError}</ErrorBanner>
+              <ErrorBanner onClose={() => setActionError(null)}>
+                {actionError}
+              </ErrorBanner>
             ) : null}
-
-            <SettingItem
-              title="OPML export"
-              description="Export current podcast subscriptions as an OPML file."
-              action={
-                <Button asChild type="button" variant="secondary">
-                  <a href={api.podcasts.exportOPMLPath}>
-                    <HugeiconsIcon
-                      icon={FileExportIcon}
-                      data-icon="inline-start"
+          </ScreenBannerStack>
+          <div className="min-h-0 flex-1 overflow-y-auto py-6">
+            <div className="flex w-full flex-col gap-4">
+              <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
+                <SettingsCard
+                  title="Feed daily refresh"
+                  description="Feeds are refreshed once per day at a single global time."
+                  className="min-h-[193px]"
+                >
+                  <div className="flex w-[220px] items-center gap-2">
+                    <Input
+                      type="time"
+                      value={dailyRefreshTime}
+                      disabled={loading || saving}
+                      className="h-9 rounded-md px-3 text-base"
+                      onChange={(event) => setDailyRefreshTime(event.target.value)}
                     />
-                    Export OPML
-                  </a>
-                </Button>
-              }
-            />
+                    <Button
+                      type="button"
+                      className="h-9 rounded-lg px-4"
+                      disabled={saving || loading}
+                      onClick={() => void handleSaveRefreshTime()}
+                    >
+                      Save time
+                    </Button>
+                  </div>
+                  <p className="mt-4 text-sm leading-5 font-medium text-secondary-foreground">
+                    {formatSchedulerRefresh(scheduler)}
+                  </p>
+                </SettingsCard>
 
-            <SettingItem
-              title="Daily refresh"
-              description="The scheduler refreshes all subscriptions once per day."
-              action={
-                <Button
-                  type="button"
-                  disabled={saving || loading}
-                  onClick={() => void handleSaveRefreshTime()}
-                >
-                  <HugeiconsIcon icon={FolderSyncIcon} data-icon="inline-start" />
-                  Save
-                </Button>
-              }
-            >
-              <label className="flex w-full max-w-72 flex-col gap-2 text-sm leading-5 font-medium text-card-foreground">
-                Refresh time
-                <Input
-                  type="time"
-                  value={dailyRefreshTime}
-                  disabled={loading || saving}
-                  onChange={(event) => setDailyRefreshTime(event.target.value)}
-                />
-              </label>
-            </SettingItem>
+                <div className="flex flex-col gap-4">
+                  <SettingsCard
+                    title="Use SOCKS5 proxy"
+                    description={formatProxyDescription(settings, proxyStatus)}
+                    action={
+                      <Switch
+                        aria-label="Use SOCKS5 proxy"
+                        size="lg"
+                        checked={settings?.proxyEnabled ?? false}
+                        disabled={!settings?.proxyConfigured}
+                        onCheckedChange={(checked) =>
+                          void handleProxyEnabledChange(checked)
+                        }
+                      />
+                    }
+                  />
 
-            <SettingItem
-              title="Scheduler status"
-              description="Refresh status from the backend scheduler."
-              action={
-                <Badge variant="secondary">
-                  {scheduler?.state ?? (loading ? "Loading" : "Idle")}
-                </Badge>
-              }
-            >
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
-                  <HugeiconsIcon
-                    icon={CalendarSyncIcon}
-                    className="size-4 text-muted-foreground"
-                    aria-hidden="true"
+                  <SettingsCard
+                    title="Export OPML"
+                    description="Download the current subscription list as an OPML file."
+                    action={
+                      <Button asChild type="button" className="h-8 rounded-md px-3">
+                        <a href={api.podcasts.exportOPMLPath}>Export OPML</a>
+                      </Button>
+                    }
                   />
-                  <span className="text-muted-foreground">Daily time</span>
-                  <span className="ml-auto text-card-foreground">
-                    {settings?.dailyRefreshTime ?? dailyRefreshTime}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2">
-                  <HugeiconsIcon
-                    icon={CalendarSyncIcon}
-                    className="size-4 text-muted-foreground"
-                    aria-hidden="true"
+
+                  <SettingsCard
+                    title="Session"
+                    description="End the current browser session"
+                    action={
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-8 rounded-md px-3"
+                        onClick={() => void handleLogout()}
+                      >
+                        Log out
+                      </Button>
+                    }
                   />
-                  <span className="text-muted-foreground">Last success</span>
-                  <span className="ml-auto text-card-foreground">
-                    {formatDateTime(scheduler?.lastSuccessAt)}
-                  </span>
                 </div>
               </div>
-            </SettingItem>
-
-            <SettingItem
-              title="SOCKS5 proxy"
-              description={
-                settings?.proxyConfigured
-                  ? "Use configured proxy settings for feed and media requests."
-                  : "Proxy runtime configuration is not available."
-              }
-              action={
-                <Switch
-                  aria-label="Use SOCKS5 proxy"
-                  checked={settings?.proxyEnabled ?? false}
-                  disabled={!settings?.proxyConfigured}
-                  onCheckedChange={(checked) =>
-                    void handleProxyEnabledChange(checked)
-                  }
-                />
-              }
-            >
-              <div className="flex items-center gap-2 text-sm leading-5">
-                <Badge variant="secondary">
-                  {settings?.proxyConfigured ? "Configured" : "Not configured"}
-                </Badge>
-                <span className="text-muted-foreground">
-                  Host, port, username, and password stay in runtime config.
-                </span>
-              </div>
-            </SettingItem>
-
-            <SettingItem
-              title="Session"
-              description="End the current browser session."
-              action={
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => void handleLogout()}
-                >
-                  <HugeiconsIcon icon={Logout03Icon} data-icon="inline-start" />
-                  Logout
-                </Button>
-              }
-            />
+            </div>
           </div>
         </div>
       </AppShell>

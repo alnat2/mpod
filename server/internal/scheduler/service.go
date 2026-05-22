@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -13,6 +14,8 @@ import (
 )
 
 const jobName = "daily_refresh"
+
+var ErrAlreadyRunning = errors.New("scheduler already running")
 
 type RefreshAllFunc func(context.Context) error
 
@@ -68,6 +71,24 @@ func (s *Service) RunOnce(ctx context.Context) error {
 	}
 	succeededAt := time.Now().UTC()
 	return s.setState(ctx, "completed", &startedAt, &succeededAt, nil, nil)
+}
+
+func (s *Service) RunNow(ctx context.Context) error {
+	s.mu.Lock()
+	if s.running {
+		s.mu.Unlock()
+		return ErrAlreadyRunning
+	}
+	s.running = true
+	s.mu.Unlock()
+
+	defer func() {
+		s.mu.Lock()
+		s.running = false
+		s.mu.Unlock()
+	}()
+
+	return s.RunOnce(ctx)
 }
 
 func (s *Service) GetStatus(ctx context.Context) (Status, error) {

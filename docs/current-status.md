@@ -64,6 +64,7 @@ The Go backend scaffold is now in place with:
 - shared outbound HTTP client with optional SOCKS5 support
 - settings get/update for `daily_refresh_time`
 - settings proxy on/off switch and proxy-configured status when SOCKS5 runtime configuration is available
+- proxy runtime status endpoint for observed external IP/country when proxy usage is enabled
 - scheduler status endpoint
 - daily scheduler wiring
 - focused backend tests for playback sync and feed identity behavior

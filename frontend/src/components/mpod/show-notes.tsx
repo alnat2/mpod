@@ -1,8 +1,6 @@
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   MultiplicationSignIcon,
-  PlayListAddIcon,
-  ViewIcon,
 } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
@@ -19,8 +17,6 @@ type ShowNotesProps = {
   podcastTitle: string;
   episodeTitle: string;
   children: string;
-  onAddToPlaylist?: () => void;
-  onMarkListened?: () => void;
   onClose?: () => void;
 };
 
@@ -30,7 +26,7 @@ function NotesAction({
   onClick,
 }: {
   label: string;
-  icon: typeof ViewIcon;
+  icon: typeof MultiplicationSignIcon;
   onClick?: () => void;
 }) {
   return (
@@ -56,8 +52,6 @@ export function ShowNotes({
   podcastTitle,
   episodeTitle,
   children,
-  onAddToPlaylist,
-  onMarkListened,
   onClose,
 }: ShowNotesProps) {
   return (
@@ -75,16 +69,6 @@ export function ShowNotes({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <NotesAction
-            label="Add to playlist"
-            icon={PlayListAddIcon}
-            onClick={onAddToPlaylist}
-          />
-          <NotesAction
-            label="Mark as listened"
-            icon={ViewIcon}
-            onClick={onMarkListened}
-          />
           <NotesAction
             label="Close"
             icon={MultiplicationSignIcon}

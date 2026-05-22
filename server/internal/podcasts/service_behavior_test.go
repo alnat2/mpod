@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -352,7 +353,7 @@ func TestCreateFromFeedFollowsRedirectsAndSendsFeedHeaders(t *testing.T) {
 	var seenUserAgent string
 	var seenAccept string
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/redirect":
 			http.Redirect(w, r, "/feed.xml", http.StatusMovedPermanently)
@@ -364,7 +365,7 @@ func TestCreateFromFeedFollowsRedirectsAndSendsFeedHeaders(t *testing.T) {
 		default:
 			http.NotFound(w, r)
 		}
-	}))
+	}), false)
 	defer server.Close()
 
 	service := NewService(db.SQL, server.Client())
@@ -384,14 +385,14 @@ func TestCreateFromFeedParsesGzipResponse(t *testing.T) {
 	defer db.Close()
 
 	fixture := firstCompleteTransistorFixture(t)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/rss+xml")
 		w.Header().Set("Content-Encoding", "gzip")
 
 		gz := gzip.NewWriter(w)
 		defer gz.Close()
 		_, _ = io.WriteString(gz, fixture)
-	}))
+	}), false)
 	defer server.Close()
 
 	service := NewService(db.SQL, server.Client())
@@ -405,10 +406,10 @@ func TestCreateFromFeedParsesTLSResponse(t *testing.T) {
 	defer db.Close()
 
 	fixture := firstCompleteTransistorFixture(t)
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newTCP4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/rss+xml")
 		_, _ = io.WriteString(w, fixture)
-	}))
+	}), true)
 	defer server.Close()
 
 	service := NewService(db.SQL, server.Client())
@@ -502,6 +503,24 @@ func newPodcastTestClient(fn func(*http.Request) (*http.Response, error)) *http.
 	return &http.Client{
 		Transport: podcastRoundTripperFunc(fn),
 	}
+}
+
+func newTCP4TestServer(t *testing.T, handler http.Handler, tlsEnabled bool) *httptest.Server {
+	t.Helper()
+
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("loopback listener unavailable in this environment: %v", err)
+	}
+
+	server := httptest.NewUnstartedServer(handler)
+	server.Listener = listener
+	if tlsEnabled {
+		server.StartTLS()
+	} else {
+		server.Start()
+	}
+	return server
 }
 
 type podcastRoundTripperFunc func(*http.Request) (*http.Response, error)

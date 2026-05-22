@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 type PlaylistQueueProps = {
+  bodyClassName?: string;
   className?: string;
   headerAction?: ReactNode;
   summary: string;
@@ -11,6 +12,7 @@ type PlaylistQueueProps = {
 };
 
 export function PlaylistQueue({
+  bodyClassName,
   className,
   headerAction,
   summary,
@@ -27,7 +29,9 @@ export function PlaylistQueue({
         <span className="min-w-0 flex-1 truncate">{summary}</span>
         {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
       </div>
-      <div className="flex w-full flex-col">{children}</div>
+      <div className={cn("flex w-full flex-col", bodyClassName)}>
+        {children}
+      </div>
     </Card>
   );
 }

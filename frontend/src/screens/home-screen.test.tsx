@@ -1,0 +1,247 @@
+import type { ReactNode } from "react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { api } from "@/lib/api";
+
+import { HomeScreen } from "./home-screen";
+
+const playEpisodeMock = vi.fn();
+const playToggleMock = vi.fn();
+const seekBackwardMock = vi.fn();
+const seekForwardMock = vi.fn();
+const seekToMock = vi.fn();
+const setSpeedLabelMock = vi.fn();
+const clearPlaybackErrorMock = vi.fn();
+const reloadQueueMock = vi.fn().mockResolvedValue(undefined);
+const updateQueueMock = vi.fn();
+const scheduleActionMock = vi.fn();
+const undoActionMock = vi.fn();
+
+const queue = [
+  {
+    id: 1,
+    podcastId: 11,
+    title: "First queued episode",
+    description: "First notes",
+    audioUrl: "https://example.com/1.mp3",
+    duration: 1800,
+    downloaded: false,
+    isListened: false,
+    publishedAt: "2026-05-10T10:00:00Z",
+    podcastTitle: "Queue Podcast",
+    podcastImageUrl: null,
+    playback: null,
+  },
+  {
+    id: 2,
+    podcastId: 22,
+    title: "Actually playing",
+    description: "Current notes",
+    audioUrl: "https://example.com/2.mp3",
+    duration: 2400,
+    downloaded: false,
+    isListened: false,
+    publishedAt: "2026-05-11T10:00:00Z",
+    podcastTitle: "Current Podcast",
+    podcastImageUrl: null,
+    playback: {
+      episodeId: 2,
+      positionSeconds: 96,
+      durationSeconds: 2400,
+      completed: false,
+      clientUpdatedAt: "2026-05-22T08:00:00Z",
+      serverUpdatedAt: "2026-05-22T08:00:00Z",
+    },
+  },
+];
+
+vi.mock("@/lib/playback-context", () => ({
+  usePlayback: () => ({
+    queue,
+    currentEpisode: queue[1],
+    updateQueue: updateQueueMock,
+    loading: false,
+    playbackError: null,
+    reloadQueue: reloadQueueMock,
+    playing: false,
+    playToggle: playToggleMock,
+    playEpisode: playEpisodeMock,
+    positionSeconds: 96,
+    durationSeconds: 2400,
+    speedLabel: "Speed 1.3x",
+    setSpeedLabel: setSpeedLabelMock,
+    clearPlaybackError: clearPlaybackErrorMock,
+    seekBackward: seekBackwardMock,
+    seekForward: seekForwardMock,
+    seekTo: seekToMock,
+  }),
+}));
+
+vi.mock("./add-podcast-modal", () => ({
+  AddPodcastModal: () => null,
+}));
+
+vi.mock("./use-delayed-actions", () => ({
+  useDelayedActions: () => ({
+    pendingActions: [],
+    scheduleAction: scheduleActionMock,
+    undoAction: undoActionMock,
+  }),
+}));
+
+vi.mock("@/components/mpod", () => ({
+  AppShell: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Player: ({
+    title,
+    podcastTitle,
+    onNotes,
+  }: {
+    title: string;
+    podcastTitle: string;
+    onNotes?: () => void;
+  }) => (
+    <section data-testid="player">
+      <div>{title}</div>
+      <div>{podcastTitle}</div>
+      <button type="button" onClick={onNotes}>
+        Notes
+      </button>
+    </section>
+  ),
+  PlaylistQueue: ({
+    children,
+    summary,
+  }: {
+    children: ReactNode;
+    summary?: string;
+  }) => (
+    <div>
+      <div>{summary}</div>
+      {children}
+    </div>
+  ),
+  EpisodeRow: ({
+    title,
+    current,
+    actions = [],
+  }: {
+    title: string;
+    current?: boolean;
+    actions?: Array<{ label: string; onClick?: () => void }>;
+  }) => (
+    <div data-testid={`episode-row-${title}`} data-current={current ? "yes" : "no"}>
+      <span>{title}</span>
+      {actions.map((action) => (
+        <button
+          key={action.label}
+          type="button"
+          aria-label={action.label}
+          onClick={action.onClick}
+        >
+          {action.label}
+        </button>
+      ))}
+    </div>
+  ),
+  ModalScreen: ({ children }: { children: ReactNode }) => (
+    <div data-testid="modal">{children}</div>
+  ),
+  ShowNotes: ({
+    podcastTitle,
+    episodeTitle,
+    children,
+  }: {
+    podcastTitle: string;
+    episodeTitle: string;
+    children: ReactNode;
+  }) => (
+    <div>
+      <div>{podcastTitle}</div>
+      <div>{episodeTitle}</div>
+      <div>{children}</div>
+    </div>
+  ),
+}));
+
+describe("HomeScreen", () => {
+  beforeEach(() => {
+    playEpisodeMock.mockReset();
+    playToggleMock.mockReset();
+    seekBackwardMock.mockReset();
+    seekForwardMock.mockReset();
+    seekToMock.mockReset();
+    setSpeedLabelMock.mockReset();
+    clearPlaybackErrorMock.mockReset();
+    reloadQueueMock.mockClear();
+    updateQueueMock.mockReset();
+    scheduleActionMock.mockReset();
+    undoActionMock.mockReset();
+  });
+
+  it("renders the player from the active playback episode, not queue order", async () => {
+    render(<HomeScreen />);
+
+    expect(await screen.findByTestId("player")).toHaveTextContent("Actually playing");
+    expect(screen.getByTestId("player")).toHaveTextContent("Current Podcast");
+    expect(screen.queryByText("First queued episode")).toBeInTheDocument();
+
+    expect(screen.getByTestId("episode-row-Actually playing")).toHaveAttribute(
+      "data-current",
+      "yes"
+    );
+    expect(screen.getByTestId("episode-row-First queued episode")).toHaveAttribute(
+      "data-current",
+      "no"
+    );
+  });
+
+  it("plays the clicked playlist row without relying on queue position", async () => {
+    const user = userEvent.setup();
+    render(<HomeScreen />);
+
+    const playButtons = await screen.findAllByRole("button", { name: "Play" });
+    await user.click(playButtons[0]);
+
+    expect(playEpisodeMock).toHaveBeenCalledWith(1);
+  });
+
+  it("opens show notes for the current player episode", async () => {
+    const user = userEvent.setup();
+    render(<HomeScreen />);
+
+    await user.click(await screen.findByRole("button", { name: "Notes" }));
+
+    const modal = await screen.findByTestId("modal");
+    expect(modal).toHaveTextContent("Current Podcast");
+    expect(modal).toHaveTextContent("Actually playing");
+    expect(modal).toHaveTextContent("Current notes");
+  });
+
+  it("schedules playlist removal from the row action", async () => {
+    const user = userEvent.setup();
+    const removeSpy = vi.spyOn(api.playlist, "remove").mockResolvedValue({ success: true });
+
+    render(<HomeScreen />);
+
+    const removeButtons = await screen.findAllByRole("button", {
+      name: "Remove from playlist",
+    });
+    await user.click(removeButtons[0]);
+
+    expect(scheduleActionMock).toHaveBeenCalledTimes(1);
+    expect(scheduleActionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "remove-playlist",
+        episodeIds: [1],
+        message: 'Removed "First queued episode" from playlist.',
+        commit: expect.any(Function),
+      })
+    );
+
+    const scheduledAction = scheduleActionMock.mock.calls[0]?.[0];
+    await scheduledAction.commit();
+    expect(removeSpy).toHaveBeenCalledWith(1);
+  });
+});

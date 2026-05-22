@@ -319,11 +319,12 @@ Success response:
 
 Response:
 - If a valid local download exists, serves the downloaded audio file
-- If no local download exists, redirects to the episode's remote `audioUrl`
+- If no local download exists, proxies the episode's remote `audioUrl` through the authenticated backend endpoint
 
 Rules:
 - The endpoint requires authentication
 - The endpoint is for playback only; it does not mark the episode as downloaded
+- Range requests for remote audio should be forwarded so browser media controls can seek
 - Missing episodes return `404 Not Found`
 
 #### `DELETE /api/episodes/:id/download`
@@ -521,6 +522,58 @@ Rules:
 - If proxy configuration is incomplete or unavailable, `proxyConfigured` is `false` and the UI should not allow enabling proxy usage.
 - Host, port, username, and password remain environment configuration and must not be edited from the UI for MVP.
 
+#### `GET /api/proxy/status`
+
+Response when proxy is disabled:
+```json
+{
+  "proxy": {
+    "proxyEnabled": false,
+    "proxyConfigured": true,
+    "status": "off",
+    "externalIp": null,
+    "country": null,
+    "error": null
+  }
+}
+```
+
+Response when proxy is enabled and lookup succeeds:
+```json
+{
+  "proxy": {
+    "proxyEnabled": true,
+    "proxyConfigured": true,
+    "status": "ok",
+    "externalIp": "203.0.113.10",
+    "country": "Germany",
+    "error": null
+  }
+}
+```
+
+Response when proxy is enabled but runtime lookup cannot confirm identity:
+```json
+{
+  "proxy": {
+    "proxyEnabled": true,
+    "proxyConfigured": true,
+    "status": "error",
+    "externalIp": null,
+    "country": null,
+    "error": "request proxy status: lookup failed"
+  }
+}
+```
+
+Rules:
+- This endpoint is for live runtime proxy identity, not persisted settings.
+- `status` values for MVP are `off`, `ok`, `unknown`, and `error`.
+- When proxy usage is disabled, frontend must treat the proxy as off and must not display stale observed IP/country as active proxy identity.
+- When proxy usage is enabled, backend should attempt to resolve the current observed external IP and country using the current runtime networking path.
+- If lookup fails, backend should still return a structured payload with `status` and `error` so frontend can render an explicit unknown/error state without inventing values.
+- Proxy host, port, username, and password must never be returned by this endpoint.
+
 ### System Endpoints
 
 #### `GET /api/health`
@@ -544,6 +597,10 @@ Response:
   }
 }
 ```
+
+Rules:
+- this status represents the most recent global feed refresh run
+- both the daily scheduled refresh and manual `Refresh all` update the same status
 
 ### Notes
 - The API is intentionally small for MVP
@@ -923,6 +980,7 @@ Optional:
 
 ### Proxy Behavior
 - SOCKS5 proxy configuration is optional.
+- Default proxy runtime values are `SOCKS5_HOST=192.168.0.222` and `SOCKS5_PORT=1080`.
 - If proxy variables are provided and proxy usage is enabled in Settings, they are used for:
   - RSS feed fetching
   - episode streaming

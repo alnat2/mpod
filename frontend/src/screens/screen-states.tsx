@@ -1,4 +1,7 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+
+import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,35 +14,80 @@ type ScreenStateProps = {
   title: string;
 };
 
-export function ErrorBanner({
+export function ScreenBannerStack({
   children,
-  className,
 }: {
   children: ReactNode;
-  className?: string;
 }) {
   return (
-    <div
-      className={cn(
-        "rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm leading-5 text-destructive",
-        className
-      )}
-    >
+    <div className="pointer-events-none fixed top-[100px] left-1/2 z-50 flex w-full max-w-[1040px] -translate-x-1/2 flex-col gap-3 px-4">
       {children}
     </div>
   );
 }
 
+function getRemainingSeconds(expiresAt: number, now: number) {
+  return Math.max(0, Math.ceil((expiresAt - now) / 1000));
+}
+
+export function ErrorBanner({
+  children,
+  className,
+  onClose,
+}: {
+  children: ReactNode;
+  className?: string;
+  onClose?: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "pointer-events-auto flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm leading-5 text-destructive",
+        className
+      )}
+    >
+      <div className="min-w-0 flex-1">{children}</div>
+      {onClose ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="-mr-1 -my-1 size-7 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          aria-label="Dismiss error"
+          onClick={onClose}
+        >
+          <HugeiconsIcon icon={Cancel01Icon} className="size-4" aria-hidden="true" />
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 export function UndoBanner({
+  expiresAt,
   message,
   onUndo,
 }: {
+  expiresAt: number;
   message: string;
   onUndo: () => void;
 }) {
+  const [now, setNow] = useState(() => Date.now());
+  const remainingSeconds = getRemainingSeconds(expiresAt, now);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNow(Date.now());
+    }, 250);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
   return (
-    <div className="flex min-h-10 w-full items-center gap-3 rounded-md border border-border bg-secondary px-3 py-2 text-sm leading-5 text-secondary-foreground">
-      <span className="min-w-0 flex-1 truncate">{message}</span>
+    <div className="pointer-events-auto flex min-h-10 w-full items-center gap-3 rounded-md border border-border bg-secondary px-3 py-2 text-sm leading-5 text-secondary-foreground">
+      <span className="min-w-0 flex-1 truncate">
+        {message} Applying in {remainingSeconds} sec.
+      </span>
       <Button variant="link" type="button" onClick={onUndo}>
         Undo
       </Button>

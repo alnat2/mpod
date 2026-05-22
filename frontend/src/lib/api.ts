@@ -42,6 +42,7 @@ export type Episode = {
   id: number;
   podcastId: number;
   title: string;
+  description?: string | null;
   audioUrl: string;
   duration: number | null;
   downloaded: boolean;
@@ -71,6 +72,15 @@ export type SettingsValues = {
   dailyRefreshTime: string;
   proxyEnabled: boolean;
   proxyConfigured: boolean;
+};
+
+export type ProxyRuntimeStatus = {
+  proxyEnabled: boolean;
+  proxyConfigured: boolean;
+  status: string;
+  externalIp: string | null;
+  country: string | null;
+  error: string | null;
 };
 
 type MaybeArray<T> = T[] | null;
@@ -152,6 +162,7 @@ export const api = {
   },
    podcasts: {
      list: () => apiRequest<{ podcasts: MaybeArray<Podcast> }>("/api/podcasts"),
+     imagePath: (podcastId: number) => `/api/podcasts/${podcastId}/image`,
      create: (rssUrl: string) =>
        apiRequest<{ podcast: Podcast }>("/api/podcasts", {
          method: "POST",
@@ -240,6 +251,8 @@ export const api = {
   },
   settings: {
     get: () => apiRequest<{ settings: SettingsValues }>("/api/settings"),
+    proxyStatus: () =>
+      apiRequest<{ proxy: ProxyRuntimeStatus }>("/api/proxy/status"),
     update: (payload: {
       dailyRefreshTime?: string;
       proxyEnabled?: boolean;

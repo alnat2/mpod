@@ -4,8 +4,8 @@ import * as React from "react"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  Check as CheckIcon,
-  ChevronRight as ChevronRightIcon,
+  Check,
+  ChevronRight,
 } from "@hugeicons/core-free-icons"
 
 import { cn } from "@/lib/utils"
@@ -110,7 +110,7 @@ function DropdownMenuCheckboxItem({
         data-slot="dropdown-menu-checkbox-item-indicator"
       >
         <DropdownMenuPrimitive.ItemIndicator>
-          <HugeiconsIcon icon={CheckIcon} />
+          <HugeiconsIcon icon={Check} />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
       {children}
@@ -152,7 +152,7 @@ function DropdownMenuRadioItem({
         data-slot="dropdown-menu-radio-item-indicator"
       >
         <DropdownMenuPrimitive.ItemIndicator>
-          <HugeiconsIcon icon={CheckIcon} />
+          <HugeiconsIcon icon={Check} />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
       {children}
@@ -234,7 +234,7 @@ function DropdownMenuSubTrigger({
       {...props}
     >
       {children}
-      <HugeiconsIcon icon={ChevronRightIcon} className="ml-auto" />
+      <HugeiconsIcon icon={ChevronRight} className="ml-auto" />
     </DropdownMenuPrimitive.SubTrigger>
   )
 }

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 var (
@@ -28,6 +29,8 @@ type EpisodeDownload struct {
 	ID         int64 `json:"id"`
 	Downloaded bool  `json:"downloaded"`
 }
+
+const downloadTimeout = 10 * time.Minute
 
 func NewService(db *sql.DB, client *http.Client, downloadsDir string) *Service {
 	return &Service{
@@ -57,7 +60,14 @@ func (s *Service) Download(ctx context.Context, episodeID int64) (EpisodeDownloa
 		return EpisodeDownload{}, fmt.Errorf("build download request: %w", err)
 	}
 
-	resp, err := s.client.Do(req)
+	baseClient := s.client
+	if baseClient == nil {
+		baseClient = http.DefaultClient
+	}
+	client := *baseClient
+	client.Timeout = downloadTimeout
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return EpisodeDownload{}, fmt.Errorf("download audio: %w", err)
 	}

@@ -8,3 +8,5 @@ export const playbackSpeedOptions = [
 ] as const;
 
 export type PlaybackSpeedLabel = (typeof playbackSpeedOptions)[number];
+
+export const defaultPlaybackSpeed: PlaybackSpeedLabel = "Speed 1.3x";

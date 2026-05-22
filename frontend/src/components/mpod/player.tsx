@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { PointerEvent } from "react";
 
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -27,7 +28,12 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-import { playbackSpeedOptions, type PlaybackSpeedLabel } from "./playback";
+import { Artwork } from "./artwork";
+import {
+  defaultPlaybackSpeed,
+  playbackSpeedOptions,
+  type PlaybackSpeedLabel,
+} from "./playback";
 
 type PlayerProps = {
   className?: string;
@@ -44,6 +50,7 @@ type PlayerProps = {
   onBack?: () => void;
   onForward?: () => void;
   onPlay?: () => void;
+  onProgressSeek?: (progressRatio: number) => void;
   onNotes?: () => void;
   onSpeedChange?: (speed: PlaybackSpeedLabel) => void;
 };
@@ -91,17 +98,18 @@ export function Player({
   durationLabel,
   playing,
   progressValue = 0,
-  speedLabel = "Speed 1x",
+  speedLabel = defaultPlaybackSpeed,
   notesDisabled = true,
   onBack,
   onForward,
   onPlay,
+  onProgressSeek,
   onNotes,
   onSpeedChange,
 }: PlayerProps) {
   const isSpeedControlled = speedLabel !== undefined && onSpeedChange !== undefined;
   const [uncontrolledSpeedLabel, setUncontrolledSpeedLabel] =
-    useState<PlaybackSpeedLabel>(speedLabel ?? "Speed 1x");
+    useState<PlaybackSpeedLabel>(speedLabel ?? defaultPlaybackSpeed);
   const activeSpeedLabel = isSpeedControlled
     ? speedLabel
     : uncontrolledSpeedLabel;
@@ -115,22 +123,28 @@ export function Player({
     }
   }
 
+  function handleProgressPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!onProgressSeek) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const clickOffset = event.clientX - rect.left;
+    const progressRatio = Math.min(1, Math.max(0, clickOffset / rect.width));
+    onProgressSeek(progressRatio);
+  }
+
   return (
     <section
       className={cn(
-        "flex h-[466px] w-full max-w-[480px] flex-col items-center justify-center gap-4 rounded-2xl border border-border bg-card px-12 py-5 text-center text-card-foreground shadow-xs",
+        "flex w-full max-w-[480px] flex-col items-center justify-center gap-4 rounded-2xl border border-border bg-card px-12 py-5 text-center text-card-foreground shadow-xs",
         className
       )}
     >
-      <div className="size-40 overflow-hidden rounded-lg border border-border bg-muted">
-        {artworkUrl ? (
-          <img
-            className="size-full object-cover"
-            src={artworkUrl}
-            alt={artworkAlt}
-          />
-        ) : null}
-      </div>
+      <Artwork
+        className="size-40 rounded-lg"
+        src={artworkUrl}
+        alt={artworkAlt}
+        title={podcastTitle}
+      />
       <div className="flex w-full flex-col gap-2">
         <h2 className="line-clamp-2 text-lg leading-7 font-bold">{title}</h2>
         <p className="truncate text-sm leading-5 text-muted-foreground">
@@ -138,7 +152,15 @@ export function Player({
         </p>
       </div>
       <div className="flex w-full flex-col gap-2">
-        <Progress className="h-2 bg-primary/20" value={progressValue} />
+        <Progress
+          aria-label="Seek playback position"
+          className={cn(
+            "h-2 bg-primary/20",
+            onProgressSeek && "cursor-pointer"
+          )}
+          value={progressValue}
+          onPointerDown={handleProgressPointerDown}
+        />
         <div className="flex h-[18px] w-full items-center justify-between text-xs leading-4 text-muted-foreground">
           <span>{elapsedLabel}</span>
           <span>{durationLabel}</span>

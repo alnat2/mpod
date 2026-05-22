@@ -5,11 +5,13 @@ export const undoDelayMs = 15_000;
 export type PendingDelayedAction = {
   id: string;
   message: string;
+  expiresAt: number;
   episodeIds: number[];
-  kind: "mark-listened" | "mark-unlistened" | "remove-playlist";
+  kind: "mark-listened" | "mark-unlistened" | "remove-playlist" | "unsubscribe-podcast";
+  podcastId?: number;
 };
 
-type ScheduleDelayedActionInput = Omit<PendingDelayedAction, "id"> & {
+type ScheduleDelayedActionInput = Omit<PendingDelayedAction, "id" | "expiresAt"> & {
   commit: () => Promise<unknown>;
 };
 
@@ -46,7 +48,7 @@ export function useDelayedActions({
       const id = `${action.kind}-${Date.now()}-${Math.random()
         .toString(16)
         .slice(2)}`;
-      const pendingAction = { ...action, id };
+      const pendingAction = { ...action, id, expiresAt: Date.now() + delayMs };
 
       setPendingActions((current) => [...current, pendingAction]);
 

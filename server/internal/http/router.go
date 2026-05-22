@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	nethttp "net/http"
 	"os"
@@ -36,6 +38,7 @@ type Router struct {
 	playlist       *playlist.Service
 	downloads      *downloads.Service
 	podcasts       *podcasts.Service
+	remoteClient   *nethttp.Client
 	settings       *settings.Service
 	scheduler      *scheduler.Service
 }
@@ -58,6 +61,9 @@ func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerServi
 	if err != nil {
 		panic(err)
 	}
+	settingsService = settings.NewServiceWithProxyStatusLookup(db, cfg.SOCKS5Host != "", func(ctx context.Context) (settings.ProxyLookupResult, error) {
+		return fetchObservedProxyStatus(ctx, client)
+	})
 
 	playlistService := playlist.NewService(db)
 	downloadsService := downloads.NewService(db, client, cfg.DownloadsDir)
@@ -73,6 +79,7 @@ func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerServi
 		playlist:       playlistService,
 		downloads:      downloadsService,
 		podcasts:       podcasts.NewService(db, client),
+		remoteClient:   client,
 		settings:       settingsService,
 		scheduler:      schedulerService,
 	}
@@ -86,6 +93,7 @@ func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerServi
 	mux.HandleFunc("GET /api/podcasts", r.handlePodcastsList)
 	mux.HandleFunc("POST /api/podcasts", r.handlePodcastsCreate)
 	mux.HandleFunc("GET /api/podcasts/{id}", r.handlePodcastGet)
+	mux.HandleFunc("GET /api/podcasts/{id}/image", r.handlePodcastImage)
 	mux.HandleFunc("DELETE /api/podcasts/{id}", r.handlePodcastDelete)
 	mux.HandleFunc("POST /api/podcasts/{id}/refresh", r.handlePodcastRefresh)
 	mux.HandleFunc("GET /api/podcasts/{id}/episodes", r.handlePodcastEpisodesList)
@@ -105,6 +113,7 @@ func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerServi
 	mux.HandleFunc("DELETE /api/episodes/{id}/download", r.handleEpisodeDownloadDelete)
 	mux.HandleFunc("GET /api/settings", r.handleSettingsGet)
 	mux.HandleFunc("PATCH /api/settings", r.handleSettingsPatch)
+	mux.HandleFunc("GET /api/proxy/status", r.handleProxyStatus)
 	mux.HandleFunc("GET /api/episodes/{id}/audio", r.handleEpisodeAudio)
 
 	staticDir := firstExistingDir("frontend/dist", "../frontend/dist")
@@ -313,6 +322,60 @@ func (r *Router) handlePodcastGet(w nethttp.ResponseWriter, req *nethttp.Request
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{"podcast": podcast})
 }
 
+func (r *Router) handlePodcastImage(w nethttp.ResponseWriter, req *nethttp.Request) {
+	if _, ok := r.requireUser(w, req); !ok {
+		return
+	}
+
+	podcastID, ok := r.pathInt64(w, req, "id")
+	if !ok {
+		return
+	}
+
+	podcast, err := r.podcasts.GetByID(req.Context(), podcastID)
+	if err != nil {
+		r.writeAPIError(w, nethttp.StatusNotFound, "PODCAST_NOT_FOUND", "Podcast was not found")
+		return
+	}
+	if podcast.ImageURL == nil || strings.TrimSpace(*podcast.ImageURL) == "" {
+		r.writeAPIError(w, nethttp.StatusNotFound, "PODCAST_IMAGE_NOT_FOUND", "Podcast image was not found")
+		return
+	}
+
+	imageReq, err := nethttp.NewRequestWithContext(req.Context(), nethttp.MethodGet, *podcast.ImageURL, nil)
+	if err != nil {
+		r.writeAPIError(w, nethttp.StatusInternalServerError, "PODCAST_IMAGE_LOAD_FAILED", "Failed to load podcast image")
+		return
+	}
+
+	resp, err := r.remoteClient.Do(imageReq)
+	if err != nil {
+		r.writeAPIError(w, nethttp.StatusBadGateway, "PODCAST_IMAGE_LOAD_FAILED", "Failed to load podcast image")
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		r.writeAPIError(w, nethttp.StatusBadGateway, "PODCAST_IMAGE_LOAD_FAILED", "Failed to load podcast image")
+		return
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "image/") {
+		r.writeAPIError(w, nethttp.StatusBadGateway, "PODCAST_IMAGE_LOAD_FAILED", "Failed to load podcast image")
+		return
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	if resp.ContentLength > 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(resp.ContentLength, 10))
+	}
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		r.logger.Printf("copy podcast image failed: %v", err)
+	}
+}
+
 func (r *Router) handlePodcastDelete(w nethttp.ResponseWriter, req *nethttp.Request) {
 	if _, ok := r.requireUser(w, req); !ok {
 		return
@@ -463,9 +526,9 @@ func (r *Router) handlePodcastsRefreshAll(w nethttp.ResponseWriter, req *nethttp
 		return
 	}
 
-	if err := r.podcasts.RefreshAll(req.Context()); err != nil {
+	if err := r.scheduler.RunNow(req.Context()); err != nil {
 		r.logger.Printf("podcasts refresh all failed: %v", err)
-		if errors.Is(err, podcasts.ErrRefreshAlreadyRunning) {
+		if errors.Is(err, scheduler.ErrAlreadyRunning) || errors.Is(err, podcasts.ErrRefreshAlreadyRunning) {
 			r.writeAPIError(w, nethttp.StatusConflict, "REFRESH_ALREADY_RUNNING", "One or more podcast refreshes are already running")
 			return
 		}
@@ -778,7 +841,49 @@ func (r *Router) handleEpisodeAudio(w nethttp.ResponseWriter, req *nethttp.Reque
 		return
 	}
 
-	nethttp.Redirect(w, req, episode.AudioURL, nethttp.StatusFound)
+	audioReq, err := nethttp.NewRequestWithContext(req.Context(), nethttp.MethodGet, episode.AudioURL, nil)
+	if err != nil {
+		r.writeAPIError(w, nethttp.StatusInternalServerError, "AUDIO_LOAD_FAILED", "Failed to load audio")
+		return
+	}
+
+	if rangeHeader := strings.TrimSpace(req.Header.Get("Range")); rangeHeader != "" {
+		audioReq.Header.Set("Range", rangeHeader)
+	}
+
+	resp, err := r.remoteClient.Do(audioReq)
+	if err != nil {
+		r.writeAPIError(w, nethttp.StatusBadGateway, "AUDIO_LOAD_FAILED", "Failed to load audio")
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		r.writeAPIError(w, nethttp.StatusBadGateway, "AUDIO_LOAD_FAILED", "Failed to load audio")
+		return
+	}
+
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	}
+	if acceptRanges := strings.TrimSpace(resp.Header.Get("Accept-Ranges")); acceptRanges != "" {
+		w.Header().Set("Accept-Ranges", acceptRanges)
+	}
+	if contentRange := strings.TrimSpace(resp.Header.Get("Content-Range")); contentRange != "" {
+		w.Header().Set("Content-Range", contentRange)
+	}
+	if contentLength := strings.TrimSpace(resp.Header.Get("Content-Length")); contentLength != "" {
+		w.Header().Set("Content-Length", contentLength)
+	}
+	if contentDisposition := strings.TrimSpace(resp.Header.Get("Content-Disposition")); contentDisposition != "" {
+		w.Header().Set("Content-Disposition", contentDisposition)
+	}
+	w.Header().Set("Cache-Control", "private, max-age=0")
+	w.WriteHeader(resp.StatusCode)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		r.logger.Printf("copy episode audio failed: %v", err)
+	}
 }
 
 func (r *Router) handleSettingsGet(w nethttp.ResponseWriter, req *nethttp.Request) {
@@ -831,6 +936,22 @@ func (r *Router) handleSettingsPatch(w nethttp.ResponseWriter, req *nethttp.Requ
 
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{
 		"settings": values,
+	})
+}
+
+func (r *Router) handleProxyStatus(w nethttp.ResponseWriter, req *nethttp.Request) {
+	if _, ok := r.requireUser(w, req); !ok {
+		return
+	}
+
+	status, err := r.settings.GetProxyStatus(req.Context())
+	if err != nil {
+		r.writeAPIError(w, nethttp.StatusInternalServerError, "PROXY_STATUS_FAILED", "Failed to load proxy status")
+		return
+	}
+
+	r.writeJSON(w, nethttp.StatusOK, map[string]any{
+		"proxy": status,
 	})
 }
 
@@ -890,4 +1011,43 @@ func (r *Router) writeAPIError(w nethttp.ResponseWriter, status int, code, messa
 			Message: message,
 		},
 	})
+}
+
+func fetchObservedProxyStatus(ctx context.Context, client *nethttp.Client) (settings.ProxyLookupResult, error) {
+	req, err := nethttp.NewRequestWithContext(ctx, nethttp.MethodGet, "https://ipwho.is/", nil)
+	if err != nil {
+		return settings.ProxyLookupResult{}, fmt.Errorf("build proxy status request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return settings.ProxyLookupResult{}, fmt.Errorf("request proxy status: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != nethttp.StatusOK {
+		return settings.ProxyLookupResult{}, fmt.Errorf("request proxy status: unexpected status %d", resp.StatusCode)
+	}
+
+	var payload struct {
+		Success bool   `json:"success"`
+		IP      string `json:"ip"`
+		Country string `json:"country"`
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return settings.ProxyLookupResult{}, fmt.Errorf("decode proxy status: %w", err)
+	}
+	if !payload.Success {
+		if strings.TrimSpace(payload.Message) != "" {
+			return settings.ProxyLookupResult{}, fmt.Errorf("request proxy status: %s", strings.TrimSpace(payload.Message))
+		}
+		return settings.ProxyLookupResult{}, fmt.Errorf("request proxy status: external identity lookup failed")
+	}
+
+	return settings.ProxyLookupResult{
+		ExternalIP: payload.IP,
+		Country:    payload.Country,
+	}, nil
 }

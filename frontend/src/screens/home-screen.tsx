@@ -1,20 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MouseEvent, PointerEvent } from "react";
+import type { DragEvent } from "react";
 
 import {
   PauseIcon,
   PlayIcon,
   PlayListRemoveIcon,
-  VolumeUpIcon,
-  VolumeOffIcon,
-  DownloadSquare01Icon,
-  DownloadSquare02Icon,
 } from "@hugeicons/core-free-icons";
 
 import {
   AppShell,
   EpisodeRow,
   ModalScreen,
+  Player,
   PlaylistQueue,
   ShowNotes,
 } from "@/components/mpod";
@@ -26,10 +23,13 @@ import {
   CenterLoadingState,
   EmptyState,
   ErrorBanner,
+  ScreenBannerStack,
   UndoBanner,
 } from "./screen-states";
 import {
+  formatClock,
   formatDuration,
+  formatEpisodeDate,
   getErrorMessage,
 } from "./screen-utils";
 import { useDelayedActions } from "./use-delayed-actions";
@@ -45,23 +45,33 @@ function queueSummary(episodes: QueueEpisode[]) {
 export function HomeScreen() {
   const {
     queue,
+    currentEpisode,
     updateQueue: setQueue,
     loading,
+    playbackError,
     reloadQueue,
     playing,
     playToggle,
+    playEpisode,
+    positionSeconds,
+    durationSeconds,
+    speedLabel,
+    setSpeedLabel,
+    clearPlaybackError,
+    seekBackward,
+    seekForward,
+    seekTo,
   } = usePlayback();
   const [modal, setModal] = useState<AddPodcastModalMode | "show-notes">(null);
+  const [showNotesEpisodeId, setShowNotesEpisodeId] = useState<number | null>(null);
   const error: string | null = null;
   const [actionError, setActionError] = useState<string | null>(null);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [draggedEpisodeId, setDraggedEpisodeId] = useState<number | null>(null);
   const [reordering, setReordering] = useState(false);
   const queueRef = useRef<QueueEpisode[]>([]);
   const dragOriginQueueRef = useRef<QueueEpisode[]>([]);
   const dragMovedRef = useRef(false);
-  const downloadErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { pendingActions, scheduleAction, undoAction } = useDelayedActions({
     onCommitted: () => setReloadKey((current) => current + 1),
     onError: (caught) => setActionError(getErrorMessage(caught)),
@@ -89,38 +99,19 @@ export function HomeScreen() {
     [pendingPlaylistRemoveEpisodeIds, queue]
   );
 
-  const currentEpisode = visibleQueue[0];
+  const showNotesEpisode =
+    visibleQueue.find((episode) => episode.id === showNotesEpisodeId) ??
+    (showNotesEpisodeId === currentEpisode?.id ? currentEpisode : null);
+  const progressValue = useMemo(() => {
+    if (!durationSeconds) return 0;
+    return Math.min(100, Math.round((positionSeconds / durationSeconds) * 100));
+  }, [durationSeconds, positionSeconds]);
 
   useEffect(() => {
     if (draggedEpisodeId === null) {
       queueRef.current = queue;
     }
   }, [draggedEpisodeId, queue]);
-
-  useEffect(() => {
-    return () => {
-      if (downloadErrorTimeoutRef.current) {
-        window.clearTimeout(downloadErrorTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  async function downloadEpisode(episodeId: number) {
-    setActionError(null);
-    setDownloadError(null);
-    try {
-      await api.episodes.download(episodeId);
-      setReloadKey((current) => current + 1);
-    } catch (caught) {
-      setDownloadError(getErrorMessage(caught));
-      if (downloadErrorTimeoutRef.current) {
-        window.clearTimeout(downloadErrorTimeoutRef.current);
-      }
-      downloadErrorTimeoutRef.current = window.setTimeout(() => {
-        setDownloadError(null);
-      }, 10_000);
-    }
-  }
 
   function scheduleRemoveFromPlaylist(episode: Pick<Episode, "id" | "title">) {
     setActionError(null);
@@ -133,35 +124,6 @@ export function HomeScreen() {
       episodeIds: [episode.id],
       message: `Removed "${episode.title}" from playlist.`,
       commit: () => api.playlist.remove(episode.id),
-    });
-  }
-
-  function scheduleMarkListened(
-    episode: Pick<Episode, "id" | "title">,
-    isListened: boolean
-  ) {
-    setActionError(null);
-    if (
-      pendingActions.some(
-        (action) =>
-          (action.kind === "mark-listened" ||
-            action.kind === "mark-unlistened") &&
-          action.episodeIds.includes(episode.id)
-      )
-    ) {
-      return;
-    }
-
-    const actionKind = isListened ? "mark-listened" : "mark-unlistened";
-    const actionMessage = isListened
-      ? `Marked "${episode.title}" as listened`
-      : `Marked "${episode.title}" as unlistened`;
-
-    scheduleAction({
-      kind: actionKind,
-      episodeIds: [episode.id],
-      message: actionMessage,
-      commit: () => api.episodes.setListened(episode.id, isListened),
     });
   }
 
@@ -205,8 +167,8 @@ export function HomeScreen() {
     }
   }, [setQueue]);
 
-  function beginPointerReorder(
-    event: PointerEvent<HTMLDivElement>,
+  function beginDragReorder(
+    event: DragEvent<HTMLDivElement>,
     episodeId: number,
     canReorder: boolean
   ) {
@@ -214,28 +176,14 @@ export function HomeScreen() {
       return;
     }
 
-    dragOriginQueueRef.current = queueRef.current;
-    dragMovedRef.current = false;
-    setDraggedEpisodeId(episodeId);
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-
-  function beginMouseReorder(
-    event: MouseEvent<HTMLDivElement>,
-    episodeId: number,
-    canReorder: boolean
-  ) {
-    if (!canReorder || event.button !== 0 || (event.target as Element).closest("button")) {
-      return;
-    }
-
-    event.preventDefault();
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(episodeId));
     dragOriginQueueRef.current = queueRef.current;
     dragMovedRef.current = false;
     setDraggedEpisodeId(episodeId);
   }
 
-  const previewPointerReorder = useCallback((episodeId: number, canReorder: boolean) => {
+  const previewDragReorder = useCallback((episodeId: number, canReorder: boolean) => {
     if (!canReorder || draggedEpisodeId === null || draggedEpisodeId === episodeId) {
       return;
     }
@@ -251,7 +199,7 @@ export function HomeScreen() {
 
   }, [draggedEpisodeId, moveQueueItem, setQueue]);
 
-  const finishPointerReorder = useCallback(() => {
+  const finishDragReorder = useCallback(() => {
     if (draggedEpisodeId === null) {
       return;
     }
@@ -268,76 +216,6 @@ export function HomeScreen() {
     }
   }, [commitQueueOrder, draggedEpisodeId]);
 
-  const findEpisodeIdNearPoint = useCallback((clientX: number, clientY: number) => {
-    const exactRow = document
-      .elementFromPoint(clientX, clientY)
-      ?.closest<HTMLElement>("[data-episode-row-id]");
-    const rows = Array.from(
-      document.querySelectorAll<HTMLElement>("[data-episode-row-id]")
-    );
-    const targetRow =
-      exactRow ??
-      rows.reduce<HTMLElement | null>((closestRow, row) => {
-        const rowRect = row.getBoundingClientRect();
-        const closestDistance = closestRow
-          ? Math.abs(
-              clientY -
-                (closestRow.getBoundingClientRect().top +
-                  closestRow.getBoundingClientRect().height / 2)
-            )
-          : Number.POSITIVE_INFINITY;
-        const distance = Math.abs(
-          clientY - (rowRect.top + rowRect.height / 2)
-        );
-
-        return distance < closestDistance ? row : closestRow;
-      }, null);
-    const targetEpisodeId = Number(targetRow?.dataset.episodeRowId);
-
-    return Number.isFinite(targetEpisodeId) ? targetEpisodeId : null;
-  }, []);
-
-  useEffect(() => {
-    if (draggedEpisodeId === null) {
-      return;
-    }
-
-    function previewFromPoint(clientX: number, clientY: number) {
-      const targetEpisodeId = findEpisodeIdNearPoint(clientX, clientY);
-
-      if (targetEpisodeId !== null) {
-        previewPointerReorder(targetEpisodeId, true);
-      }
-    }
-
-    function handlePointerMove(event: globalThis.PointerEvent) {
-      previewFromPoint(event.clientX, event.clientY);
-    }
-
-    function handleMouseMove(event: globalThis.MouseEvent) {
-      previewFromPoint(event.clientX, event.clientY);
-    }
-
-    document.addEventListener("pointermove", handlePointerMove);
-    document.addEventListener("pointerup", finishPointerReorder);
-    document.addEventListener("pointercancel", finishPointerReorder);
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", finishPointerReorder);
-
-     return () => {
-       document.removeEventListener("pointermove", handlePointerMove);
-       document.removeEventListener("pointerup", finishPointerReorder);
-       document.removeEventListener("pointercancel", finishPointerReorder);
-       document.removeEventListener("mousemove", handleMouseMove);
-       document.removeEventListener("mouseup", finishPointerReorder);
-     };
-  }, [
-    draggedEpisodeId,
-    findEpisodeIdNearPoint,
-    finishPointerReorder,
-    previewPointerReorder,
-  ]);
-
   return (
     <>
       <AppShell
@@ -346,113 +224,141 @@ export function HomeScreen() {
         pageTitle="Now playing"
         pageSubtitle=""
         pageActions={[]}
+        pageHeaderVisible={false}
       >
-         <div className="flex h-full min-h-[712px] w-full flex-col items-center gap-4 overflow-hidden rounded-lg p-6">
-           {error ? (
-             <ErrorBanner className="w-full max-w-[1040px]">{error}</ErrorBanner>
-           ) : null}
-           {actionError ? (
-             <ErrorBanner className="w-full max-w-[1040px]">
-               {actionError}
-             </ErrorBanner>
-           ) : null}
-           {downloadError ? (
-             <ErrorBanner className="w-full max-w-[1040px]">
-               {downloadError}
-             </ErrorBanner>
-           ) : null}
-           {pendingActions.map((action) => (
-             <UndoBanner
-               key={action.id}
-               message={`${action.message} Applying in 15 seconds.`}
-               onUndo={() => undoAction(action.id)}
-             />
-           ))}
+         <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-md border border-border bg-card px-10 py-5">
+           <div className="flex w-full items-center gap-6">
+             <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
+               <h1 className="truncate text-3xl leading-9 font-semibold text-foreground">
+                 Now playing
+               </h1>
+             </div>
+           </div>
+           <ScreenBannerStack>
+             {error ? <ErrorBanner>{error}</ErrorBanner> : null}
+             {actionError ? (
+               <ErrorBanner onClose={() => setActionError(null)}>
+                 {actionError}
+               </ErrorBanner>
+             ) : null}
+             {playbackError ? (
+               <ErrorBanner onClose={clearPlaybackError}>
+                 {playbackError}
+               </ErrorBanner>
+             ) : null}
+             {pendingActions.map((action) => (
+               <UndoBanner
+                 key={action.id}
+                 expiresAt={action.expiresAt}
+                 message={action.message}
+                 onUndo={() => undoAction(action.id)}
+               />
+             ))}
+           </ScreenBannerStack>
           {loading ? (
-            <CenterLoadingState label="Loading playlist" />
+            <CenterLoadingState className="mt-4" label="Loading playlist" />
           ) : currentEpisode ? (
+            <div className="flex min-h-0 flex-1 flex-col items-center gap-4 overflow-hidden px-0 py-6">
+              <Player
+                className="shrink-0"
+                title={currentEpisode.title}
+                podcastTitle={currentEpisode.podcastTitle}
+                artworkUrl={currentEpisode.podcastImageUrl ?? undefined}
+                artworkAlt={`${currentEpisode.podcastTitle} artwork`}
+                elapsedLabel={formatClock(positionSeconds)}
+                durationLabel={formatClock(durationSeconds)}
+                playing={playing}
+                progressValue={progressValue}
+                speedLabel={speedLabel}
+                onBack={seekBackward}
+                onForward={seekForward}
+                onPlay={playToggle}
+                onProgressSeek={(progressRatio) =>
+                  seekTo(durationSeconds * progressRatio)
+                }
+                onNotes={() => {
+                  if (currentEpisode) {
+                    setShowNotesEpisodeId(currentEpisode.id);
+                    setModal("show-notes");
+                  }
+                }}
+                notesDisabled={false}
+                onSpeedChange={setSpeedLabel}
+              />
               <PlaylistQueue
                 summary={queueSummary(visibleQueue)}
-                className="max-w-[1040px]"
+                className="min-h-0 w-full max-w-[1040px] shrink-0"
               >
-                {visibleQueue.map((episode, index) => {
+                {visibleQueue.map((episode) => {
                   const canReorder = pendingActions.length === 0 && !reordering;
+                  const publishedAt = formatEpisodeDate(episode.publishedAt);
+                  const isCurrentEpisode = currentEpisode?.id === episode.id;
 
                   return (
                     <EpisodeRow
-                      current={index === 0}
+                      current={isCurrentEpisode}
                       title={episode.title}
                       podcastTitle={episode.podcastTitle}
+                      dateLabel={publishedAt ? `${publishedAt}` : undefined}
                       durationLabel={formatDuration(episode.duration)}
                       thumbnailUrl={episode.podcastImageUrl ?? undefined}
                       thumbnailAlt={`${episode.podcastTitle} artwork`}
                       episodeRowId={episode.id}
                       draggable={canReorder}
                       dragging={draggedEpisodeId === episode.id}
-                      onPointerDown={(event) =>
-                        beginPointerReorder(event, episode.id, canReorder)
+                      onDragStart={(event) =>
+                        beginDragReorder(event, episode.id, canReorder)
                       }
-                      onPointerEnter={() =>
-                        previewPointerReorder(episode.id, canReorder)
-                      }
-                      onPointerUp={finishPointerReorder}
-                      onPointerCancel={finishPointerReorder}
-                      onMouseDown={(event) =>
-                        beginMouseReorder(event, episode.id, canReorder)
-                      }
-                      onMouseEnter={() =>
-                        previewPointerReorder(episode.id, canReorder)
-                      }
-                      onMouseUp={finishPointerReorder}
-                        actions={[
-                          {
-                            label: index === 0 && playing ? "Pause" : "Play",
-                            icon: index === 0 && playing ? PauseIcon : PlayIcon,
-                            onClick: index === 0 ? playToggle : undefined,
-                          },
-                          {
-                            label: episode.isListened ? "Mark as unlistened" : "Mark as listened",
-                            icon: episode.isListened ? VolumeOffIcon : VolumeUpIcon,
-                            onClick: () => {
-                              setActionError(null);
-                              scheduleMarkListened(episode, !episode.isListened);
-                            },
-                          },
-                          {
-                            label: "Remove from playlist",
-                            icon: PlayListRemoveIcon,
-                            onClick: () => scheduleRemoveFromPlaylist(episode),
-                          },
-                          {
-                            label: episode.downloaded ? "Downloaded" : "Download",
-                            icon: episode.downloaded
-                              ? DownloadSquare02Icon
-                              : DownloadSquare01Icon,
-                            onClick: episode.downloaded
-                              ? undefined
-                              : () => void downloadEpisode(episode.id),
-                          },
-                        ]}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        previewDragReorder(episode.id, canReorder);
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        finishDragReorder();
+                      }}
+                      onDragEnd={finishDragReorder}
+                      actions={[
+                        {
+                          label: isCurrentEpisode && playing ? "Pause" : "Play",
+                          icon: isCurrentEpisode && playing ? PauseIcon : PlayIcon,
+                          onClick:
+                            isCurrentEpisode
+                              ? playToggle
+                              : () => playEpisode(episode.id),
+                        },
+                        {
+                          label: "Remove from playlist",
+                          icon: PlayListRemoveIcon,
+                          onClick: () => scheduleRemoveFromPlaylist(episode),
+                        },
+                      ]}
                       key={episode.id}
                     />
                   );
                 })}
               </PlaylistQueue>
+            </div>
           ) : (
             <EmptyState
+              className="mt-4"
               title="Playlist is empty"
               description="Add episodes from Subscriptions to start listening."
             />
           )}
         </div>
       </AppShell>
-      {modal === "show-notes" ? (
+      {modal === "show-notes" && showNotesEpisode ? (
         <ModalScreen>
           <ShowNotes
-            podcastTitle={currentEpisode?.podcastTitle ?? ""}
-            episodeTitle={currentEpisode?.title ?? ""}
+            podcastTitle={showNotesEpisode.podcastTitle ?? ""}
+            episodeTitle={showNotesEpisode.title ?? ""}
+            onClose={() => {
+              setModal(null);
+              setShowNotesEpisodeId(null);
+            }}
           >
-            No show notes available.
+            {showNotesEpisode.description?.trim() || "No show notes available."}
           </ShowNotes>
         </ModalScreen>
       ) : null}

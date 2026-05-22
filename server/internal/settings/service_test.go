@@ -2,6 +2,7 @@ package settings
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -79,6 +80,84 @@ func TestUpdateRejectsEnablingProxyWhenUnavailable(t *testing.T) {
 	enabled := true
 	if _, err := service.Update(context.Background(), UpdateInput{ProxyEnabled: &enabled}); err != ErrProxyNotConfigured {
 		t.Fatalf("expected ErrProxyNotConfigured, got %v", err)
+	}
+}
+
+func TestGetProxyStatusReturnsOffWhenDisabled(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	service := NewServiceWithProxyStatusLookup(db.SQL, true, func(context.Context) (ProxyLookupResult, error) {
+		t.Fatalf("proxy lookup should not run when proxy is disabled")
+		return ProxyLookupResult{}, nil
+	})
+
+	status, err := service.GetProxyStatus(context.Background())
+	if err != nil {
+		t.Fatalf("GetProxyStatus failed: %v", err)
+	}
+	if status.Status != ProxyStatusOff || status.ProxyEnabled || !status.ProxyConfigured {
+		t.Fatalf("unexpected proxy status: %+v", status)
+	}
+	if status.ExternalIP != nil || status.Country != nil || status.Error != nil {
+		t.Fatalf("expected empty observed identity for disabled proxy, got %+v", status)
+	}
+}
+
+func TestGetProxyStatusReturnsObservedIdentityWhenEnabled(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	service := NewServiceWithProxyStatusLookup(db.SQL, true, func(context.Context) (ProxyLookupResult, error) {
+		return ProxyLookupResult{
+			ExternalIP: "198.51.100.10",
+			Country:    "Germany",
+		}, nil
+	})
+	enabled := true
+	if _, err := service.Update(context.Background(), UpdateInput{ProxyEnabled: &enabled}); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	status, err := service.GetProxyStatus(context.Background())
+	if err != nil {
+		t.Fatalf("GetProxyStatus failed: %v", err)
+	}
+	if status.Status != ProxyStatusOK || !status.ProxyEnabled || !status.ProxyConfigured {
+		t.Fatalf("unexpected proxy status: %+v", status)
+	}
+	if status.ExternalIP == nil || *status.ExternalIP != "198.51.100.10" {
+		t.Fatalf("unexpected external ip: %+v", status.ExternalIP)
+	}
+	if status.Country == nil || *status.Country != "Germany" {
+		t.Fatalf("unexpected country: %+v", status.Country)
+	}
+	if status.Error != nil {
+		t.Fatalf("expected no lookup error, got %+v", status.Error)
+	}
+}
+
+func TestGetProxyStatusReturnsErrorStateWhenLookupFails(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	service := NewServiceWithProxyStatusLookup(db.SQL, true, func(context.Context) (ProxyLookupResult, error) {
+		return ProxyLookupResult{}, errors.New("lookup failed")
+	})
+	enabled := true
+	if _, err := service.Update(context.Background(), UpdateInput{ProxyEnabled: &enabled}); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	status, err := service.GetProxyStatus(context.Background())
+	if err != nil {
+		t.Fatalf("GetProxyStatus failed: %v", err)
+	}
+	if status.Status != ProxyStatusError {
+		t.Fatalf("expected error state, got %+v", status)
+	}
+	if status.Error == nil || *status.Error != "lookup failed" {
+		t.Fatalf("expected lookup error details, got %+v", status.Error)
 	}
 }
 

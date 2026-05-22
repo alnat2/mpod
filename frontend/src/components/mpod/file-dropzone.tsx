@@ -1,5 +1,5 @@
 import { HugeiconsIcon } from "@hugeicons/react";
-import { CloudUploadIcon } from "@hugeicons/core-free-icons";
+import { FileUploadIcon } from "@hugeicons/core-free-icons";
 import { useRef } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -28,12 +28,12 @@ export function FileDropzone({
       )}
     >
       <div className="flex flex-col items-center justify-center gap-2">
-        <p className="text-center text-sm leading-5 font-medium">
+        <p className="text-center text-sm leading-5 font-medium text-foreground">
           Drag and drop your file
         </p>
         <HugeiconsIcon
-          icon={CloudUploadIcon}
-          className="size-20 text-muted-foreground"
+          icon={FileUploadIcon}
+          className="size-20 text-primary"
           aria-hidden="true"
         />
         <p className="text-center text-xs leading-4 text-muted-foreground">
@@ -57,6 +57,7 @@ export function FileDropzone({
       />
       <Button
         variant="link"
+        className="h-9 px-4 no-underline hover:no-underline"
         type="button"
         disabled={disabled}
         onClick={() => inputRef.current?.click()}

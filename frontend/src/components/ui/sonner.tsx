@@ -2,7 +2,7 @@ import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  AlertTriangle as AlertTriangleIcon,
+  AlertTriangle,
   CancelCircleIcon,
   CheckmarkCircleIcon,
   InformationCircleIcon,
@@ -24,7 +24,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
           <HugeiconsIcon icon={InformationCircleIcon} size={16} />
         ),
         warning: (
-          <HugeiconsIcon icon={AlertTriangleIcon} size={16} />
+          <HugeiconsIcon icon={AlertTriangle} size={16} />
         ),
         error: (
           <HugeiconsIcon icon={CancelCircleIcon} size={16} />

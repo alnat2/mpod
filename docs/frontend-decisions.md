@@ -110,6 +110,9 @@ Reasoning:
 Rules:
 - undo must be a real recovery path, not just reassuring copy
 - destructive-action undo feedback should remain available for 15 seconds
+- destructive-action undo feedback must show the remaining undo time as a live countdown, not static `15 seconds` copy
+- screen-level error and undo banners must render out of normal page flow in a fixed overlay
+- screen-level error and undo banners must sit `100px` from the top edge of the viewport
 - manual UI actions that expose undo and delete downloaded files should keep the downloaded file during the undo window
 - if the user clicks `Undo`, cancel the pending action and restore the previous row state, including downloaded state
 - if the undo window expires, commit the action and let the backend apply the approved file lifecycle rule
@@ -178,9 +181,21 @@ Reasoning:
 
 Decision:
 - when an episode download fails, show a notification at the top of the screen
+- while an episode download is running, the episode row `Download` action should switch to a loading icon and be disabled for that episode
+- when an episode is already downloaded, the episode row download icon should use muted color treatment
 - the notification should be dismissible and should close automatically after 10 seconds
 - in the affected episode row, show the normal inline `Download` action again
 - this 10-second failure notification timeout is separate from the 15-second destructive-action undo window
+
+### Icon Library
+
+Decision:
+- use Hugeicons only across the frontend
+
+Rules:
+- do not introduce additional icon libraries
+- when a Hugeicons icon is used in code, prefer the Hugeicons export name directly instead of local alias renaming
+- shared frontend icon choices should stay aligned with the Hugeicons names used by the matching Figma components
 
 Reasoning:
 - the notification makes the failure visible without overloading the row
@@ -196,7 +211,7 @@ Decision:
   - `Speed 1.3x`
   - `Speed 1.5x`
   - `Speed 2x`
-- default playback speed is `Speed 1x`
+- default playback speed is `Speed 1.3x`
 
 Rules:
 - speed selection is a frontend audio playback control

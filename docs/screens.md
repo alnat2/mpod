@@ -40,11 +40,13 @@ Purpose:
 Content:
 - username field
 - password field
+- show/hide password button
 - submit action
 
 UX notes:
 - this should be framed as first-time setup, not open registration
 - language should make it clear this creates the only account for the app
+- password is hidden by default and can be revealed temporarily from the field control
 
 ### 2. Login Screen
 
@@ -57,12 +59,14 @@ Purpose:
 Content:
 - username field
 - password field
+- show/hide password button
 - login action
 
 UX notes:
 - keep it simple and fast
 - no unnecessary extra options for MVP
 - no forgot password flow for MVP
+- password is hidden by default and can be revealed temporarily from the field control
 
 ## Authenticated App Structure
 
@@ -182,6 +186,8 @@ Row and state guidance:
   - `Remove from playlist`
   - `Mark as listened`
 - downloading and playlist actions should be one tap from the episode list
+- while an episode is downloading, its row-level `Download` button should show a loading icon and should not start a second download request
+- when an episode is already downloaded, its row-level download icon should use muted color treatment
 - do not expose a separate `Delete` or `Delete download` action in the MVP UI
 - downloaded files are cleaned up through playback completion or manual `mark listened`
 - mark listened and mark unlistened should be available from the episode row or an episode action menu
@@ -233,12 +239,16 @@ Content:
 - scheduler status information
 - proxy usage switch when SOCKS5 proxy configuration is available
 - read-only proxy configured status
+- read-only proxy runtime identity status with external IP and country when proxy usage is enabled
 - logout action
 
 UX notes:
 - settings should remain small and practical
 - this is not a profile-management area in the multi-user sense
 - the proxy control should be a simple on/off switch; host, port, username, and password remain runtime configuration
+- when proxy usage is disabled, the settings view should show `Proxy is off`
+- when proxy usage is enabled and runtime lookup succeeds, the settings view should show the observed external IP and country label returned by backend
+- when proxy runtime lookup fails, the settings view should show an explicit unknown/error state from backend rather than inventing geo or connectivity details
 - for daily refresh time, the save action should be secondary when the time has not changed and primary only after the user changes the time
 - do not add cleanup toggles unless product decisions are intentionally changed
 
@@ -270,7 +280,7 @@ Behavior:
 - visible when an episode is loaded for playback
 - remains available across authenticated screens
 - uses backend audio streaming for playback, preferring downloaded audio when available
-- default playback speed is `Speed 1x`
+- default playback speed is `Speed 1.3x`
 
 UX notes:
 - this should be central to the app experience
@@ -302,8 +312,11 @@ Use for actions such as:
 
 UX notes:
 - prefer toast, banner, or inline feedback with an `Undo` action instead of blocking confirmation dialogs
+- screen-level undo and error banners should render in a fixed overlay instead of taking space in the page layout
+- fixed screen-level banners should be positioned `100px` from the top of the viewport
 - undo must be a real recovery path, not only reassuring copy
 - undo feedback should remain available for 15 seconds before it disappears
+- undo feedback should show a live countdown of the remaining seconds in the undo window
 - manual UI actions that expose undo and delete downloaded files should keep the downloaded file during the undo window
 - if the user clicks `Undo`, cancel the pending action and restore the previous row state, including downloaded state
 - if the undo window expires, commit the action and let the backend apply the approved file lifecycle rule
@@ -321,6 +334,7 @@ Use for:
 UX notes:
 - use `Unsubscribe`, not `Delete podcast`, in the product UI
 - communicate that unsubscribing removes the podcast, its episodes, playlist entries, playback state, and downloaded files
+- use undo feedback for unsubscribe instead of a confirmation modal; commit the backend deletion only after the undo window expires
 - do not promise file restoration after the unsubscribe action has committed
 
 ### Lightweight Scheduling Control

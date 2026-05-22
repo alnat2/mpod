@@ -9,7 +9,10 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
-import type { PlaybackSpeedLabel } from "@/components/mpod/playback";
+import {
+  defaultPlaybackSpeed,
+  type PlaybackSpeedLabel,
+} from "@/components/mpod/playback";
 import { api, type Episode, type PlaybackState } from "./api";
 
 export type QueueEpisode = Episode & {
@@ -22,12 +25,16 @@ type PlaybackContextType = {
   queue: QueueEpisode[];
   currentEpisode: QueueEpisode | null;
   playing: boolean;
+  playbackError: string | null;
   positionSeconds: number;
   durationSeconds: number;
   speedLabel: PlaybackSpeedLabel;
   loading: boolean;
   setSpeedLabel: (label: PlaybackSpeedLabel) => void;
+  clearPlaybackError: () => void;
   playToggle: () => void;
+  playEpisode: (episodeId: number) => void;
+  seekTo: (positionSeconds: number) => void;
   seekForward: () => void;
   seekBackward: () => void;
   reloadQueue: () => Promise<void>;
@@ -48,16 +55,89 @@ function clampPosition(positionSeconds: number, durationSeconds?: number | null)
   return Math.min(durationSeconds, nonNegativePosition);
 }
 
+async function attemptAudioPlay(
+  audio: HTMLAudioElement,
+  onFailure: (error: unknown) => void
+) {
+  try {
+    await audio.play();
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return;
+    }
+    onFailure(error);
+  }
+}
+
+function describeAudioError(error: unknown) {
+  if (error instanceof DOMException) {
+    return `${error.name}: ${error.message || "Playback was blocked."}`;
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Playback failed.";
+}
+
+function describeMediaError(error: MediaError | null) {
+  if (!error) {
+    return "Media failed to load.";
+  }
+
+  switch (error.code) {
+    case MediaError.MEDIA_ERR_ABORTED:
+      return "Media loading was aborted.";
+    case MediaError.MEDIA_ERR_NETWORK:
+      return "Network error while loading audio.";
+    case MediaError.MEDIA_ERR_DECODE:
+      return "Audio could not be decoded.";
+    case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+      return "Audio source is not supported.";
+    default:
+      return error.message || "Media failed to load.";
+  }
+}
+
+function primeAudioSource(
+  audio: HTMLAudioElement,
+  episode: QueueEpisode,
+  positionSeconds: number,
+  setPositionSeconds: (positionSeconds: number) => void,
+  markPrimed: () => void
+) {
+  const targetSrc = `${window.location.origin}/api/episodes/${episode.id}/audio`;
+  if (!audio.src.includes(targetSrc)) {
+    audio.pause();
+    audio.src = targetSrc;
+    markPrimed();
+  }
+  audio.currentTime = positionSeconds;
+  setPositionSeconds(positionSeconds);
+}
+
 export function PlaybackProvider({ children }: { children: ReactNode }) {
   const [queue, setQueue] = useState<QueueEpisode[]>([]);
+  const [activeEpisodeId, setActiveEpisodeId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [positionSeconds, setPositionSeconds] = useState(0);
-  const [speedLabel, setSpeedLabel] = useState<PlaybackSpeedLabel>("Speed 1x");
+  const [speedLabel, setSpeedLabel] =
+    useState<PlaybackSpeedLabel>(defaultPlaybackSpeed);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const currentEpisode = queue[0] ?? null;
+  const sourcePrimedRef = useRef(false);
+  const userInitiatedPlayRef = useRef(false);
+  const queueRef = useRef<QueueEpisode[]>([]);
+  const activeEpisode =
+    activeEpisodeId !== null
+      ? queue.find((episode) => episode.id === activeEpisodeId) ?? null
+      : null;
+  const currentEpisode = activeEpisode ?? queue[0] ?? null;
   const currentEpisodeRef = useRef<QueueEpisode | null>(null);
+  const pendingPlayEpisodeIdRef = useRef<number | null>(null);
   const currentEpisodeId = currentEpisode?.id;
   const currentEpisodeDuration = currentEpisode?.duration ?? 0;
 
@@ -106,7 +186,9 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         return {
           ...episode,
           podcastTitle: podcast?.title ?? "Podcast",
-          podcastImageUrl: podcast?.imageUrl,
+          podcastImageUrl: podcast?.imageUrl
+            ? api.podcasts.imagePath(podcast.id)
+            : null,
           playback: playbackResults[index].playback,
         };
       });
@@ -120,33 +202,99 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
+
+  useEffect(() => {
     currentEpisodeRef.current = currentEpisode;
   }, [currentEpisode]);
+
+  useEffect(() => {
+    const pendingEpisodeId = pendingPlayEpisodeIdRef.current;
+    if (pendingEpisodeId === null) {
+      return;
+    }
+
+    const episodeIndex = queue.findIndex(
+      (episode) => episode.id === pendingEpisodeId
+    );
+    if (episodeIndex < 0) {
+      return;
+    }
+
+    pendingPlayEpisodeIdRef.current = null;
+    setActiveEpisodeId(pendingEpisodeId);
+  }, [queue]);
 
   // Setup audio element
   useEffect(() => {
     const audio = new Audio();
     audioRef.current = audio;
+    sourcePrimedRef.current = false;
 
     const onTimeUpdate = () => {
       setPositionSeconds(audio.currentTime);
     };
 
+    const onPlaying = () => {
+      userInitiatedPlayRef.current = false;
+      setPlaybackError(null);
+    };
+
     const onEnded = () => {
-      setPlaying(false);
+      const finishedEpisode = currentEpisodeRef.current;
+      const currentQueue = queueRef.current;
+      const currentIndex = finishedEpisode
+        ? currentQueue.findIndex((episode) => episode.id === finishedEpisode.id)
+        : -1;
+      const nextEpisode =
+        currentIndex >= 0 ? currentQueue[currentIndex + 1] ?? null : null;
+
+      if (nextEpisode) {
+        const nextPosition = nextEpisode.playback?.positionSeconds ?? 0;
+        setActiveEpisodeId(nextEpisode.id);
+        primeAudioSource(
+          audio,
+          nextEpisode,
+          nextPosition,
+          setPositionSeconds,
+          () => {
+            sourcePrimedRef.current = true;
+          }
+        );
+        setPlaybackError(null);
+        setPlaying(true);
+      } else {
+        setPlaying(false);
+      }
+
       void commitPlayback(audio.currentTime, { completed: true }).then(() =>
         loadQueue()
       );
     };
 
+    const onError = () => {
+      setPlaying(false);
+      if (!userInitiatedPlayRef.current) {
+        return;
+      }
+      userInitiatedPlayRef.current = false;
+      setPlaybackError(describeMediaError(audio.error));
+    };
+
     audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("playing", onPlaying);
     audio.addEventListener("ended", onEnded);
+    audio.addEventListener("error", onError);
 
     return () => {
       audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("playing", onPlaying);
       audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("error", onError);
       audio.pause();
       audio.src = "";
+      sourcePrimedRef.current = false;
     };
   }, [commitPlayback, loadQueue]);
 
@@ -162,26 +310,56 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   // Sync audio source when episode changes
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !currentEpisode) {
-      if (audio) {
-        audio.pause();
-        audio.src = "";
+    if (!audio) {
+      return;
+    }
+
+    const pendingEpisodeId = pendingPlayEpisodeIdRef.current;
+    if (!currentEpisode) {
+      if (pendingEpisodeId !== null) {
+        return;
       }
+
+      audio.pause();
+      audio.src = "";
+      sourcePrimedRef.current = false;
       setPlaying(false);
       return;
     }
 
-    const currentSrc = audio.src;
+    if (pendingEpisodeId !== null && currentEpisode.id !== pendingEpisodeId) {
+      return;
+    }
+
     const targetSrc = `${window.location.origin}/api/episodes/${currentEpisode.id}/audio`;
+    const currentSrc = audio.src;
+    const shouldPrimeSource =
+      pendingEpisodeId !== null || playing || sourcePrimedRef.current;
 
     if (!currentSrc.includes(targetSrc)) {
-      audio.src = targetSrc;
       const initialPos = currentEpisode.playback?.positionSeconds ?? 0;
-      audio.currentTime = initialPos;
       setPositionSeconds(initialPos);
-      if (playing) {
-        audio.play().catch(() => setPlaying(false));
+      if (!shouldPrimeSource) {
+        setPlaybackError(null);
+        return;
       }
+
+      primeAudioSource(
+        audio,
+        currentEpisode,
+        initialPos,
+        setPositionSeconds,
+        () => {
+          sourcePrimedRef.current = true;
+        }
+      );
+    }
+
+    if (playing) {
+      void attemptAudioPlay(audio, (error) => {
+        setPlaying(false);
+        setPlaybackError(describeAudioError(error));
+      });
     }
   }, [currentEpisode, playing]);
 
@@ -191,7 +369,10 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     if (!audio) return;
 
     if (playing) {
-      audio.play().catch(() => setPlaying(false));
+      void attemptAudioPlay(audio, (error) => {
+        setPlaying(false);
+        setPlaybackError(describeAudioError(error));
+      });
     } else {
       audio.pause();
     }
@@ -218,8 +399,61 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   }, [playing, currentEpisodeId, commitPlayback]);
 
   const playToggle = useCallback(() => {
+    setPlaybackError(null);
+    userInitiatedPlayRef.current = true;
+    const audio = audioRef.current;
+    if (!playing && audio && currentEpisode) {
+      const nextPosition = positionSeconds || currentEpisode.playback?.positionSeconds || 0;
+      primeAudioSource(
+        audio,
+        currentEpisode,
+        nextPosition,
+        setPositionSeconds,
+        () => {
+          sourcePrimedRef.current = true;
+        }
+      );
+    }
     setPlaying((p) => !p);
-  }, []);
+  }, [currentEpisode, playing, positionSeconds]);
+
+  const playEpisode = useCallback((episodeId: number) => {
+    setPlaybackError(null);
+    userInitiatedPlayRef.current = true;
+    const queuedEpisode =
+      queue.find((episode) => episode.id === episodeId) ?? null;
+    pendingPlayEpisodeIdRef.current = queuedEpisode ? null : episodeId;
+    setActiveEpisodeId(episodeId);
+    const audio = audioRef.current;
+    if (audio) {
+      const initialPos = queuedEpisode?.playback?.positionSeconds ?? 0;
+      if (queuedEpisode) {
+        primeAudioSource(
+          audio,
+          queuedEpisode,
+          initialPos,
+          setPositionSeconds,
+          () => {
+            sourcePrimedRef.current = true;
+          }
+        );
+      } else {
+        const targetSrc = `${window.location.origin}/api/episodes/${episodeId}/audio`;
+        if (!audio.src.includes(targetSrc)) {
+          audio.pause();
+          audio.src = targetSrc;
+          sourcePrimedRef.current = true;
+        }
+        audio.currentTime = initialPos;
+        setPositionSeconds(initialPos);
+      }
+      void attemptAudioPlay(audio, (error) => {
+        setPlaying(false);
+        setPlaybackError(describeAudioError(error));
+      });
+    }
+    setPlaying(true);
+  }, [queue]);
 
   const seekForward = useCallback(() => {
     if (!audioRef.current || !currentEpisode) return;
@@ -237,17 +471,29 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     void commitPlayback(nextPos, { didSeek: true });
   }, [currentEpisode, commitPlayback]);
 
+  const seekTo = useCallback((positionSeconds: number) => {
+    if (!audioRef.current || !currentEpisode) return;
+    const nextPos = clampPosition(positionSeconds, currentEpisode.duration);
+    audioRef.current.currentTime = nextPos;
+    setPositionSeconds(nextPos);
+    void commitPlayback(nextPos, { didSeek: true });
+  }, [currentEpisode, commitPlayback]);
+
   const contextValue = useMemo(
     () => ({
       queue,
       currentEpisode,
       playing,
+      playbackError,
       positionSeconds,
       durationSeconds: currentEpisodeDuration,
       speedLabel,
       loading,
       setSpeedLabel,
+      clearPlaybackError: () => setPlaybackError(null),
       playToggle,
+      playEpisode,
+      seekTo,
       seekForward,
       seekBackward,
       reloadQueue: loadQueue,
@@ -257,12 +503,15 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       queue,
       currentEpisode,
       playing,
+      playbackError,
       positionSeconds,
       currentEpisodeDuration,
       speedLabel,
       loading,
       loadQueue,
       playToggle,
+      playEpisode,
+      seekTo,
       seekForward,
       seekBackward,
     ]

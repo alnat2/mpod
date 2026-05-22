@@ -83,7 +83,7 @@ Expected runtime configuration:
 - `SOCKS5_USERNAME`
 - `SOCKS5_PASSWORD`
 
-Proxy host, port, username, and password remain runtime configuration. When proxy configuration is available, the user can turn proxy usage on or off from Settings.
+Proxy host, port, username, and password remain runtime configuration. Default proxy runtime values are `SOCKS5_HOST=192.168.0.222` and `SOCKS5_PORT=1080`. When proxy configuration is available, the user can turn proxy usage on or off from Settings.
 
 ## Repository Status
 
@@ -98,7 +98,7 @@ Current backend capabilities include:
 - playlist add/remove/reorder
 - episode download/delete and authenticated audio playback delivery
 - playback sync endpoints
-- daily refresh settings, proxy on/off settings, and scheduler status
+- daily refresh settings, proxy on/off settings, proxy runtime status, and scheduler status
 
 Backend test/bootstrap notes:
 - see [server/TESTING.md](/Users/cross/Documents/mpod/server/TESTING.md)

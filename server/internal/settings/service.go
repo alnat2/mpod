@@ -18,6 +18,7 @@ var (
 type Service struct {
 	db              *sql.DB
 	proxyConfigured bool
+	proxyLookup     ProxyStatusLookup
 }
 
 type Values struct {
@@ -26,15 +27,43 @@ type Values struct {
 	ProxyConfigured  bool   `json:"proxyConfigured"`
 }
 
+type ProxyStatus struct {
+	ProxyEnabled    bool    `json:"proxyEnabled"`
+	ProxyConfigured bool    `json:"proxyConfigured"`
+	Status          string  `json:"status"`
+	ExternalIP      *string `json:"externalIp"`
+	Country         *string `json:"country"`
+	Error           *string `json:"error"`
+}
+
+type ProxyLookupResult struct {
+	ExternalIP string
+	Country    string
+}
+
+type ProxyStatusLookup func(context.Context) (ProxyLookupResult, error)
+
+const (
+	ProxyStatusOff     = "off"
+	ProxyStatusOK      = "ok"
+	ProxyStatusUnknown = "unknown"
+	ProxyStatusError   = "error"
+)
+
 type UpdateInput struct {
 	DailyRefreshTime *string `json:"dailyRefreshTime"`
 	ProxyEnabled     *bool   `json:"proxyEnabled"`
 }
 
 func NewService(db *sql.DB, proxyConfigured bool) *Service {
+	return NewServiceWithProxyStatusLookup(db, proxyConfigured, nil)
+}
+
+func NewServiceWithProxyStatusLookup(db *sql.DB, proxyConfigured bool, proxyLookup ProxyStatusLookup) *Service {
 	return &Service{
 		db:              db,
 		proxyConfigured: proxyConfigured,
+		proxyLookup:     proxyLookup,
 	}
 }
 
@@ -58,6 +87,63 @@ func (s *Service) Get(ctx context.Context) (Values, error) {
 
 func (s *Service) ProxyEnabled(ctx context.Context) (bool, error) {
 	return s.loadProxyEnabled(ctx)
+}
+
+func (s *Service) GetProxyStatus(ctx context.Context) (ProxyStatus, error) {
+	enabled, err := s.loadProxyEnabled(ctx)
+	if err != nil {
+		return ProxyStatus{}, err
+	}
+
+	status := ProxyStatus{
+		ProxyEnabled:    enabled,
+		ProxyConfigured: s.proxyConfigured,
+	}
+
+	if !enabled {
+		status.Status = ProxyStatusOff
+		return status, nil
+	}
+
+	if !s.proxyConfigured {
+		status.Status = ProxyStatusUnknown
+		message := "Proxy runtime configuration is unavailable"
+		status.Error = &message
+		return status, nil
+	}
+
+	if s.proxyLookup == nil {
+		status.Status = ProxyStatusUnknown
+		message := "Proxy status lookup is unavailable"
+		status.Error = &message
+		return status, nil
+	}
+
+	result, err := s.proxyLookup(ctx)
+	if err != nil {
+		status.Status = ProxyStatusError
+		message := err.Error()
+		status.Error = &message
+		return status, nil
+	}
+
+	if strings.TrimSpace(result.ExternalIP) == "" && strings.TrimSpace(result.Country) == "" {
+		status.Status = ProxyStatusUnknown
+		message := "Proxy status check returned no observable network identity"
+		status.Error = &message
+		return status, nil
+	}
+
+	status.Status = ProxyStatusOK
+	if strings.TrimSpace(result.ExternalIP) != "" {
+		externalIP := strings.TrimSpace(result.ExternalIP)
+		status.ExternalIP = &externalIP
+	}
+	if strings.TrimSpace(result.Country) != "" {
+		country := strings.TrimSpace(result.Country)
+		status.Country = &country
+	}
+	return status, nil
 }
 
 func (s *Service) Update(ctx context.Context, input UpdateInput) (Values, error) {

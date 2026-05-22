@@ -2,7 +2,7 @@ import type { FormEvent } from "react";
 import { useState } from "react";
 
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { MultiplicationSignIcon } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -97,7 +97,11 @@ export function AddPodcast({
             disabled={disabled}
             onClick={onClose}
           >
-            <HugeiconsIcon icon={Cancel01Icon} className="size-4" aria-hidden="true" />
+            <HugeiconsIcon
+              icon={MultiplicationSignIcon}
+              className="size-4"
+              aria-hidden="true"
+            />
           </Button>
         </CardHeader>
         <div className="px-6 pb-3">

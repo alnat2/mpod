@@ -1,4 +1,7 @@
-import type { FormEventHandler } from "react";
+import { useState, type FormEventHandler } from "react";
+
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ViewIcon } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +39,8 @@ export function AuthCard({
   error,
   onSubmit,
 }: AuthCardProps) {
+  const [showPassword, setShowPassword] = useState(false);
+
   return (
     <Card
       className={cn(
@@ -61,14 +66,31 @@ export function AuthCard({
             </Field>
             <Field>
               <FieldLabel htmlFor="auth-password">{passwordLabel}</FieldLabel>
-              <Input
-                id="auth-password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                placeholder={passwordPlaceholder}
-                disabled={disabled}
-              />
+              <div className="relative">
+                <Input
+                  id="auth-password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  placeholder={passwordPlaceholder}
+                  disabled={disabled}
+                  className="pr-10"
+                />
+                <Button
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute top-1/2 right-1 size-6 -translate-y-1/2 rounded-md p-0"
+                  variant="ghost"
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setShowPassword((current) => !current)}
+                >
+                  <HugeiconsIcon
+                    icon={ViewIcon}
+                    className="size-4"
+                    aria-hidden="true"
+                  />
+                </Button>
+              </div>
             </Field>
           </FieldGroup>
           <Button className="h-10 w-full" type="submit" disabled={disabled}>

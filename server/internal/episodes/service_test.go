@@ -63,6 +63,52 @@ func TestGetByIDReturnsEpisode(t *testing.T) {
 	}
 }
 
+func TestListByPodcastOrdersByIDDescWhenPublishedAtMatches(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	publishedAt := time.Date(2026, 4, 23, 8, 0, 0, 0, time.UTC)
+	mustExec(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExec(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, published_at) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3', ?)`, publishedAt)
+	mustExec(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, published_at) VALUES (2, 1, 'ep-2', 'Episode 2', 'https://example.com/2.mp3', ?)`, publishedAt)
+
+	service := NewService(db.SQL)
+	items, err := service.ListByPodcast(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("ListByPodcast failed: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 episodes, got %d", len(items))
+	}
+	if items[0].ID != 2 || items[1].ID != 1 {
+		t.Fatalf("expected descending id tie-breaker, got %+v", items)
+	}
+}
+
+func TestGetByIDReturnsDownloadedDescriptionAndDuration(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	publishedAt := time.Date(2026, 4, 23, 8, 0, 0, 0, time.UTC)
+	mustExec(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExec(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, description, audio_url, duration, downloaded_path, published_at) VALUES (1, 1, 'ep-1', 'Episode', 'Shownotes', 'https://example.com/1.mp3', 90, '/tmp/file.mp3', ?)`, publishedAt)
+
+	service := NewService(db.SQL)
+	item, err := service.GetByID(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	if item.Description == nil || *item.Description != "Shownotes" {
+		t.Fatalf("expected description to be loaded, got %+v", item.Description)
+	}
+	if item.Duration == nil || *item.Duration != 90 {
+		t.Fatalf("expected duration to be loaded, got %+v", item.Duration)
+	}
+	if !item.Downloaded {
+		t.Fatalf("expected downloaded flag to be true")
+	}
+}
+
 func newTestDB(t *testing.T) *storage.DB {
 	t.Helper()
 

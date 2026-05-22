@@ -37,6 +37,11 @@ If this file conflicts with those documents, follow:
 - Do not introduce cloud or distributed infrastructure.
 - Keep the MVP aligned with the approved docs.
 - Avoid speculative features unless explicitly requested.
+- Do not make assumptions when requirements, design intent, API behavior, file access, or Figma access are unclear. This applies to both design and coding work.
+- If a required Figma file, page, frame, component, or section cannot be accessed, stop and say exactly: `I do not have access to the file/frame needed for this task.`
+- If required code, docs, assets, or local files cannot be accessed for a coding task, stop and say exactly what access is missing.
+- If you have an implementation or design idea but the source material is unavailable or ambiguous, stop and ask before acting. State the proposed action in plain language, for example: `I want to do X and Y. What do you say?`
+- Do not invent behavior, UI, layout, labels, icons, colors, spacing, or data contracts to fill gaps.
 - When a task is complete, simply state that the task is finished. Describe what was done only if the user specifically asks for that detail.
 
 ## Product Constraints
@@ -92,6 +97,8 @@ For frontend implementation from Figma:
 - Only elements from Figma sections marked `Ready for Development` should be included in the development process.
 - Before implementing a component, analyze the referenced Figma layout and confirm it is development-ready.
 - Follow the same discipline used for Figma component creation: reuse approved primitives and tokens, do not invent missing behavior or visuals, and ask when the source is unclear.
+- After creating or updating frontend UI from Figma frames or components, perform a real visual check in a browser against the referenced Figma source before calling the task complete.
+- If the referenced Figma file, page, frame, component, screenshot, or status cannot be accessed, stop. Do not continue by guessing from memory, docs, or prior screenshots unless the user explicitly approves that fallback.
 - Follow `skills/frontend-implementation/SKILL.md`.
 
 ## API Guidance

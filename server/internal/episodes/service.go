@@ -15,6 +15,7 @@ type Episode struct {
 	ID          int64      `json:"id"`
 	PodcastID   int64      `json:"podcastId"`
 	Title       string     `json:"title"`
+	Description *string    `json:"description,omitempty"`
 	AudioURL    string     `json:"audioUrl"`
 	Duration    *int64     `json:"duration"`
 	Downloaded  bool       `json:"downloaded"`
@@ -28,7 +29,7 @@ func NewService(db *sql.DB) *Service {
 
 func (s *Service) ListByPodcast(ctx context.Context, podcastID int64) ([]Episode, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, podcast_id, title, audio_url, duration, downloaded_path, is_listened, published_at
+		SELECT id, podcast_id, title, description, audio_url, duration, downloaded_path, is_listened, published_at
 		FROM episodes
 		WHERE podcast_id = ?
 		ORDER BY published_at DESC, id DESC
@@ -51,7 +52,7 @@ func (s *Service) ListByPodcast(ctx context.Context, podcastID int64) ([]Episode
 
 func (s *Service) GetByID(ctx context.Context, episodeID int64) (Episode, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, podcast_id, title, audio_url, duration, downloaded_path, is_listened, published_at
+		SELECT id, podcast_id, title, description, audio_url, duration, downloaded_path, is_listened, published_at
 		FROM episodes
 		WHERE id = ?
 	`, episodeID)
@@ -64,6 +65,7 @@ type scanner interface {
 
 func scanEpisode(row scanner) (Episode, error) {
 	var item Episode
+	var description sql.NullString
 	var downloadedPath sql.NullString
 	var duration sql.NullInt64
 	var publishedAt sql.NullTime
@@ -72,6 +74,7 @@ func scanEpisode(row scanner) (Episode, error) {
 		&item.ID,
 		&item.PodcastID,
 		&item.Title,
+		&description,
 		&item.AudioURL,
 		&duration,
 		&downloadedPath,
@@ -83,6 +86,9 @@ func scanEpisode(row scanner) (Episode, error) {
 
 	if duration.Valid {
 		item.Duration = &duration.Int64
+	}
+	if description.Valid {
+		item.Description = &description.String
 	}
 	item.Downloaded = downloadedPath.Valid && downloadedPath.String != ""
 	if publishedAt.Valid {

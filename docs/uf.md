@@ -75,6 +75,7 @@ Design intent:
 - setup should feel like first-run initialization, not public registration
 - there should be no language suggesting multi-user support
 - the empty state should immediately guide the user toward adding a podcast or importing OPML
+- the password field should hide the value by default and allow a temporary show/hide toggle
 
 Backend rules:
 - registration is allowed only if no user exists
@@ -98,6 +99,7 @@ Design intent:
 - the app should prioritize immediate access over extra auth ceremony
 - there is no public registration and no forgot password flow for MVP
 - if the session is still valid, skip login and go directly to the main app
+- the password field should hide the value by default and allow a temporary show/hide toggle
 
 Backend rules:
 - login is session-based
@@ -209,8 +211,10 @@ Design intent:
 - single-podcast refresh can be exposed on podcast cards as a lightweight supporting action
 - downloading and playlist operations should be available directly from episode lists
 - episode rows should make title, date, downloaded state, listened state, and playlist state visible where relevant
+- when an episode is already downloaded, the row-level download icon should switch to a muted visual state
 - icon-only episode-row controls should use clear tooltips that match the current action or state: `Download`, `Downloaded`, `Add to playlist`, `Remove from playlist`, and `Mark as listened`
 - when a download fails, show a dismissible notification at the top of the screen for 10 seconds and return the affected row to a normal inline `Download` action
+- screen-level error and undo banners should render out of flow in a fixed overlay positioned `100px` from the top of the viewport
 - the 10-second download-failure notification timeout is separate from the 15-second destructive-action undo window
 - episode rows should use `Mark listened` and `Mark unlistened` actions for manual listened-state changes, not `Show listened` or `Show unlistened` filter buttons
 - `Mark all listened` is a selected-podcast episode-list action, not a global action for all subscriptions
@@ -308,7 +312,7 @@ User steps:
 
 Playback speed:
 - the player should expose these speed options: `Speed 0.5x`, `Speed 0.75x`, `Speed 1x`, `Speed 1.3x`, `Speed 1.5x`, and `Speed 2x`
-- default playback speed is `Speed 1x`
+- default playback speed is `Speed 1.3x`
 - speed selection affects frontend audio playback; backend playback progress remains stored in seconds
 
 When playback reaches completion:
@@ -385,6 +389,7 @@ Design intent:
 - listened state should be visible as metadata or filtering context
 - destructive side effects should use undo feedback instead of a blocking confirmation dialog where practical
 - undo feedback should remain available for 15 seconds before it disappears
+- undo feedback should display the remaining undo window as a live seconds countdown
 - for manual undoable actions, file deletion should happen only after the 15-second undo window expires
 - if the user clicks `Undo`, restore the previous row state, including downloaded state
 - simplest MVP implementation: keep the action pending in frontend state and send the backend mutation only when the undo window expires
@@ -398,26 +403,29 @@ Backend rules:
 ## Settings And Scheduler Flow
 
 Goal:
-- configure daily refresh time, proxy usage, and understand scheduler status
+- configure daily refresh time, proxy usage, understand scheduler status, and view current proxy runtime identity
 
 User steps:
 1. User opens settings.
 2. User views the current daily refresh time.
 3. User updates the daily refresh time if desired.
 4. User turns configured proxy usage on or off if proxy configuration is available.
-5. User views scheduler status.
+5. If proxy usage is enabled, user can view the current observed external IP and country reported by backend.
+6. User views scheduler status.
 
 Design intent:
 - settings should stay small and operational
 - expose only user-editable behavior, not internal system complexity
 - scheduler state should be understandable without overwhelming the user
 - proxy settings should be a simple on/off switch, not a host or credential editor
+- proxy runtime identity should show backend-reported state such as off, active, unknown, or error
 
 Backend rules:
 - scheduler runs once per day at one global configured time
 - scheduler status comes from the backend
 - proxy host, port, username, and password come from environment variables
 - proxy enabled/disabled state is stored in database-backed settings
+- proxy runtime identity comes from a backend status lookup and must not be invented by frontend
 
 ## Logout Flow
 
@@ -462,12 +470,15 @@ Goal:
 User steps:
 1. User chooses `Unsubscribe` from a podcast card or podcast-level action area.
 2. UI communicates that unsubscribing removes the podcast, its episodes, playlist entries, playback state, and downloaded files.
-3. Backend deletes the subscription and associated data according to approved lifecycle rules.
-4. UI removes the podcast from Subscriptions and updates playlist/player state from backend state.
+3. UI shows undo feedback and keeps the backend subscription unchanged during the undo window.
+4. If the user clicks `Undo`, the pending unsubscribe is canceled and the podcast remains subscribed.
+5. If the undo window expires, backend deletes the subscription and associated data according to approved lifecycle rules.
+6. UI removes the podcast from Subscriptions and updates playlist/player state from backend state.
 
 Design intent:
 - use the product term `Unsubscribe`, not a generic `Delete podcast` label
 - make the cascade clear at the action point because it affects more than the visible podcast card
+- use undo feedback instead of a confirmation modal
 - do not promise file restoration after the unsubscribe action has committed
 
 Backend rules:

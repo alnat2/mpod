@@ -163,6 +163,37 @@ func TestPodcastGetRejectsInvalidPathParameter(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "INVALID_PATH_PARAM")
 }
 
+func TestPodcastImageProxiesArtwork(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		if req.URL.String() != "https://cdn.example.com/artwork.png" {
+			t.Fatalf("unexpected image request URL: %s", req.URL.String())
+		}
+		return routerBinaryResponse("image/png", []byte("image-bytes")), nil
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, image_url, rss_url) VALUES (1, 'Podcast', 'https://cdn.example.com/artwork.png', 'https://example.com/feed.xml')`)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/1/image", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("expected image/png content type, got %q", rec.Header().Get("Content-Type"))
+	}
+	if rec.Body.String() != "image-bytes" {
+		t.Fatalf("unexpected image body: %q", rec.Body.String())
+	}
+}
+
 func TestSettingsPatchRejectsInvalidTime(t *testing.T) {
 	handler, cookie := newAuthedRouter(t)
 
@@ -643,6 +674,21 @@ func TestPodcastsRefreshAllRefreshesSubscribedPodcasts(t *testing.T) {
 		t.Fatalf("unexpected refresh-all payload: %s", rec.Body.String())
 	}
 	assertTableCount(t, db, `SELECT COUNT(*) FROM episodes`, 2)
+
+	jobsReq := httptest.NewRequest(nethttp.MethodGet, "/api/jobs/status", nil)
+	jobsReq.AddCookie(cookie)
+	jobsRec := httptest.NewRecorder()
+	handler.ServeHTTP(jobsRec, jobsReq)
+
+	if jobsRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from jobs status, got %d body=%s", jobsRec.Code, jobsRec.Body.String())
+	}
+	if !strings.Contains(jobsRec.Body.String(), `"state":"completed"`) {
+		t.Fatalf("expected completed scheduler state after refresh-all, got %s", jobsRec.Body.String())
+	}
+	if !strings.Contains(jobsRec.Body.String(), `"lastRunAt"`) {
+		t.Fatalf("expected refresh-all to record lastRunAt, got %s", jobsRec.Body.String())
+	}
 }
 
 func TestPodcastRefreshRejectsConcurrentRefresh(t *testing.T) {
@@ -1134,8 +1180,17 @@ func TestEpisodeAudioServesDownloadedFile(t *testing.T) {
 	}
 }
 
-func TestEpisodeAudioRedirectsToRemoteAudioWhenNotDownloaded(t *testing.T) {
-	handler, db := newTestRouter(t)
+func TestEpisodeAudioProxiesRemoteAudioWhenNotDownloaded(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		if req.URL.String() != "https://cdn.example.com/audio.mp3" {
+			t.Fatalf("unexpected audio request URL: %s", req.URL.String())
+		}
+		return routerBinaryResponse("audio/mpeg", []byte("remote-audio")), nil
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
 	cookie := register(t, handler, "admin", "secret")
 	seedEpisode(t, db, 1, 1)
 
@@ -1145,11 +1200,54 @@ func TestEpisodeAudioRedirectsToRemoteAudioWhenNotDownloaded(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != nethttp.StatusFound {
-		t.Fatalf("expected 302, got %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if got := rec.Header().Get("Location"); got != "https://cdn.example.com/audio.mp3" {
-		t.Fatalf("expected redirect to remote audio, got %q", got)
+	if got := rec.Header().Get("Content-Type"); got != "audio/mpeg" {
+		t.Fatalf("expected audio/mpeg content type, got %q", got)
+	}
+	if rec.Body.String() != "remote-audio" {
+		t.Fatalf("expected proxied remote audio body, got %q", rec.Body.String())
+	}
+}
+
+func TestEpisodeAudioForwardsRangeHeaderToRemoteAudio(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		if got := req.Header.Get("Range"); got != "bytes=10-19" {
+			t.Fatalf("expected Range header to be forwarded, got %q", got)
+		}
+		resp := routerBinaryResponse("audio/mpeg", []byte("partial-audio"))
+		resp.StatusCode = nethttp.StatusPartialContent
+		resp.Status = "206 Partial Content"
+		resp.Header.Set("Accept-Ranges", "bytes")
+		resp.Header.Set("Content-Range", "bytes 10-19/100")
+		return resp, nil
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+	seedEpisode(t, db, 1, 1)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/episodes/1/audio", nil)
+	req.SetPathValue("id", "1")
+	req.Header.Set("Range", "bytes=10-19")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusPartialContent {
+		t.Fatalf("expected 206, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Accept-Ranges"); got != "bytes" {
+		t.Fatalf("expected Accept-Ranges bytes, got %q", got)
+	}
+	if got := rec.Header().Get("Content-Range"); got != "bytes 10-19/100" {
+		t.Fatalf("expected Content-Range to be forwarded, got %q", got)
+	}
+	if rec.Body.String() != "partial-audio" {
+		t.Fatalf("expected proxied partial audio body, got %q", rec.Body.String())
 	}
 }
 
@@ -1250,6 +1348,26 @@ func TestEpisodeGetNotFound(t *testing.T) {
 		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	assertErrorCode(t, rec.Body.Bytes(), "EPISODE_NOT_FOUND")
+}
+
+func TestEpisodeGetIncludesDescription(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, description, audio_url) VALUES (1, 1, 'ep-1', 'Episode', 'These are show notes.', 'https://example.com/audio.mp3')`)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/episodes/1", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"description":"These are show notes."`) {
+		t.Fatalf("expected description in episode payload, got %s", rec.Body.String())
+	}
 }
 
 func TestEpisodeDownloadRejectsUnknownEpisode(t *testing.T) {
@@ -1405,6 +1523,100 @@ func TestSettingsAndJobsEndpoints(t *testing.T) {
 	}
 	if !strings.Contains(jobsRec.Body.String(), `"state":"idle"`) {
 		t.Fatalf("expected idle scheduler state, got %s", jobsRec.Body.String())
+	}
+}
+
+func TestProxyStatusEndpointReturnsOffWhenDisabled(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/proxy/status", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"status":"off"`) {
+		t.Fatalf("expected off status, got %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"proxyEnabled":false`) || !strings.Contains(rec.Body.String(), `"proxyConfigured":false`) {
+		t.Fatalf("expected proxy flags in payload, got %s", rec.Body.String())
+	}
+}
+
+func TestProxyStatusEndpointReturnsObservedIdentityWhenEnabled(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		if req.URL.String() != "https://ipwho.is/" {
+			t.Fatalf("unexpected proxy status request URL: %s", req.URL.String())
+		}
+		return routerJSONResponse(`{"success":true,"ip":"198.51.100.10","country":"Germany"}`), nil
+	})
+	handler, _ := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+		SOCKS5Host:   "127.0.0.1",
+		SOCKS5Port:   "1080",
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	patchReq := httptest.NewRequest(nethttp.MethodPatch, "/api/settings", bytes.NewReader([]byte(`{"proxyEnabled":true}`)))
+	patchReq.AddCookie(cookie)
+	patchRec := httptest.NewRecorder()
+	handler.ServeHTTP(patchRec, patchReq)
+	if patchRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected settings patch to enable proxy, got %d body=%s", patchRec.Code, patchRec.Body.String())
+	}
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/proxy/status", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"status":"ok"`) {
+		t.Fatalf("expected ok status, got %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"externalIp":"198.51.100.10"`) || !strings.Contains(rec.Body.String(), `"country":"Germany"`) {
+		t.Fatalf("expected observed identity payload, got %s", rec.Body.String())
+	}
+}
+
+func TestProxyStatusEndpointReturnsErrorStateWhenLookupFails(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return nil, io.EOF
+	})
+	handler, _ := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+		SOCKS5Host:   "127.0.0.1",
+		SOCKS5Port:   "1080",
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	patchReq := httptest.NewRequest(nethttp.MethodPatch, "/api/settings", bytes.NewReader([]byte(`{"proxyEnabled":true}`)))
+	patchReq.AddCookie(cookie)
+	patchRec := httptest.NewRecorder()
+	handler.ServeHTTP(patchRec, patchReq)
+	if patchRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected settings patch to enable proxy, got %d body=%s", patchRec.Code, patchRec.Body.String())
+	}
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/proxy/status", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"status":"error"`) {
+		t.Fatalf("expected error status, got %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"error":"request proxy status`) {
+		t.Fatalf("expected lookup error details, got %s", rec.Body.String())
 	}
 }
 
@@ -1715,34 +1927,28 @@ func newTestRouterWithClient(t *testing.T, cfg config.Config, client *nethttp.Cl
 	t.Helper()
 
 	db := newTestDB(t)
-	schedulerService := scheduler.NewService(
-		db.SQL,
-		log.New(io.Discard, "", 0),
-		settings.NewService(db.SQL, cfg.SOCKS5Host != ""),
-		func(context.Context) error { return nil },
-	)
-	if client == nil {
-		return NewRouter(log.New(io.Discard, "", 0), cfg, db.SQL, schedulerService), db
-	}
 	return newSplitRouterWithClient(t, cfg, db, db, client), db
 }
 
 func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *storage.DB, client *nethttp.Client) nethttp.Handler {
 	t.Helper()
 
-	schedulerService := scheduler.NewService(
-		appDB.SQL,
-		log.New(io.Discard, "", 0),
-		settings.NewService(appDB.SQL, cfg.SOCKS5Host != ""),
-		func(context.Context) error { return nil },
-	)
 	if client == nil {
 		client = newRouterDefaultClient(t, cfg, appDB)
 	}
 
-	settingsService := settings.NewService(appDB.SQL, cfg.SOCKS5Host != "")
+	settingsService := settings.NewServiceWithProxyStatusLookup(appDB.SQL, cfg.SOCKS5Host != "", func(ctx context.Context) (settings.ProxyLookupResult, error) {
+		return fetchObservedProxyStatus(ctx, client)
+	})
 	playlistService := playlist.NewService(appDB.SQL)
 	downloadsService := downloads.NewService(appDB.SQL, client, cfg.DownloadsDir)
+	podcastsService := podcasts.NewService(appDB.SQL, client)
+	schedulerService := scheduler.NewService(
+		appDB.SQL,
+		log.New(io.Discard, "", 0),
+		settingsService,
+		podcastsService.RefreshAll,
+	)
 
 	r := &Router{
 		logger:         log.New(io.Discard, "", 0),
@@ -1754,7 +1960,8 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 		playback:       playback.NewService(appDB.SQL, playlistService, downloadsService),
 		playlist:       playlistService,
 		downloads:      downloadsService,
-		podcasts:       podcasts.NewService(appDB.SQL, client),
+		podcasts:       podcastsService,
+		remoteClient:   client,
 		settings:       settingsService,
 		scheduler:      schedulerService,
 	}
@@ -1768,6 +1975,7 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 	mux.HandleFunc("GET /api/podcasts", r.handlePodcastsList)
 	mux.HandleFunc("POST /api/podcasts", r.handlePodcastsCreate)
 	mux.HandleFunc("GET /api/podcasts/{id}", r.handlePodcastGet)
+	mux.HandleFunc("GET /api/podcasts/{id}/image", r.handlePodcastImage)
 	mux.HandleFunc("DELETE /api/podcasts/{id}", r.handlePodcastDelete)
 	mux.HandleFunc("POST /api/podcasts/{id}/refresh", r.handlePodcastRefresh)
 	mux.HandleFunc("GET /api/podcasts/{id}/episodes", r.handlePodcastEpisodesList)
@@ -1788,6 +1996,7 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 	mux.HandleFunc("GET /api/episodes/{id}/audio", r.handleEpisodeAudio)
 	mux.HandleFunc("GET /api/settings", r.handleSettingsGet)
 	mux.HandleFunc("PATCH /api/settings", r.handleSettingsPatch)
+	mux.HandleFunc("GET /api/proxy/status", r.handleProxyStatus)
 	return r.recoverAndLog(mux)
 }
 
@@ -1946,6 +2155,17 @@ func routerXMLResponse(body string) *nethttp.Response {
 		Header:     make(nethttp.Header),
 	}
 	resp.Header.Set("Content-Type", "application/rss+xml")
+	return resp
+}
+
+func routerJSONResponse(body string) *nethttp.Response {
+	resp := &nethttp.Response{
+		StatusCode: nethttp.StatusOK,
+		Status:     "200 OK",
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     make(nethttp.Header),
+	}
+	resp.Header.Set("Content-Type", "application/json")
 	return resp
 }
 

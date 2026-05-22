@@ -1,5 +1,5 @@
 import { HugeiconsIcon } from "@hugeicons/react";
-import { EyeIcon, FolderSyncIcon } from "@hugeicons/core-free-icons";
+import { RefreshDotIcon, ViewIcon } from "@hugeicons/core-free-icons";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -22,12 +22,12 @@ type PageHeaderProps = {
 const defaultActions: PageHeaderAction[] = [
   {
     label: "Refresh all",
-    icon: <HugeiconsIcon icon={FolderSyncIcon} data-icon="inline-start" />,
+    icon: <HugeiconsIcon icon={RefreshDotIcon} data-icon="inline-start" />,
     variant: "secondary",
   },
   {
     label: "Show all",
-    icon: <HugeiconsIcon icon={EyeIcon} data-icon="inline-start" />,
+    icon: <HugeiconsIcon icon={ViewIcon} data-icon="inline-start" />,
     variant: "default",
   },
 ];
@@ -57,6 +57,7 @@ export function PageHeader({
               key={action.label}
               type="button"
               variant={action.variant ?? "secondary"}
+              className={cn(action.variant === "default" && "shadow-xs")}
               onClick={action.onClick}
             >
               {action.icon}
