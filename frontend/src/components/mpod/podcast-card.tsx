@@ -61,7 +61,7 @@ export function PodcastCard({
       />
       <div className="flex w-full flex-col items-center justify-center gap-3">
         <div className="flex w-full flex-col items-center gap-1 text-center">
-          <h3 className="w-full text-xl leading-7 font-semibold text-card-foreground">
+          <h3 className="w-full truncate text-xl leading-7 font-semibold text-card-foreground">
             {title}
           </h3>
           <p className="line-clamp-2 w-full text-base leading-6 font-normal text-muted-foreground">
