@@ -7,9 +7,13 @@ const meta = {
   component: FileDropzone,
   tags: ["autodocs"],
   args: {},
-  parameters: {
-    layout: "centered",
-  },
+  decorators: [
+    (Story) => (
+      <div className="w-[720px] max-w-full">
+        <Story />
+      </div>
+    ),
+  ],
 } satisfies Meta<typeof FileDropzone>;
 
 export default meta;

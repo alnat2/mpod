@@ -6,9 +6,13 @@ const meta = {
   title: "mpod/AddPodcast",
   component: AddPodcast,
   tags: ["autodocs"],
-  parameters: {
-    layout: "centered",
-  },
+  decorators: [
+    (Story) => (
+      <div className="w-[720px] max-w-full">
+        <Story />
+      </div>
+    ),
+  ],
 } satisfies Meta<typeof AddPodcast>;
 
 export default meta;

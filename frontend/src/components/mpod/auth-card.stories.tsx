@@ -6,9 +6,13 @@ const meta = {
   title: "mpod/AuthCard",
   component: AuthCard,
   tags: ["autodocs"],
-  parameters: {
-    layout: "centered",
-  },
+  decorators: [
+    (Story) => (
+      <div className="w-[430px] max-w-full">
+        <Story />
+      </div>
+    ),
+  ],
 } satisfies Meta<typeof AuthCard>;
 
 export default meta;

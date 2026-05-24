@@ -16,9 +16,13 @@ const meta = {
     durationLabel: featuredEpisode.durationLabel,
     progressValue: featuredEpisode.progressValue,
   },
-  parameters: {
-    layout: "centered",
-  },
+  decorators: [
+    (Story) => (
+      <div className="w-[480px] max-w-full">
+        <Story />
+      </div>
+    ),
+  ],
 } satisfies Meta<typeof Player>;
 
 export default meta;

@@ -31,6 +31,8 @@ Set up Storybook for `mpod` so component development happens locally on the MacB
   - confirmed local Storybook dev server starts on port `6006`
   - confirmed static Storybook build succeeds
   - confirmed static output directory is `frontend/storybook-static`
+  - fixed shrink-to-fit canvas issues for width-constrained stories by adding explicit story wrappers for `AuthCard`, `AddPodcast`, `FileDropzone`, `Player`, and `ShowNotes`
+  - visually verified the updated stories in Chromium against the built Storybook output
 - next:
   - expand stories to additional screen-level compositions only where they provide clear value beyond component stories
   - add richer mocked states for backend-driven screens if frontend development starts depending on them

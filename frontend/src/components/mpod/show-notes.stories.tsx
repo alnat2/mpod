@@ -12,9 +12,13 @@ const meta = {
     episodeTitle: featuredEpisode.title,
     children: showNotesText,
   },
-  parameters: {
-    layout: "centered",
-  },
+  decorators: [
+    (Story) => (
+      <div className="w-[720px] max-w-full">
+        <Story />
+      </div>
+    ),
+  ],
 } satisfies Meta<typeof ShowNotes>;
 
 export default meta;
