@@ -4,7 +4,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   DownloadSquare01Icon,
   DownloadSquare02Icon,
-  EyeIcon,
   Loading02Icon,
   NoteIcon,
   PlayListAddIcon,
@@ -560,7 +559,7 @@ export function SubscriptionsScreen() {
                             label: episode.isListened
                               ? "Mark as unlistened"
                               : "Mark as listened",
-                            icon: episode.isListened ? ViewOffIcon : EyeIcon,
+                            icon: episode.isListened ? ViewOffIcon : ViewIcon,
                             onClick: () =>
                               episode.isListened
                                 ? scheduleMarkListened([episode], false)
