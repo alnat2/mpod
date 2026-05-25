@@ -29,12 +29,12 @@ export function AppShell({
   return (
     <div
       className={cn(
-        "flex h-svh w-full flex-col items-center overflow-hidden bg-background",
+        "flex h-svh w-full flex-col items-center overflow-hidden bg-background px-6 pb-8 xl:px-20",
         className,
       )}
     >
       <TopNav activeItem={activeNavItem} onAdd={onAddPodcast} />
-      <main className="flex min-h-0 w-full max-w-[1200px] flex-1 flex-col gap-4 px-6 py-5 text-foreground xl:px-0">
+      <main className="flex min-h-0 w-full max-w-[1280px] flex-1 flex-col text-foreground">
         {pageHeaderVisible ? (
           <PageHeader actions={pageActions} subtitle={pageSubtitle} title={pageTitle} />
         ) : null}

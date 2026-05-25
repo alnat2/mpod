@@ -15,6 +15,8 @@ class IntersectionObserverMock {
 
   rootMargin = "";
 
+  scrollMargin = "";
+
   thresholds = [];
 
   disconnect() {}
@@ -29,7 +31,8 @@ class IntersectionObserverMock {
 }
 
 globalThis.ResizeObserver = ResizeObserverMock;
-globalThis.IntersectionObserver = IntersectionObserverMock as typeof IntersectionObserver;
+globalThis.IntersectionObserver =
+  IntersectionObserverMock as unknown as typeof IntersectionObserver;
 globalThis.matchMedia =
   globalThis.matchMedia ??
   ((query: string) => ({

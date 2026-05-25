@@ -47,6 +47,7 @@ import {
   getErrorMessage,
 } from "./screen-utils";
 import { useDelayedActions } from "./use-delayed-actions";
+import { cn } from "@/lib/utils";
 
 type PodcastWithEpisodes = Podcast & {
   episodes: Array<Episode & { inPlaylist: boolean }>;
@@ -409,11 +410,10 @@ export function SubscriptionsScreen() {
                     }}
                   >
                     <CarouselContent
-                      className={
-                        visiblePodcasts.length < 4
-                          ? "ml-0 justify-center gap-5"
-                          : "-ml-5"
-                      }
+                      className={cn(
+                        "ml-0 gap-5",
+                        visiblePodcasts.length < 4 && "justify-center"
+                      )}
                     >
                       {visiblePodcasts.map((podcast) => {
                         const unlistenedCount = podcast.episodes.filter(
@@ -428,7 +428,7 @@ export function SubscriptionsScreen() {
                             className={
                               visiblePodcasts.length < 4
                                 ? "basis-[285px] pl-0"
-                                : "basis-[285px] pl-5"
+                                : "basis-[285px] pl-0"
                             }
                           >
                             <PodcastCard
@@ -452,9 +452,15 @@ export function SubscriptionsScreen() {
                         );
                       })}
                     </CarouselContent>
-                    <div className="mt-4 flex items-center justify-center gap-2">
-                      <CarouselPrevious className="static translate-x-0 translate-y-0" />
-                      <CarouselNext className="static translate-x-0 translate-y-0" />
+                    <div className="mt-2 flex items-center justify-center gap-5">
+                      <CarouselPrevious
+                        size="icon"
+                        className="static size-8 translate-x-0 translate-y-0 rounded-full"
+                      />
+                      <CarouselNext
+                        size="icon"
+                        className="static size-8 translate-x-0 translate-y-0 rounded-full"
+                      />
                     </div>
                   </Carousel>
                 </div>
