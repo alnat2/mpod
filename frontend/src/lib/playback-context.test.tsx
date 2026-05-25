@@ -16,6 +16,7 @@ class FakeAudio {
   src = "";
   currentTime = 0;
   playbackRate = 1;
+  defaultPlaybackRate = 1;
   paused = true;
   error: FakeMediaError | null = null;
   private listeners = new Map<string, Set<() => void>>();
@@ -248,6 +249,22 @@ describe("PlaybackProvider", () => {
         lastUpdated: "2026-05-22T09:00:00Z",
       },
     }));
+    vi.spyOn(api.settings, "get").mockResolvedValue({
+      settings: {
+        dailyRefreshTime: "03:00",
+        playbackSpeed: "Speed 1.3x",
+        proxyEnabled: false,
+        proxyConfigured: false,
+      },
+    });
+    vi.spyOn(api.settings, "update").mockImplementation(async (payload) => ({
+      settings: {
+        dailyRefreshTime: "03:00",
+        playbackSpeed: payload.playbackSpeed ?? "Speed 1.3x",
+        proxyEnabled: false,
+        proxyConfigured: false,
+      },
+    }));
   });
 
   it("loads queue data and exposes the first queue item as the default current episode", async () => {
@@ -350,6 +367,7 @@ describe("PlaybackProvider", () => {
 
   it("applies playback speed changes to the audio element", async () => {
     const user = userEvent.setup();
+    const updateSettingsSpy = vi.spyOn(api.settings, "update");
     renderPlaybackProvider();
 
     await waitFor(() => {
@@ -361,7 +379,30 @@ describe("PlaybackProvider", () => {
 
     await user.click(screen.getByRole("button", { name: "Speed 2x" }));
 
-    expect(audio.playbackRate).toBe(2);
+    expect(screen.getByTestId("speed")).toHaveTextContent("Speed 2x");
+    expect(updateSettingsSpy).toHaveBeenCalledWith({ playbackSpeed: "Speed 2x" });
+  });
+
+  it("restores playback speed from backend settings on load", async () => {
+    vi.spyOn(api.settings, "get").mockResolvedValueOnce({
+      settings: {
+        dailyRefreshTime: "03:00",
+        playbackSpeed: "Speed 2x",
+        proxyEnabled: false,
+        proxyConfigured: false,
+      },
+    });
+
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("speed")).toHaveTextContent("Speed 2x");
+    });
+
     expect(screen.getByTestId("speed")).toHaveTextContent("Speed 2x");
   });
 

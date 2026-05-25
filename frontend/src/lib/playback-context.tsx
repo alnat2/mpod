@@ -11,6 +11,7 @@ import {
 import type { ReactNode } from "react";
 import {
   defaultPlaybackSpeed,
+  isPlaybackSpeedLabel,
   type PlaybackSpeedLabel,
 } from "@/components/mpod/playback";
 import { api, type Episode, type PlaybackState } from "./api";
@@ -45,6 +46,15 @@ const PlaybackContext = createContext<PlaybackContextType | null>(null);
 
 function playbackRateFromLabel(label: PlaybackSpeedLabel) {
   return Number(label.replace("Speed ", "").replace("x", "")) || 1;
+}
+
+function applyPlaybackRate(
+  audio: HTMLAudioElement,
+  speedLabel: PlaybackSpeedLabel
+) {
+  const nextRate = playbackRateFromLabel(speedLabel);
+  audio.defaultPlaybackRate = nextRate;
+  audio.playbackRate = nextRate;
 }
 
 function clampPosition(positionSeconds: number, durationSeconds?: number | null) {
@@ -103,6 +113,7 @@ function describeMediaError(error: MediaError | null) {
 function primeAudioSource(
   audio: HTMLAudioElement,
   episode: QueueEpisode,
+  speedLabel: PlaybackSpeedLabel,
   positionSeconds: number,
   setPositionSeconds: (positionSeconds: number) => void,
   markPrimed: () => void
@@ -113,6 +124,7 @@ function primeAudioSource(
     audio.src = targetSrc;
     markPrimed();
   }
+  applyPlaybackRate(audio, speedLabel);
   audio.currentTime = positionSeconds;
   setPositionSeconds(positionSeconds);
 }
@@ -256,6 +268,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         primeAudioSource(
           audio,
           nextEpisode,
+          speedLabel,
           nextPosition,
           setPositionSeconds,
           () => {
@@ -296,7 +309,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       audio.src = "";
       sourcePrimedRef.current = false;
     };
-  }, [commitPlayback, loadQueue]);
+  }, [commitPlayback, loadQueue, speedLabel]);
 
   // Initial load
   useEffect(() => {
@@ -306,6 +319,34 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
     return () => window.clearTimeout(timeoutId);
   }, [loadQueue]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPlaybackSettings = async () => {
+      try {
+        const response = await api.settings.get();
+        if (cancelled) {
+          return;
+        }
+
+        const nextSpeed = response.settings.playbackSpeed;
+        if (isPlaybackSpeedLabel(nextSpeed)) {
+          setSpeedLabel(nextSpeed);
+        } else {
+          setSpeedLabel(defaultPlaybackSpeed);
+        }
+      } catch (error) {
+        console.error("Failed to load playback settings", error);
+      }
+    };
+
+    void loadPlaybackSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Sync audio source when episode changes
   useEffect(() => {
@@ -347,6 +388,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       primeAudioSource(
         audio,
         currentEpisode,
+        speedLabel,
         initialPos,
         setPositionSeconds,
         () => {
@@ -361,7 +403,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         setPlaybackError(describeAudioError(error));
       });
     }
-  }, [currentEpisode, playing]);
+  }, [currentEpisode, playing, speedLabel]);
 
   // Sync playing state to audio element
   useEffect(() => {
@@ -382,7 +424,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.playbackRate = playbackRateFromLabel(speedLabel);
+    applyPlaybackRate(audio, speedLabel);
   }, [speedLabel]);
 
   // Periodic sync to backend
@@ -407,6 +449,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       primeAudioSource(
         audio,
         currentEpisode,
+        speedLabel,
         nextPosition,
         setPositionSeconds,
         () => {
@@ -415,7 +458,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       );
     }
     setPlaying((p) => !p);
-  }, [currentEpisode, playing, positionSeconds]);
+  }, [currentEpisode, playing, positionSeconds, speedLabel]);
 
   const playEpisode = useCallback((episodeId: number) => {
     setPlaybackError(null);
@@ -431,6 +474,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         primeAudioSource(
           audio,
           queuedEpisode,
+          speedLabel,
           initialPos,
           setPositionSeconds,
           () => {
@@ -444,6 +488,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
           audio.src = targetSrc;
           sourcePrimedRef.current = true;
         }
+        applyPlaybackRate(audio, speedLabel);
         audio.currentTime = initialPos;
         setPositionSeconds(initialPos);
       }
@@ -453,7 +498,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       });
     }
     setPlaying(true);
-  }, [queue]);
+  }, [queue, speedLabel]);
 
   const seekForward = useCallback(() => {
     if (!audioRef.current || !currentEpisode) return;
@@ -479,6 +524,13 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     void commitPlayback(nextPos, { didSeek: true });
   }, [currentEpisode, commitPlayback]);
 
+  const updateSpeedLabel = useCallback((label: PlaybackSpeedLabel) => {
+    setSpeedLabel(label);
+    void api.settings.update({ playbackSpeed: label }).catch((error) => {
+      console.error("Failed to update playback speed", error);
+    });
+  }, []);
+
   const contextValue = useMemo(
     () => ({
       queue,
@@ -489,7 +541,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       durationSeconds: currentEpisodeDuration,
       speedLabel,
       loading,
-      setSpeedLabel,
+      setSpeedLabel: updateSpeedLabel,
       clearPlaybackError: () => setPlaybackError(null),
       playToggle,
       playEpisode,
@@ -509,6 +561,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       speedLabel,
       loading,
       loadQueue,
+      updateSpeedLabel,
       playToggle,
       playEpisode,
       seekTo,
