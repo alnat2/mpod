@@ -4,6 +4,7 @@ import { ApiError } from "@/lib/api";
 
 import {
   formatClock,
+  formatEpisodeDate,
   formatDuration,
   getErrorMessage,
 } from "./screen-utils";
@@ -31,5 +32,10 @@ describe("screen-utils", () => {
     expect(formatClock(undefined)).toBe("0:00");
     expect(formatClock(5)).toBe("0:05");
     expect(formatClock(125)).toBe("2:05");
+  });
+
+  it("formats episode dates as dd.MM.yy", () => {
+    expect(formatEpisodeDate("2026-03-31T10:00:00Z")).toBe("31.03.26");
+    expect(formatEpisodeDate(null)).toBe("");
   });
 });

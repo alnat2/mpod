@@ -38,11 +38,13 @@ export function formatEpisodeDate(value: string | null | undefined) {
     return "";
   }
 
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+  })
+    .format(new Date(value))
+    .replaceAll("/", ".");
 }
 
 export function formatDateTime(value?: string | null) {
