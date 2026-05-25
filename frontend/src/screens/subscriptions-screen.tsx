@@ -23,6 +23,13 @@ import {
   ShowNotes,
 } from "@/components/mpod";
 import { Button } from "@/components/ui/button";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 import { api, type Episode, type Podcast } from "@/lib/api";
 import { usePlayback } from "@/lib/playback-context";
 
@@ -393,35 +400,63 @@ export function SubscriptionsScreen() {
               <ListLoadingState label="Loading subscriptions" />
             ) : visiblePodcasts.length > 0 ? (
               <div className="flex w-full flex-col gap-6">
-                <div className="flex shrink-0 flex-wrap gap-5">
-                {visiblePodcasts.map((podcast) => {
-                  const unlistenedCount = podcast.episodes.filter(
-                    (episode) =>
-                      !episode.isListened &&
-                      !pendingListenedEpisodeIds.has(episode.id)
-                  ).length;
+                <div className="shrink-0">
+                  <Carousel
+                    className="w-full"
+                    opts={{
+                      align: "start",
+                      containScroll: "trimSnaps",
+                    }}
+                  >
+                    <CarouselContent
+                      className={
+                        visiblePodcasts.length < 4
+                          ? "ml-0 justify-center gap-5"
+                          : "-ml-5"
+                      }
+                    >
+                      {visiblePodcasts.map((podcast) => {
+                        const unlistenedCount = podcast.episodes.filter(
+                          (episode) =>
+                            !episode.isListened &&
+                            !pendingListenedEpisodeIds.has(episode.id)
+                        ).length;
 
-                  return (
-                    <PodcastCard
-                      key={podcast.id}
-                      selected={podcast.id === selectedPodcast?.id}
-                      title={podcast.title}
-                      description={podcast.description ?? podcast.rssUrl}
-                      episodeCountLabel={episodeCountLabel(unlistenedCount)}
-                      artworkUrl={
-                        podcast.imageUrl
-                          ? api.podcasts.imagePath(podcast.id)
-                          : undefined
-                      }
-                      artworkAlt={`${podcast.title} artwork`}
-                      onSelect={() => setSelectedPodcastId(podcast.id)}
-                      onRefresh={() =>
-                        void runAction(() => api.podcasts.refresh(podcast.id))
-                      }
-                      onUnsubscribe={() => scheduleUnsubscribePodcast(podcast)}
-                    />
-                  );
-                })}
+                        return (
+                          <CarouselItem
+                            key={podcast.id}
+                            className={
+                              visiblePodcasts.length < 4
+                                ? "basis-[285px] pl-0"
+                                : "basis-[285px] pl-5"
+                            }
+                          >
+                            <PodcastCard
+                              selected={podcast.id === selectedPodcast?.id}
+                              title={podcast.title}
+                              description={podcast.description ?? podcast.rssUrl}
+                              episodeCountLabel={episodeCountLabel(unlistenedCount)}
+                              artworkUrl={
+                                podcast.imageUrl
+                                  ? api.podcasts.imagePath(podcast.id)
+                                  : undefined
+                              }
+                              artworkAlt={`${podcast.title} artwork`}
+                              onSelect={() => setSelectedPodcastId(podcast.id)}
+                              onRefresh={() =>
+                                void runAction(() => api.podcasts.refresh(podcast.id))
+                              }
+                              onUnsubscribe={() => scheduleUnsubscribePodcast(podcast)}
+                            />
+                          </CarouselItem>
+                        );
+                      })}
+                    </CarouselContent>
+                    <div className="mt-4 flex items-center justify-center gap-2">
+                      <CarouselPrevious className="static translate-x-0 translate-y-0" />
+                      <CarouselNext className="static translate-x-0 translate-y-0" />
+                    </div>
+                  </Carousel>
                 </div>
                 <PlaylistQueue
                   className="h-[400px] shrink-0"
