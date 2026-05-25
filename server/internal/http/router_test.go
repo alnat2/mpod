@@ -1185,6 +1185,12 @@ func TestEpisodeAudioProxiesRemoteAudioWhenNotDownloaded(t *testing.T) {
 		if req.URL.String() != "https://cdn.example.com/audio.mp3" {
 			t.Fatalf("unexpected audio request URL: %s", req.URL.String())
 		}
+		if got := req.Header.Get("User-Agent"); got != audioProxyUserAgent {
+			t.Fatalf("expected User-Agent %q, got %q", audioProxyUserAgent, got)
+		}
+		if got := req.Header.Get("Accept"); got != audioProxyAccept {
+			t.Fatalf("expected Accept %q, got %q", audioProxyAccept, got)
+		}
 		return routerBinaryResponse("audio/mpeg", []byte("remote-audio")), nil
 	})
 	handler, db := newTestRouterWithClient(t, config.Config{

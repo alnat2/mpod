@@ -27,6 +27,11 @@ import (
 	"github.com/cross/mpod/server/internal/settings"
 )
 
+const (
+	audioProxyUserAgent = "mpod/1.0 (+self-hosted podcast client)"
+	audioProxyAccept    = "audio/*, application/octet-stream;q=0.9, */*;q=0.1"
+)
+
 type Router struct {
 	logger         *log.Logger
 	config         config.Config
@@ -847,6 +852,8 @@ func (r *Router) handleEpisodeAudio(w nethttp.ResponseWriter, req *nethttp.Reque
 		r.writeAPIError(w, nethttp.StatusInternalServerError, "AUDIO_LOAD_FAILED", "Failed to load audio")
 		return
 	}
+	audioReq.Header.Set("User-Agent", audioProxyUserAgent)
+	audioReq.Header.Set("Accept", audioProxyAccept)
 
 	if rangeHeader := strings.TrimSpace(req.Header.Get("Range")); rangeHeader != "" {
 		audioReq.Header.Set("Range", rangeHeader)
