@@ -1510,6 +1510,9 @@ func TestSettingsAndJobsEndpoints(t *testing.T) {
 	if settingsRec.Code != nethttp.StatusOK {
 		t.Fatalf("expected 200 from settings get, got %d body=%s", settingsRec.Code, settingsRec.Body.String())
 	}
+	if !strings.Contains(settingsRec.Body.String(), `"playbackSpeed":"Speed 1.3x"`) {
+		t.Fatalf("expected default playback speed in settings payload, got %s", settingsRec.Body.String())
+	}
 	if !strings.Contains(settingsRec.Body.String(), `"proxyEnabled":false`) || !strings.Contains(settingsRec.Body.String(), `"proxyConfigured":false`) {
 		t.Fatalf("expected proxy fields in settings payload, got %s", settingsRec.Body.String())
 	}
@@ -1680,10 +1683,60 @@ func TestSettingsPatchRejectsMissingFields(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "INVALID_SETTINGS")
 }
 
+func TestSettingsEndpointsRequireAuth(t *testing.T) {
+	handler, _ := newTestRouter(t)
+
+	getReq := httptest.NewRequest(nethttp.MethodGet, "/api/settings", nil)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != nethttp.StatusUnauthorized {
+		t.Fatalf("expected 401 from settings get, got %d body=%s", getRec.Code, getRec.Body.String())
+	}
+	assertErrorCode(t, getRec.Body.Bytes(), "UNAUTHORIZED")
+
+	patchReq := httptest.NewRequest(nethttp.MethodPatch, "/api/settings", bytes.NewReader([]byte(`{"playbackSpeed":"Speed 2x"}`)))
+	patchRec := httptest.NewRecorder()
+	handler.ServeHTTP(patchRec, patchReq)
+	if patchRec.Code != nethttp.StatusUnauthorized {
+		t.Fatalf("expected 401 from settings patch, got %d body=%s", patchRec.Code, patchRec.Body.String())
+	}
+	assertErrorCode(t, patchRec.Body.Bytes(), "UNAUTHORIZED")
+}
+
 func TestSettingsPatchRejectsProxyEnableWithoutRuntimeConfig(t *testing.T) {
 	handler, cookie := newAuthedRouter(t)
 
 	req := httptest.NewRequest(nethttp.MethodPatch, "/api/settings", bytes.NewReader([]byte(`{"proxyEnabled":true}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "INVALID_SETTINGS")
+}
+
+func TestSettingsPatchUpdatesPlaybackSpeed(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPatch, "/api/settings", bytes.NewReader([]byte(`{"playbackSpeed":"Speed 2x"}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"playbackSpeed":"Speed 2x"`) {
+		t.Fatalf("expected updated playback speed, got %s", rec.Body.String())
+	}
+}
+
+func TestSettingsPatchRejectsInvalidPlaybackSpeed(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPatch, "/api/settings", bytes.NewReader([]byte(`{"playbackSpeed":"Speed 9x"}`)))
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

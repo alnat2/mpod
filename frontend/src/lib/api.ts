@@ -70,6 +70,7 @@ export type PlaybackState = {
 
 export type SettingsValues = {
   dailyRefreshTime: string;
+  playbackSpeed: string;
   proxyEnabled: boolean;
   proxyConfigured: boolean;
 };
@@ -255,6 +256,7 @@ export const api = {
       apiRequest<{ proxy: ProxyRuntimeStatus }>("/api/proxy/status"),
     update: (payload: {
       dailyRefreshTime?: string;
+      playbackSpeed?: string;
       proxyEnabled?: boolean;
     }) =>
       apiRequest<{ settings: SettingsValues }>("/api/settings", {

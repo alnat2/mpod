@@ -18,8 +18,8 @@ func TestGetReturnsStoredValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get failed: %v", err)
 	}
-	if values.DailyRefreshTime != "03:00" || values.ProxyEnabled || values.ProxyConfigured {
-		t.Fatalf("expected default daily refresh time, got %q", values.DailyRefreshTime)
+	if values.DailyRefreshTime != "03:00" || values.PlaybackSpeed != DefaultPlaybackSpeed || values.ProxyEnabled || values.ProxyConfigured {
+		t.Fatalf("expected default settings values, got %+v", values)
 	}
 }
 
@@ -54,6 +54,40 @@ func TestUpdateRejectsInvalidTime(t *testing.T) {
 	refreshTime := "25:99"
 	if _, err := service.Update(context.Background(), UpdateInput{DailyRefreshTime: &refreshTime}); err == nil {
 		t.Fatalf("expected invalid time error")
+	}
+}
+
+func TestUpdatePersistsPlaybackSpeed(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	service := NewService(db.SQL, false)
+	speed := "Speed 2x"
+	values, err := service.Update(context.Background(), UpdateInput{PlaybackSpeed: &speed})
+	if err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	if values.PlaybackSpeed != "Speed 2x" {
+		t.Fatalf("unexpected values returned: %+v", values)
+	}
+
+	loaded, err := service.Get(context.Background())
+	if err != nil {
+		t.Fatalf("Get after update failed: %v", err)
+	}
+	if loaded.PlaybackSpeed != "Speed 2x" {
+		t.Fatalf("expected persisted playback speed Speed 2x, got %q", loaded.PlaybackSpeed)
+	}
+}
+
+func TestUpdateRejectsInvalidPlaybackSpeed(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	service := NewService(db.SQL, false)
+	speed := "Speed 9x"
+	if _, err := service.Update(context.Background(), UpdateInput{PlaybackSpeed: &speed}); err != ErrInvalidPlaybackSpeed {
+		t.Fatalf("expected ErrInvalidPlaybackSpeed, got %v", err)
 	}
 }
 

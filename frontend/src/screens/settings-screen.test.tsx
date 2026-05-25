@@ -37,6 +37,7 @@ describe("SettingsScreen", () => {
     vi.spyOn(api.settings, "get").mockResolvedValue({
       settings: {
         dailyRefreshTime: "03:00",
+        playbackSpeed: "Speed 1.3x",
         proxyEnabled: false,
         proxyConfigured: true,
       },
@@ -84,6 +85,7 @@ describe("SettingsScreen", () => {
     const updateSpy = vi.spyOn(api.settings, "update").mockResolvedValue({
       settings: {
         dailyRefreshTime: "04:30",
+        playbackSpeed: "Speed 1.3x",
         proxyEnabled: false,
         proxyConfigured: true,
       },
@@ -106,6 +108,7 @@ describe("SettingsScreen", () => {
     const updateSpy = vi.spyOn(api.settings, "update").mockResolvedValue({
       settings: {
         dailyRefreshTime: "03:00",
+        playbackSpeed: "Speed 1.3x",
         proxyEnabled: true,
         proxyConfigured: true,
       },
@@ -140,6 +143,7 @@ describe("SettingsScreen", () => {
     vi.spyOn(api.settings, "get").mockResolvedValue({
       settings: {
         dailyRefreshTime: "03:00",
+        playbackSpeed: "Speed 1.3x",
         proxyEnabled: true,
         proxyConfigured: true,
       },

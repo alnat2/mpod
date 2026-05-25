@@ -312,8 +312,9 @@ User steps:
 
 Playback speed:
 - the player should expose these speed options: `Speed 0.5x`, `Speed 0.75x`, `Speed 1x`, `Speed 1.3x`, `Speed 1.5x`, and `Speed 2x`
-- default playback speed is `Speed 1.3x`
-- speed selection affects frontend audio playback; backend playback progress remains stored in seconds
+- if nothing has been selected yet, the default playback speed is `Speed 1.3x`
+- playback speed selection should be restored from backend-owned state so it stays consistent across devices
+- backend playback progress remains stored in seconds
 
 When playback reaches completion:
 - the episode is marked listened

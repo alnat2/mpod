@@ -12,8 +12,20 @@ import (
 var (
 	ErrInvalidSettingsUpdate   = errors.New("no settings provided")
 	ErrInvalidDailyRefreshTime = errors.New("invalid daily refresh time")
+	ErrInvalidPlaybackSpeed    = errors.New("invalid playback speed")
 	ErrProxyNotConfigured      = errors.New("proxy is not configured")
 )
+
+const DefaultPlaybackSpeed = "Speed 1.3x"
+
+var allowedPlaybackSpeeds = map[string]struct{}{
+	"Speed 0.5x":  {},
+	"Speed 0.75x": {},
+	"Speed 1x":    {},
+	"Speed 1.3x":  {},
+	"Speed 1.5x":  {},
+	"Speed 2x":    {},
+}
 
 type Service struct {
 	db              *sql.DB
@@ -23,6 +35,7 @@ type Service struct {
 
 type Values struct {
 	DailyRefreshTime string `json:"dailyRefreshTime"`
+	PlaybackSpeed    string `json:"playbackSpeed"`
 	ProxyEnabled     bool   `json:"proxyEnabled"`
 	ProxyConfigured  bool   `json:"proxyConfigured"`
 }
@@ -52,6 +65,7 @@ const (
 
 type UpdateInput struct {
 	DailyRefreshTime *string `json:"dailyRefreshTime"`
+	PlaybackSpeed    *string `json:"playbackSpeed"`
 	ProxyEnabled     *bool   `json:"proxyEnabled"`
 }
 
@@ -76,10 +90,15 @@ func (s *Service) Get(ctx context.Context) (Values, error) {
 	`).Scan(&values.DailyRefreshTime); err != nil {
 		return Values{}, fmt.Errorf("load settings: %w", err)
 	}
+	playbackSpeed, err := s.loadPlaybackSpeed(ctx)
+	if err != nil {
+		return Values{}, err
+	}
 	enabled, err := s.ProxyEnabled(ctx)
 	if err != nil {
 		return Values{}, err
 	}
+	values.PlaybackSpeed = playbackSpeed
 	values.ProxyEnabled = enabled
 	values.ProxyConfigured = s.proxyConfigured
 	return values, nil
@@ -147,12 +166,17 @@ func (s *Service) GetProxyStatus(ctx context.Context) (ProxyStatus, error) {
 }
 
 func (s *Service) Update(ctx context.Context, input UpdateInput) (Values, error) {
-	if input.DailyRefreshTime == nil && input.ProxyEnabled == nil {
+	if input.DailyRefreshTime == nil && input.PlaybackSpeed == nil && input.ProxyEnabled == nil {
 		return Values{}, ErrInvalidSettingsUpdate
 	}
 	if input.DailyRefreshTime != nil {
 		if _, err := time.Parse("15:04", strings.TrimSpace(*input.DailyRefreshTime)); err != nil {
 			return Values{}, ErrInvalidDailyRefreshTime
+		}
+	}
+	if input.PlaybackSpeed != nil {
+		if _, ok := allowedPlaybackSpeeds[strings.TrimSpace(*input.PlaybackSpeed)]; !ok {
+			return Values{}, ErrInvalidPlaybackSpeed
 		}
 	}
 	if input.ProxyEnabled != nil && *input.ProxyEnabled && !s.proxyConfigured {
@@ -172,6 +196,15 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Values, error)
 			ON CONFLICT (key) DO UPDATE SET value = excluded.value
 		`, strings.TrimSpace(*input.DailyRefreshTime)); err != nil {
 			return Values{}, fmt.Errorf("update daily refresh time: %w", err)
+		}
+	}
+	if input.PlaybackSpeed != nil {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO settings (key, value)
+			VALUES ('playback_speed', ?)
+			ON CONFLICT (key) DO UPDATE SET value = excluded.value
+		`, strings.TrimSpace(*input.PlaybackSpeed)); err != nil {
+			return Values{}, fmt.Errorf("update playback speed: %w", err)
 		}
 	}
 	if input.ProxyEnabled != nil {
@@ -209,4 +242,25 @@ func (s *Service) loadProxyEnabled(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("load proxy enabled: %w", err)
 	}
 	return raw == "1" || strings.EqualFold(raw, "true"), nil
+}
+
+func (s *Service) loadPlaybackSpeed(ctx context.Context) (string, error) {
+	var raw string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT value
+		FROM settings
+		WHERE key = 'playback_speed'
+	`).Scan(&raw)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return DefaultPlaybackSpeed, nil
+		}
+		return "", fmt.Errorf("load playback speed: %w", err)
+	}
+
+	raw = strings.TrimSpace(raw)
+	if _, ok := allowedPlaybackSpeeds[raw]; !ok {
+		return "", fmt.Errorf("load playback speed: %w", ErrInvalidPlaybackSpeed)
+	}
+	return raw, nil
 }

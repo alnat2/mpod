@@ -214,7 +214,8 @@ Decision:
 - default playback speed is `Speed 1.3x`
 
 Rules:
-- speed selection is a frontend audio playback control
+- speed selection should be restored from backend-owned playback settings for cross-device consistency
+- if no speed has been selected yet, the frontend should use `Speed 1.3x`
 - backend playback progress remains stored in seconds and should not depend on the selected speed label
 - do not add extra speed options unless the product decision changes
 

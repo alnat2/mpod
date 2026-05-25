@@ -489,6 +489,7 @@ Response:
 {
   "settings": {
     "dailyRefreshTime": "03:00",
+    "playbackSpeed": "Speed 1.3x",
     "proxyEnabled": true,
     "proxyConfigured": true
   }
@@ -501,6 +502,7 @@ Request:
 ```json
 {
   "dailyRefreshTime": "03:00",
+  "playbackSpeed": "Speed 2x",
   "proxyEnabled": true
 }
 ```
@@ -510,6 +512,7 @@ Response:
 {
   "settings": {
     "dailyRefreshTime": "03:00",
+    "playbackSpeed": "Speed 2x",
     "proxyEnabled": true,
     "proxyConfigured": true
   }
@@ -517,6 +520,16 @@ Response:
 ```
 
 Rules:
+- `playbackSpeed` is backend-owned user playback preference used for cross-device consistency.
+- If no playback speed has been stored yet, backend returns `Speed 1.3x`.
+- Supported labels are exactly:
+  - `Speed 0.5x`
+  - `Speed 0.75x`
+  - `Speed 1x`
+  - `Speed 1.3x`
+  - `Speed 1.5x`
+  - `Speed 2x`
+- Unsupported playback speed labels must be rejected with `400 Bad Request`.
 - `proxyConfigured` is read-only and comes from runtime SOCKS5 environment configuration.
 - `proxyEnabled` is user-editable and persisted in database-backed settings.
 - If proxy configuration is incomplete or unavailable, `proxyConfigured` is `false` and the UI should not allow enabling proxy usage.
@@ -611,12 +624,15 @@ Rules:
 
 ### Decision
 Playback position is stored per episode for the single user. The server keeps one current playback state for each episode and updates it using simple freshness and progress rules.
+Playback speed selection should also be treated as backend-owned user playback state for cross-device consistency.
 
 ### Rules
 - Playback state is stored per episode.
 - Each episode has at most one playback record.
 - The server is the final authority for stored playback state.
 - Playback updates are accepted only for existing episodes.
+- Playback speed selection should be stored as user playback state on the backend, not only in the frontend.
+- If no playback speed has been selected yet, the default speed is `Speed 1.3x`.
 - Playback state contains:
   - `episodeId`
   - `positionSeconds`

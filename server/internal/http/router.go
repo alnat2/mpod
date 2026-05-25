@@ -910,6 +910,7 @@ func (r *Router) handleSettingsPatch(w nethttp.ResponseWriter, req *nethttp.Requ
 
 	var payload struct {
 		DailyRefreshTime *string `json:"dailyRefreshTime"`
+		PlaybackSpeed    *string `json:"playbackSpeed"`
 		ProxyEnabled     *bool   `json:"proxyEnabled"`
 	}
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
@@ -919,6 +920,7 @@ func (r *Router) handleSettingsPatch(w nethttp.ResponseWriter, req *nethttp.Requ
 
 	values, err := r.settings.Update(req.Context(), settings.UpdateInput{
 		DailyRefreshTime: payload.DailyRefreshTime,
+		PlaybackSpeed:    payload.PlaybackSpeed,
 		ProxyEnabled:     payload.ProxyEnabled,
 	})
 	if err != nil {
@@ -927,6 +929,8 @@ func (r *Router) handleSettingsPatch(w nethttp.ResponseWriter, req *nethttp.Requ
 			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_SETTINGS", "At least one settings field must be provided")
 		case settings.ErrInvalidDailyRefreshTime:
 			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_SETTINGS", "dailyRefreshTime must use HH:MM format")
+		case settings.ErrInvalidPlaybackSpeed:
+			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_SETTINGS", "playbackSpeed must use an approved speed label")
 		case settings.ErrProxyNotConfigured:
 			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_SETTINGS", "Proxy cannot be enabled without runtime configuration")
 		default:
