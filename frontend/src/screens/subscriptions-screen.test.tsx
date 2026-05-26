@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode, Ref, UIEventHandler } from "react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -53,15 +53,25 @@ vi.mock("@/components/mpod", () => ({
     children,
     summary,
     headerAction,
+    bodyRef,
+    bodyOnScroll,
   }: {
     children: ReactNode;
     summary?: string;
     headerAction?: ReactNode;
+    bodyRef?: Ref<HTMLDivElement>;
+    bodyOnScroll?: UIEventHandler<HTMLDivElement>;
   }) => (
     <div>
       <div>{summary}</div>
       {headerAction}
-      {children}
+      <div
+        data-testid="playlist-queue-body"
+        ref={bodyRef}
+        onScroll={bodyOnScroll}
+      >
+        {children}
+      </div>
     </div>
   ),
   EpisodeRow: ({
@@ -217,6 +227,38 @@ describe("SubscriptionsScreen", () => {
       screen.getByText("Build Your SaaS - QA reorder third")
     ).toBeInTheDocument();
     expect(screen.getByText("Episode notes")).toBeInTheDocument();
+  });
+
+  it("virtualizes long episode lists and renders more rows after scrolling", async () => {
+    const manyEpisodes = Array.from({ length: 20 }, (_, index) => ({
+      ...baseEpisode,
+      id: baseEpisode.id + index,
+      title: `Episode ${index + 1}`,
+      publishedAt: `2026-05-${String(index + 1).padStart(2, "0")}T10:00:00Z`,
+    }));
+
+    vi.spyOn(api.podcasts, "episodes").mockResolvedValue({
+      episodes: manyEpisodes,
+    });
+
+    render(<SubscriptionsScreen />);
+
+    expect(await screen.findByTestId("episode-row-Episode 1")).toBeInTheDocument();
+    expect(screen.getByTestId("episode-row-Episode 13")).toBeInTheDocument();
+    expect(screen.queryByTestId("episode-row-Episode 20")).not.toBeInTheDocument();
+
+    const body = screen.getByTestId("playlist-queue-body");
+    Object.defineProperty(body, "scrollTop", {
+      configurable: true,
+      value: 1120,
+      writable: true,
+    });
+
+    fireEvent.scroll(body);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("episode-row-Episode 20")).toBeInTheDocument();
+    });
   });
 
   it("adds an episode to the playlist from the row action", async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -52,6 +52,10 @@ type PodcastWithEpisodes = Podcast & {
   episodes: Array<Episode & { inPlaylist: boolean }>;
 };
 
+const EPISODE_ROW_HEIGHT = 70;
+const EPISODE_OVERSCAN_ROWS = 4;
+const DEFAULT_EPISODE_VIEWPORT_HEIGHT = 350;
+
 function episodeCountLabel(count: number) {
   return `${count} ${count === 1 ? "unlistened episode" : "unlistened episodes"}`;
 }
@@ -103,6 +107,11 @@ export function SubscriptionsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [episodeScrollTop, setEpisodeScrollTop] = useState(0);
+  const [episodeViewportHeight, setEpisodeViewportHeight] = useState(
+    DEFAULT_EPISODE_VIEWPORT_HEIGHT
+  );
+  const episodeListRef = useRef<HTMLDivElement | null>(null);
   const { pendingActions, scheduleAction, undoAction } = useDelayedActions({
     onCommitted: () => setReloadKey((current) => current + 1),
     onError: (caught) => setActionError(getErrorMessage(caught)),
@@ -223,13 +232,63 @@ export function SubscriptionsScreen() {
     selectedPodcast?.episodes.find((episode) => episode.id === showNotesEpisodeId) ??
     null;
 
-  const visibleEpisodes =
-    selectedPodcast?.episodes.filter(
-      (episode) =>
-        !pendingListenedEpisodeIds.has(episode.id) &&
-        (showAll || !episode.isListened)
-    ) ??
-    [];
+  const visibleEpisodes = useMemo(
+    () =>
+      selectedPodcast?.episodes.filter(
+        (episode) =>
+          !pendingListenedEpisodeIds.has(episode.id) &&
+          (showAll || !episode.isListened)
+      ) ?? [],
+    [pendingListenedEpisodeIds, selectedPodcast?.episodes, showAll]
+  );
+
+  useEffect(() => {
+    const container = episodeListRef.current;
+    if (!container) {
+      return;
+    }
+
+    const syncMetrics = () => {
+      setEpisodeViewportHeight(
+        container.clientHeight || DEFAULT_EPISODE_VIEWPORT_HEIGHT
+      );
+      setEpisodeScrollTop(container.scrollTop);
+    };
+
+    syncMetrics();
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver(syncMetrics);
+    observer.observe(container);
+
+    return () => observer.disconnect();
+  }, [selectedPodcast?.id, showAll, visibleEpisodes.length]);
+
+  const virtualEpisodeWindow = useMemo(() => {
+    const startIndex = Math.max(
+      0,
+      Math.floor(episodeScrollTop / EPISODE_ROW_HEIGHT) - EPISODE_OVERSCAN_ROWS
+    );
+    const visibleRowCount =
+      Math.ceil(episodeViewportHeight / EPISODE_ROW_HEIGHT) +
+      EPISODE_OVERSCAN_ROWS * 2;
+    const endIndex = Math.min(
+      visibleEpisodes.length,
+      startIndex + visibleRowCount
+    );
+
+    return {
+      startIndex,
+      endIndex,
+      items: visibleEpisodes.slice(startIndex, endIndex),
+      topSpacerHeight: startIndex * EPISODE_ROW_HEIGHT,
+      bottomSpacerHeight:
+        (visibleEpisodes.length - endIndex) * EPISODE_ROW_HEIGHT,
+    };
+  }, [episodeScrollTop, episodeViewportHeight, visibleEpisodes]);
 
   async function runAction(action: () => Promise<unknown>) {
     setActionError(null);
@@ -370,7 +429,10 @@ export function SubscriptionsScreen() {
                 type="button"
                 variant="default"
                 className="shadow-xs"
-                onClick={() => setShowAll((current) => !current)}
+                onClick={() => {
+                  setEpisodeScrollTop(0);
+                  setShowAll((current) => !current);
+                }}
               >
                 <HugeiconsIcon icon={ViewIcon} data-icon="inline-start" />
                 {showAll ? "Show unlistened podcasts" : "Show all"}
@@ -441,7 +503,10 @@ export function SubscriptionsScreen() {
                                   : undefined
                               }
                               artworkAlt={`${podcast.title} artwork`}
-                              onSelect={() => setSelectedPodcastId(podcast.id)}
+                              onSelect={() => {
+                                setEpisodeScrollTop(0);
+                                setSelectedPodcastId(podcast.id);
+                              }}
                               onRefresh={() =>
                                 void runAction(() => api.podcasts.refresh(podcast.id))
                               }
@@ -464,8 +529,13 @@ export function SubscriptionsScreen() {
                   </Carousel>
                 </div>
                 <PlaylistQueue
+                  key={`${selectedPodcast.id}-${showAll ? "all" : "unlistened"}`}
                   className="h-[400px] shrink-0"
                   bodyClassName="h-[350px] min-h-0 overflow-y-auto"
+                  bodyRef={episodeListRef}
+                  bodyOnScroll={(event) =>
+                    setEpisodeScrollTop(event.currentTarget.scrollTop)
+                  }
                   summary={`${selectedPodcast.title} episodes`}
                   headerAction={
                     <>
@@ -486,7 +556,13 @@ export function SubscriptionsScreen() {
                     </>
                   }
                 >
-                  {visibleEpisodes.map((episode) => {
+                  {virtualEpisodeWindow.topSpacerHeight > 0 ? (
+                    <div
+                      aria-hidden="true"
+                      style={{ height: virtualEpisodeWindow.topSpacerHeight }}
+                    />
+                  ) : null}
+                  {virtualEpisodeWindow.items.map((episode) => {
                     const duration = formatDuration(episode.duration);
                     const publishedAt = formatEpisodeDate(episode.publishedAt);
                     const downloading = downloadingEpisodeIds.has(episode.id);
@@ -569,6 +645,12 @@ export function SubscriptionsScreen() {
                       />
                     );
                   })}
+                  {virtualEpisodeWindow.bottomSpacerHeight > 0 ? (
+                    <div
+                      aria-hidden="true"
+                      style={{ height: virtualEpisodeWindow.bottomSpacerHeight }}
+                    />
+                  ) : null}
                 </PlaylistQueue>
               </div>
             ) : (

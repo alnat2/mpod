@@ -1,10 +1,12 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref, UIEventHandler } from "react";
 
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 type PlaylistQueueProps = {
   bodyClassName?: string;
+  bodyOnScroll?: UIEventHandler<HTMLDivElement>;
+  bodyRef?: Ref<HTMLDivElement>;
   className?: string;
   headerAction?: ReactNode;
   summary: string;
@@ -13,6 +15,8 @@ type PlaylistQueueProps = {
 
 export function PlaylistQueue({
   bodyClassName,
+  bodyOnScroll,
+  bodyRef,
   className,
   headerAction,
   summary,
@@ -29,7 +33,11 @@ export function PlaylistQueue({
         <span className="min-w-0 flex-1 truncate">{summary}</span>
         {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
       </div>
-      <div className={cn("flex w-full flex-col", bodyClassName)}>
+      <div
+        ref={bodyRef}
+        className={cn("flex w-full flex-col", bodyClassName)}
+        onScroll={bodyOnScroll}
+      >
         {children}
       </div>
     </Card>
