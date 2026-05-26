@@ -1,6 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
+  type Dispatch,
+  type SetStateAction,
   useCallback,
   useContext,
   useEffect,
@@ -39,10 +41,47 @@ type PlaybackContextType = {
   seekForward: () => void;
   seekBackward: () => void;
   reloadQueue: () => Promise<void>;
-  updateQueue: (newQueue: QueueEpisode[]) => void;
+  updateQueue: Dispatch<SetStateAction<QueueEpisode[]>>;
 };
 
-const PlaybackContext = createContext<PlaybackContextType | null>(null);
+type PlaybackStateContextType = Omit<
+  PlaybackContextType,
+  | "positionSeconds"
+  | "durationSeconds"
+  | "setSpeedLabel"
+  | "clearPlaybackError"
+  | "playToggle"
+  | "playEpisode"
+  | "seekTo"
+  | "seekForward"
+  | "seekBackward"
+  | "reloadQueue"
+  | "updateQueue"
+>;
+
+type PlaybackProgressContextType = Pick<
+  PlaybackContextType,
+  "positionSeconds" | "durationSeconds"
+>;
+
+type PlaybackDispatchContextType = Pick<
+  PlaybackContextType,
+  | "setSpeedLabel"
+  | "clearPlaybackError"
+  | "playToggle"
+  | "playEpisode"
+  | "seekTo"
+  | "seekForward"
+  | "seekBackward"
+  | "reloadQueue"
+  | "updateQueue"
+>;
+
+const PlaybackStateContext = createContext<PlaybackStateContextType | null>(null);
+const PlaybackProgressContext =
+  createContext<PlaybackProgressContextType | null>(null);
+const PlaybackDispatchContext =
+  createContext<PlaybackDispatchContextType | null>(null);
 
 function playbackRateFromLabel(label: PlaybackSpeedLabel) {
   return Number(label.replace("Speed ", "").replace("x", "")) || 1;
@@ -531,18 +570,34 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const contextValue = useMemo(
+  const clearPlaybackError = useCallback(() => {
+    setPlaybackError(null);
+  }, []);
+
+  const stateValue = useMemo(
     () => ({
       queue,
       currentEpisode,
       playing,
       playbackError,
-      positionSeconds,
-      durationSeconds: currentEpisodeDuration,
       speedLabel,
       loading,
+    }),
+    [queue, currentEpisode, playing, playbackError, speedLabel, loading]
+  );
+
+  const progressValue = useMemo(
+    () => ({
+      positionSeconds,
+      durationSeconds: currentEpisodeDuration,
+    }),
+    [positionSeconds, currentEpisodeDuration]
+  );
+
+  const dispatchValue = useMemo(
+    () => ({
       setSpeedLabel: updateSpeedLabel,
-      clearPlaybackError: () => setPlaybackError(null),
+      clearPlaybackError,
       playToggle,
       playEpisode,
       seekTo,
@@ -552,16 +607,9 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       updateQueue: setQueue,
     }),
     [
-      queue,
-      currentEpisode,
-      playing,
-      playbackError,
-      positionSeconds,
-      currentEpisodeDuration,
-      speedLabel,
-      loading,
       loadQueue,
       updateSpeedLabel,
+      clearPlaybackError,
       playToggle,
       playEpisode,
       seekTo,
@@ -571,16 +619,44 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <PlaybackContext.Provider value={contextValue}>
-      {children}
-    </PlaybackContext.Provider>
+    <PlaybackStateContext.Provider value={stateValue}>
+      <PlaybackProgressContext.Provider value={progressValue}>
+        <PlaybackDispatchContext.Provider value={dispatchValue}>
+          {children}
+        </PlaybackDispatchContext.Provider>
+      </PlaybackProgressContext.Provider>
+    </PlaybackStateContext.Provider>
   );
 }
 
-export function usePlayback() {
-  const context = useContext(PlaybackContext);
+export function usePlaybackState() {
+  const context = useContext(PlaybackStateContext);
   if (!context) {
-    throw new Error("usePlayback must be used within PlaybackProvider");
+    throw new Error("usePlaybackState must be used within PlaybackProvider");
   }
   return context;
+}
+
+export function usePlaybackProgress() {
+  const context = useContext(PlaybackProgressContext);
+  if (!context) {
+    throw new Error("usePlaybackProgress must be used within PlaybackProvider");
+  }
+  return context;
+}
+
+export function usePlaybackDispatch() {
+  const context = useContext(PlaybackDispatchContext);
+  if (!context) {
+    throw new Error("usePlaybackDispatch must be used within PlaybackProvider");
+  }
+  return context;
+}
+
+export function usePlayback(): PlaybackContextType {
+  return {
+    ...usePlaybackState(),
+    ...usePlaybackProgress(),
+    ...usePlaybackDispatch(),
+  };
 }

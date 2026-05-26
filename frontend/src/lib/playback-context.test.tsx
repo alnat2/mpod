@@ -1,9 +1,14 @@
+import { Profiler } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api, type Episode, type Podcast, type PlaybackState } from "./api";
-import { PlaybackProvider, usePlayback } from "./playback-context";
+import {
+  PlaybackProvider,
+  usePlayback,
+  usePlaybackDispatch,
+} from "./playback-context";
 
 type FakeMediaError = {
   code: number;
@@ -228,10 +233,19 @@ function renderPlaybackProvider() {
   );
 }
 
+let dispatchHarnessProfilerCommits = 0;
+
+function DispatchOnlyHarness() {
+  usePlaybackDispatch();
+
+  return <div data-testid="dispatch-render-count">ready</div>;
+}
+
 describe("PlaybackProvider", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     FakeAudio.instances = [];
+    dispatchHarnessProfilerCommits = 0;
     vi.stubGlobal("Audio", FakeAudio);
 
     vi.spyOn(api.playlist, "list").mockResolvedValue({ items: playlistItems });
@@ -432,5 +446,32 @@ describe("PlaybackProvider", () => {
         completed: true,
       })
     );
+  });
+
+  it("does not rerender dispatch-only consumers on audio time updates", async () => {
+    render(
+      <PlaybackProvider>
+        <Profiler
+          id="dispatch-only"
+          onRender={() => {
+            dispatchHarnessProfilerCommits += 1;
+          }}
+        >
+          <DispatchOnlyHarness />
+        </Profiler>
+      </PlaybackProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("dispatch-render-count")).toHaveTextContent("ready");
+    });
+
+    const audio = FakeAudio.instances[0];
+    const commitsBeforeTimeUpdate = dispatchHarnessProfilerCommits;
+
+    audio.currentTime = 123;
+    audio.emit("timeupdate");
+
+    expect(dispatchHarnessProfilerCommits).toBe(commitsBeforeTimeUpdate);
   });
 });

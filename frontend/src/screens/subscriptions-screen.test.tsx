@@ -10,7 +10,7 @@ import { SubscriptionsScreen } from "./subscriptions-screen";
 const reloadQueueMock = vi.fn();
 
 vi.mock("@/lib/playback-context", () => ({
-  usePlayback: () => ({
+  usePlaybackDispatch: () => ({
     reloadQueue: reloadQueueMock,
   }),
 }));

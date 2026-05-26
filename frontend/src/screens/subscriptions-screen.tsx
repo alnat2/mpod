@@ -30,7 +30,7 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 import { api, type Episode, type Podcast } from "@/lib/api";
-import { usePlayback } from "@/lib/playback-context";
+import { usePlaybackDispatch } from "@/lib/playback-context";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
 import {
@@ -90,7 +90,7 @@ function formatLastRefresh(podcasts: PodcastWithEpisodes[]) {
 }
 
 export function SubscriptionsScreen() {
-  const { reloadQueue } = usePlayback();
+  const { reloadQueue } = usePlaybackDispatch();
   const [showAll, setShowAll] = useState(false);
   const [selectedPodcastId, setSelectedPodcastId] = useState<number | null>(null);
   const [modal, setModal] = useState<AddPodcastModalMode | "show-notes">(null);
