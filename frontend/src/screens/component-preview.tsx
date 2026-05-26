@@ -1,5 +1,7 @@
 import {
   AddPodcast,
+  AuthCard,
+  BottomNav,
   EpisodeRow,
   FileDropzone,
   Logo,
@@ -60,10 +62,17 @@ export function ComponentPreview() {
         <div className="w-full rounded-lg border border-border">
           <TopNav />
         </div>
+        <div className="w-[320px]">
+          <BottomNav activeItem="Subscriptions" />
+        </div>
         <Logo />
         <div className="w-full max-w-[900px]">
           <PageHeader title="Now playing" actions={[]} />
         </div>
+      </PreviewSection>
+
+      <PreviewSection title="Auth">
+        <AuthCard />
       </PreviewSection>
 
       <PreviewSection title="Library">

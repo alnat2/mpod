@@ -79,19 +79,19 @@ export function AddPodcast({
   return (
     <Card
       className={cn(
-        "w-full max-w-[720px] items-start gap-0 rounded-lg py-0 shadow-sm",
+        "w-full max-w-[320px] items-start gap-0 rounded-lg py-0 shadow-sm md:max-w-[720px]",
         className
       )}
     >
       <form className="contents" onSubmit={handleSubmit}>
-        <CardHeader className="flex w-full flex-row items-center gap-3 px-6 py-5">
+        <CardHeader className="flex w-full flex-row items-center gap-3 px-4 py-5 md:px-6">
           <CardTitle className="min-w-0 flex-1 text-xl leading-7 font-semibold">
             Add Podcast
           </CardTitle>
           <Button
             aria-label="Close"
-            className="size-10"
-            size="icon"
+            className="size-8 md:size-10"
+            size="icon-sm"
             variant="ghost"
             type="button"
             disabled={disabled}
@@ -104,7 +104,7 @@ export function AddPodcast({
             />
           </Button>
         </CardHeader>
-        <div className="px-6 pb-3">
+        <div className="px-4 pb-3 md:px-6">
           <Tabs
             value={activeMode}
             onValueChange={handleModeChange}
@@ -127,7 +127,7 @@ export function AddPodcast({
             </TabsList>
           </Tabs>
         </div>
-        <CardContent className="w-full border-t border-border px-6 py-5">
+        <CardContent className="w-full border-t border-border px-4 py-5 md:px-6">
           {isOpml ? (
             <FileDropzone
               disabled={disabled}
@@ -154,8 +154,9 @@ export function AddPodcast({
             <p className="pt-3 text-sm leading-5 text-destructive">{error}</p>
           ) : null}
         </CardContent>
-        <CardFooter className="w-full justify-end gap-3 border-t-0 bg-card px-6 py-5">
+        <CardFooter className="w-full justify-end gap-3 border-t-0 bg-card px-4 py-5 md:px-6">
           <Button
+            className="flex-1 md:flex-none"
             variant="secondary"
             type="button"
             disabled={disabled}
@@ -163,7 +164,11 @@ export function AddPodcast({
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={disabled || (isOpml && !opmlFile)}>
+          <Button
+            className="flex-1 md:flex-none"
+            type="submit"
+            disabled={disabled || (isOpml && !opmlFile)}
+          >
             {isOpml ? "Import file" : "Add Feed"}
           </Button>
         </CardFooter>

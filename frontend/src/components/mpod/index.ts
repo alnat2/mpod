@@ -3,6 +3,7 @@ export { AddPodcast } from "./add-podcast";
 export { Artwork } from "./artwork";
 export { AuthCard } from "./auth-card";
 export { AuthShell } from "./auth-shell";
+export { BottomNav } from "./bottom-nav";
 export { EpisodeRow } from "./episode-row";
 export { FileDropzone } from "./file-dropzone";
 export { Logo } from "./logo";

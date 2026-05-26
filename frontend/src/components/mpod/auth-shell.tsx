@@ -18,14 +18,14 @@ export function AuthShell({
   return (
     <main
       className={cn(
-        "flex min-h-screen items-center justify-center bg-background px-6 py-18",
+        "flex min-h-screen items-start justify-center bg-background px-5 py-5 md:items-center md:px-6 md:py-18",
         className
       )}
     >
-      <div className="flex w-full max-w-[1200px] flex-col items-center gap-16 lg:flex-row">
+      <div className="flex w-full max-w-[1200px] flex-col items-start justify-center gap-5 md:items-center md:gap-16 lg:flex-row">
         <section className="flex min-w-0 flex-1 flex-col items-start gap-[22px]">
           <Logo />
-          <h1 className="max-w-[620px] text-5xl leading-12 font-bold tracking-normal text-foreground">
+          <h1 className="max-w-[620px] text-4xl leading-10 font-bold tracking-normal text-foreground md:text-5xl md:leading-12">
             {headline}
           </h1>
         </section>

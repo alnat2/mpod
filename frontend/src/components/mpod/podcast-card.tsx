@@ -47,7 +47,7 @@ export function PodcastCard({
         }
       }}
       className={cn(
-        "flex h-[420px] w-[285px] flex-col items-center gap-5 rounded-lg border border-border bg-card px-3 py-5 text-center text-card-foreground",
+        "flex w-[320px] flex-col items-center gap-4 rounded-lg border border-border bg-card px-4 py-6 text-center text-card-foreground md:h-[420px] md:w-[285px] md:gap-5 md:px-3 md:py-5",
         onSelect && "cursor-pointer outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
         selected && "border-4 border-[#9AE600]",
         className
@@ -68,14 +68,14 @@ export function PodcastCard({
             {description}
           </p>
         </div>
-        <p className="w-full text-center text-xs leading-4 text-muted-foreground">
+        <p className="w-full text-center text-xs leading-4 font-normal text-muted-foreground">
           {episodeCountLabel}
         </p>
       </div>
-      <div className="flex items-center justify-center gap-2">
+      <div className="flex w-full items-center justify-center gap-3 px-3">
         <Button
           variant="outline"
-          className="h-8 gap-1.5 rounded-lg px-3 shadow-xs"
+          className="h-8 flex-1 gap-1.5 rounded-lg px-3 shadow-xs"
           type="button"
           onClick={(event) => {
             event.stopPropagation();
@@ -87,7 +87,7 @@ export function PodcastCard({
         </Button>
         <Button
           variant="secondary"
-          className="h-8 gap-1.5 rounded-lg px-3"
+          className="h-8 flex-1 gap-1.5 rounded-lg px-3"
           type="button"
           onClick={(event) => {
             event.stopPropagation();

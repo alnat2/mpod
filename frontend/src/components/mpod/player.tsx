@@ -74,13 +74,17 @@ function TransportButton({
           className={cn(
             "inline-flex shrink-0 items-center justify-center rounded-full text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
             primary
-              ? "size-12 bg-primary text-primary-foreground shadow-2xs"
-              : "size-8 hover:bg-muted"
+              ? "size-14 bg-primary text-primary-foreground shadow-2xs md:size-12"
+              : "size-11 hover:bg-muted md:size-8"
           )}
           type="button"
           onClick={onClick}
         >
-          <HugeiconsIcon icon={icon} className="size-8" aria-hidden="true" />
+          <HugeiconsIcon
+            icon={icon}
+            className={cn(primary ? "size-8" : "size-11 md:size-8")}
+            aria-hidden="true"
+          />
         </button>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
@@ -135,18 +139,20 @@ export function Player({
   return (
     <section
       className={cn(
-        "flex w-full max-w-[480px] flex-col items-center justify-center gap-4 rounded-2xl border border-border bg-card px-12 py-5 text-center text-card-foreground shadow-xs",
+        "flex w-full max-w-[320px] flex-col items-center justify-center gap-4 rounded-2xl border border-border bg-card px-6 py-4 text-center text-card-foreground shadow-xs md:max-w-[480px] md:px-12 md:py-5",
         className
       )}
     >
       <Artwork
-        className="size-40 rounded-lg"
+        className="size-[120px] rounded-lg md:size-40"
         src={artworkUrl}
         alt={artworkAlt}
         title={podcastTitle}
       />
       <div className="flex w-full flex-col gap-2">
-        <h2 className="line-clamp-2 text-lg leading-7 font-bold">{title}</h2>
+        <h2 className="line-clamp-2 text-xl leading-7 font-bold md:text-lg">
+          {title}
+        </h2>
         <p className="truncate text-sm leading-5 text-muted-foreground">
           {podcastTitle}
         </p>
@@ -184,10 +190,10 @@ export function Player({
           onClick={onForward}
         />
       </div>
-      <div className="flex items-center justify-center gap-3">
+      <div className="flex items-center justify-center gap-2 md:gap-3">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" type="button">
+            <Button className="h-9 shadow-xs" variant="outline" type="button">
               {activeSpeedLabel}
               <HugeiconsIcon
                 icon={ArrowDown01Icon}
@@ -211,6 +217,7 @@ export function Player({
           </DropdownMenuContent>
         </DropdownMenu>
         <Button
+          className="h-9 rounded-[10px] px-2.5 shadow-xs"
           variant="outline"
           type="button"
           disabled={notesDisabled}

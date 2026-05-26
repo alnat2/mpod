@@ -2,6 +2,7 @@ import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
+import { BottomNav } from "./bottom-nav";
 import { PageHeader } from "./page-header";
 import { TopNav } from "./top-nav";
 
@@ -29,17 +30,31 @@ export function AppShell({
   return (
     <div
       className={cn(
-        "flex h-svh w-full flex-col items-center overflow-hidden bg-background px-6 pb-8 xl:px-20",
+        "flex h-svh w-full flex-col items-center overflow-hidden bg-background px-5 md:px-6 md:pb-8 xl:px-20",
         className,
       )}
     >
-      <TopNav activeItem={activeNavItem} onAdd={onAddPodcast} />
-      <main className="flex min-h-0 w-full max-w-[1280px] flex-1 flex-col text-foreground">
+      <TopNav
+        activeItem={activeNavItem}
+        className="hidden md:flex"
+        onAdd={onAddPodcast}
+      />
+      <main className="flex min-h-0 w-full max-w-[1200px] flex-1 flex-col text-foreground">
         {pageHeaderVisible ? (
-          <PageHeader actions={pageActions} subtitle={pageSubtitle} title={pageTitle} />
+          <PageHeader
+            className="py-4 md:py-5"
+            actions={pageActions}
+            subtitle={pageSubtitle}
+            title={pageTitle}
+          />
         ) : null}
         <div className="min-h-0 flex-1">{children}</div>
       </main>
+      <BottomNav
+        activeItem={activeNavItem}
+        className="md:hidden"
+        onAdd={onAddPodcast}
+      />
     </div>
   );
 }

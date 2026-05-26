@@ -39,25 +39,33 @@ export function PageHeader({
   title,
 }: PageHeaderProps) {
   return (
-    <div className={cn("flex w-full items-center gap-6", className)}>
+    <div
+      className={cn(
+        "flex w-full flex-col items-start gap-3 md:flex-row md:items-center md:gap-6",
+        className
+      )}
+    >
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
-        <h1 className="truncate text-3xl leading-9 font-semibold tracking-normal text-foreground">
+        <h1 className="w-full text-3xl leading-9 font-semibold tracking-normal text-foreground">
           {title}
         </h1>
         {subtitle ? (
-          <p className="truncate text-base leading-6 font-medium text-muted-foreground">
+          <p className="w-full text-base leading-6 font-medium text-muted-foreground">
             {subtitle}
           </p>
         ) : null}
       </div>
       {actions.length > 0 ? (
-        <div className="flex h-[34px] shrink-0 items-center gap-2 overflow-hidden">
+        <div className="flex h-[34px] w-full shrink-0 items-center gap-2 overflow-hidden md:w-auto">
           {actions.map((action) => (
             <Button
               key={action.label}
               type="button"
               variant={action.variant ?? "secondary"}
-              className={cn(action.variant === "default" && "shadow-xs")}
+              className={cn(
+                "h-8 flex-1 justify-center md:flex-none",
+                action.variant === "default" && "shadow-xs"
+              )}
               onClick={action.onClick}
             >
               {action.icon}

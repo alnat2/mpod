@@ -57,14 +57,14 @@ export function ShowNotes({
   return (
     <Card
       className={cn(
-        "w-full max-w-[720px] gap-5 rounded-[20px] p-8 shadow-md",
+        "w-full max-w-[320px] gap-4 rounded-[20px] p-4 shadow-md md:max-w-[720px] md:gap-5 md:p-8",
         className
       )}
     >
-      <header className="flex w-full items-center gap-6">
+      <header className="flex w-full items-start gap-4 md:items-center md:gap-6">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
           <h2 className="text-2xl leading-8 font-semibold">Show notes</h2>
-          <p className="truncate text-base leading-6 font-medium text-muted-foreground">
+          <p className="text-base leading-6 font-medium text-muted-foreground md:truncate">
             {podcastTitle} - {episodeTitle}
           </p>
         </div>
@@ -76,7 +76,7 @@ export function ShowNotes({
           />
         </div>
       </header>
-      <div className="max-h-[408px] w-full overflow-y-auto pr-4 text-base leading-6 whitespace-pre-wrap text-card-foreground">
+      <div className="max-h-[360px] w-full overflow-y-auto pr-1 text-base leading-6 whitespace-pre-wrap text-card-foreground md:max-h-[408px] md:pr-4">
         {children}
       </div>
     </Card>
