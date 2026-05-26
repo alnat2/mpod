@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { BrowserRouter, useLocation } from "react-router-dom";
@@ -6,12 +6,37 @@ import { BrowserRouter, useLocation } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthShell } from "@/components/mpod";
 import { api, type AuthSession } from "@/lib/api";
-import { LoginScreen, SetupScreen } from "@/screens/auth-screens";
-import { ComponentPreview } from "@/screens/component-preview";
-import { HomeScreen } from "@/screens/home-screen";
-import { SettingsScreen } from "@/screens/settings-screen";
 import { PlaybackProvider } from "@/lib/playback-context";
-import { SubscriptionsScreen } from "@/screens/subscriptions-screen";
+
+const SetupScreen = lazy(async () => {
+  const module = await import("@/screens/auth-screens");
+  return { default: module.SetupScreen };
+});
+
+const LoginScreen = lazy(async () => {
+  const module = await import("@/screens/auth-screens");
+  return { default: module.LoginScreen };
+});
+
+const ComponentPreview = lazy(async () => {
+  const module = await import("@/screens/component-preview");
+  return { default: module.ComponentPreview };
+});
+
+const HomeScreen = lazy(async () => {
+  const module = await import("@/screens/home-screen");
+  return { default: module.HomeScreen };
+});
+
+const SettingsScreen = lazy(async () => {
+  const module = await import("@/screens/settings-screen");
+  return { default: module.SettingsScreen };
+});
+
+const SubscriptionsScreen = lazy(async () => {
+  const module = await import("@/screens/subscriptions-screen");
+  return { default: module.SubscriptionsScreen };
+});
 
 function LoadingScreen() {
   return (
@@ -85,9 +110,11 @@ function AppRoutes() {
 
   if (location.pathname === "/component-preview") {
     return (
-      <Routes>
-        <Route path="/component-preview" element={<ComponentPreview />} />
-      </Routes>
+      <Suspense fallback={<LoadingScreen />}>
+        <Routes>
+          <Route path="/component-preview" element={<ComponentPreview />} />
+        </Routes>
+      </Suspense>
     );
   }
 
@@ -104,72 +131,74 @@ function AppRoutes() {
   const authenticatedHome = authenticated ? "/subscriptions" : "/login";
 
   return (
-    <Routes>
-      <Route
-        path="/"
-        element={
-          <Navigate
-            to={setupRequired ? "/setup" : authenticatedHome}
-            replace
-          />
-        }
-      />
-      <Route
-        path="/setup"
-        element={
-          setupRequired ? (
-            <SetupScreen onAuthenticated={loadSession} />
-          ) : (
-            <Navigate to={authenticatedHome} replace />
-          )
-        }
-      />
-      <Route
-        path="/login"
-        element={
-          setupRequired ? (
-            <Navigate to="/setup" replace />
-          ) : authenticated ? (
-            <Navigate to="/subscriptions" replace />
-          ) : (
-            <LoginScreen onAuthenticated={loadSession} />
-          )
-        }
-      />
-      <Route
-        path="/subscriptions"
-        element={
-          <ProtectedRoute
-            authenticated={authenticated}
-            setupRequired={setupRequired}
-          >
-            <SubscriptionsScreen />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/home"
-        element={
-          <ProtectedRoute
-            authenticated={authenticated}
-            setupRequired={setupRequired}
-          >
-            <HomeScreen />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings"
-        element={
-          <ProtectedRoute
-            authenticated={authenticated}
-            setupRequired={setupRequired}
-          >
-            <SettingsScreen onSessionChange={loadSession} />
-          </ProtectedRoute>
-        }
-      />
-    </Routes>
+    <Suspense fallback={<LoadingScreen />}>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <Navigate
+              to={setupRequired ? "/setup" : authenticatedHome}
+              replace
+            />
+          }
+        />
+        <Route
+          path="/setup"
+          element={
+            setupRequired ? (
+              <SetupScreen onAuthenticated={loadSession} />
+            ) : (
+              <Navigate to={authenticatedHome} replace />
+            )
+          }
+        />
+        <Route
+          path="/login"
+          element={
+            setupRequired ? (
+              <Navigate to="/setup" replace />
+            ) : authenticated ? (
+              <Navigate to="/subscriptions" replace />
+            ) : (
+              <LoginScreen onAuthenticated={loadSession} />
+            )
+          }
+        />
+        <Route
+          path="/subscriptions"
+          element={
+            <ProtectedRoute
+              authenticated={authenticated}
+              setupRequired={setupRequired}
+            >
+              <SubscriptionsScreen />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/home"
+          element={
+            <ProtectedRoute
+              authenticated={authenticated}
+              setupRequired={setupRequired}
+            >
+              <HomeScreen />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute
+              authenticated={authenticated}
+              setupRequired={setupRequired}
+            >
+              <SettingsScreen onSessionChange={loadSession} />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </Suspense>
   );
 }
 
