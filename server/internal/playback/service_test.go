@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cross/mpod/server/internal/downloads"
+	"github.com/cross/mpod/server/internal/episodes"
 	"github.com/cross/mpod/server/internal/playlist"
 	"github.com/cross/mpod/server/internal/storage"
 )
@@ -22,7 +23,7 @@ func TestUpdateIgnoresStaleClientUpdate(t *testing.T) {
 	currentTime := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 	mustExec(t, db.SQL, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (1, 120, ?)`, currentTime)
 
-	service := NewService(db.SQL, playlist.NewService(db.SQL), downloads.NewService(db.SQL, nil, t.TempDir()))
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
 	service.now = func() time.Time { return currentTime.Add(5 * time.Minute) }
 
 	staleTime := currentTime.Add(-1 * time.Minute)
@@ -57,7 +58,7 @@ func TestUpdateCompletionAppliesSideEffects(t *testing.T) {
 	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path, is_listened) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3', ?, 0)`, downloadPath)
 	mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
 
-	service := NewService(db.SQL, playlist.NewService(db.SQL), downloads.NewService(db.SQL, nil, downloadDir))
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, downloadDir)), playlist.NewService(db.SQL))
 	service.now = func() time.Time { return time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC) }
 
 	state, err := service.Update(context.Background(), UpdateInput{
@@ -111,7 +112,7 @@ func TestUpdateAdvancesPositionWhenProgressMovesForward(t *testing.T) {
 	currentTime := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 	mustExec(t, db.SQL, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (1, 120, ?)`, currentTime)
 
-	service := NewService(db.SQL, playlist.NewService(db.SQL), downloads.NewService(db.SQL, nil, t.TempDir()))
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
 	service.now = func() time.Time { return currentTime.Add(5 * time.Minute) }
 
 	state, err := service.Update(context.Background(), UpdateInput{
@@ -139,7 +140,7 @@ func TestUpdateAllowsLargeBackwardSeekWhenExplicit(t *testing.T) {
 	currentTime := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 	mustExec(t, db.SQL, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (1, 240, ?)`, currentTime)
 
-	service := NewService(db.SQL, playlist.NewService(db.SQL), downloads.NewService(db.SQL, nil, t.TempDir()))
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
 	service.now = func() time.Time { return currentTime.Add(5 * time.Minute) }
 
 	state, err := service.Update(context.Background(), UpdateInput{
@@ -165,7 +166,7 @@ func TestUpdateIgnoresBackwardDriftWithoutSeek(t *testing.T) {
 	currentTime := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
 	mustExec(t, db.SQL, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (1, 240, ?)`, currentTime)
 
-	service := NewService(db.SQL, playlist.NewService(db.SQL), downloads.NewService(db.SQL, nil, t.TempDir()))
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
 	service.now = func() time.Time { return currentTime.Add(5 * time.Minute) }
 
 	state, err := service.Update(context.Background(), UpdateInput{
@@ -179,6 +180,52 @@ func TestUpdateIgnoresBackwardDriftWithoutSeek(t *testing.T) {
 
 	if state.PositionSeconds != 240 {
 		t.Fatalf("expected drifted backward update to preserve position 240, got %d", state.PositionSeconds)
+	}
+}
+
+func TestUpdateCompletionKeepsEpisodeInPlaylistWhenDownloadDeletionFails(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	downloadPath := filepath.Join(downloadDir, "problem-dir")
+	if err := os.MkdirAll(downloadPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(downloadPath, "nested.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path, is_listened) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3', ?, 0)`, downloadPath)
+	mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, downloadDir)), playlist.NewService(db.SQL))
+	service.now = func() time.Time { return time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC) }
+
+	if _, err := service.Update(context.Background(), UpdateInput{
+		EpisodeID:       1,
+		PositionSeconds: 300,
+		DurationSeconds: 300,
+		Completed:       true,
+	}); err == nil {
+		t.Fatal("expected Update to fail")
+	}
+
+	var listened bool
+	if err := db.SQL.QueryRow(`SELECT is_listened FROM episodes WHERE id = 1`).Scan(&listened); err != nil {
+		t.Fatalf("query listened state: %v", err)
+	}
+	if listened {
+		t.Fatalf("expected episode to remain unlistened")
+	}
+
+	var playlistCount int
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM playlist WHERE episode_id = 1`).Scan(&playlistCount); err != nil {
+		t.Fatalf("query playlist count: %v", err)
+	}
+	if playlistCount != 1 {
+		t.Fatalf("expected episode to remain in playlist, got %d rows", playlistCount)
 	}
 }
 

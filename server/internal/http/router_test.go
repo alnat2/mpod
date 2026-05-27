@@ -2064,7 +2064,7 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 		auth:            auth.NewService(authDB.SQL),
 		episodes:        episodes.NewService(appDB.SQL),
 		episodeActions:  episodes.NewActions(appDB.SQL, downloadsService),
-		playback:        playback.NewService(appDB.SQL, playlistService, downloadsService),
+		playback:        playback.NewService(appDB.SQL, episodes.NewActions(appDB.SQL, downloadsService), playlistService),
 		playlist:        playlistService,
 		playlistActions: playlistActions,
 		downloads:       downloadsService,

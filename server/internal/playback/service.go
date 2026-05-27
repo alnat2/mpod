@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cross/mpod/server/internal/downloads"
+	"github.com/cross/mpod/server/internal/episodes"
 	"github.com/cross/mpod/server/internal/playlist"
 )
 
@@ -17,10 +17,10 @@ var (
 )
 
 type Service struct {
-	db        *sql.DB
-	playlist  *playlist.Service
-	downloads *downloads.Service
-	now       func() time.Time
+	db             *sql.DB
+	episodeActions *episodes.Actions
+	playlist       *playlist.Service
+	now            func() time.Time
 }
 
 type State struct {
@@ -38,12 +38,12 @@ type UpdateInput struct {
 	ClientUpdatedAt *time.Time
 }
 
-func NewService(db *sql.DB, playlist *playlist.Service, downloads *downloads.Service) *Service {
+func NewService(db *sql.DB, episodeActions *episodes.Actions, playlist *playlist.Service) *Service {
 	return &Service{
-		db:        db,
-		playlist:  playlist,
-		downloads: downloads,
-		now:       time.Now,
+		db:             db,
+		episodeActions: episodeActions,
+		playlist:       playlist,
+		now:            time.Now,
 	}
 }
 
@@ -144,14 +144,11 @@ func (s *Service) saveState(ctx context.Context, episodeID, position int64) (Sta
 }
 
 func (s *Service) applyCompletionSideEffects(ctx context.Context, episodeID int64) error {
-	if _, err := s.db.ExecContext(ctx, `UPDATE episodes SET is_listened = 1 WHERE id = ?`, episodeID); err != nil {
+	if err := s.episodeActions.SetListened(ctx, episodeID, true); err != nil {
 		return fmt.Errorf("mark episode listened from playback: %w", err)
 	}
 	if err := s.playlist.Remove(ctx, episodeID); err != nil {
 		return fmt.Errorf("remove completed episode from playlist: %w", err)
-	}
-	if _, err := s.downloads.Delete(ctx, episodeID); err != nil && err != downloads.ErrEpisodeNotFound {
-		return fmt.Errorf("delete completed episode download: %w", err)
 	}
 	return nil
 }

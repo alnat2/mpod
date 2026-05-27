@@ -82,7 +82,7 @@ func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerServi
 		auth:            auth.NewService(db),
 		episodes:        episodes.NewService(db),
 		episodeActions:  episodes.NewActions(db, downloadsService),
-		playback:        playback.NewService(db, playlistService, downloadsService),
+		playback:        playback.NewService(db, episodes.NewActions(db, downloadsService), playlistService),
 		playlist:        playlistService,
 		playlistActions: playlistActions,
 		downloads:       downloadsService,
