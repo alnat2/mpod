@@ -20,7 +20,7 @@ export function ScreenBannerStack({
   children: ReactNode;
 }) {
   return (
-    <div className="pointer-events-none fixed top-[100px] left-1/2 z-50 flex w-full max-w-[1040px] -translate-x-1/2 flex-col gap-3 px-4">
+    <div className="pointer-events-none fixed top-[56px] left-1/2 z-50 flex w-full max-w-[1040px] -translate-x-1/2 flex-col gap-3 px-4 md:top-[100px]">
       {children}
     </div>
   );
@@ -104,7 +104,7 @@ export function EmptyState({
   return (
     <section
       className={cn(
-        "flex min-h-[560px] w-full items-center justify-center rounded-lg bg-card p-12",
+        "flex min-h-[228px] w-full items-center justify-center rounded-md bg-card p-6 md:min-h-[560px] md:rounded-lg md:p-12",
         className
       )}
     >
@@ -119,7 +119,11 @@ export function EmptyState({
             </p>
           ) : null}
         </div>
-        {actions ? <div className="flex items-center gap-3">{actions}</div> : null}
+        {actions ? (
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            {actions}
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -135,22 +139,24 @@ export function ListLoadingState({
   return (
     <div
       className={cn(
-        "flex min-h-[560px] w-full flex-col gap-3 rounded-lg bg-card p-6",
+        "flex w-full flex-col gap-4 md:min-h-[560px] md:gap-3 md:rounded-lg md:bg-card md:p-6",
         className
       )}
       aria-label={label}
       aria-busy="true"
     >
       <span className="sr-only">{label}</span>
-      <div className="grid grid-cols-4 gap-5">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <Skeleton className="h-[220px] rounded-lg" key={index} />
+      <div className="flex gap-4 overflow-hidden md:grid md:grid-cols-4 md:gap-5">
+        <Skeleton className="h-[390px] w-[320px] shrink-0 rounded-2xl md:h-[220px] md:w-auto md:rounded-lg" />
+        <Skeleton className="h-[390px] w-16 shrink-0 rounded-2xl md:hidden" />
+        {Array.from({ length: 3 }).map((_, index) => (
+          <Skeleton className="hidden h-[220px] rounded-lg md:block" key={index} />
         ))}
       </div>
-      <Skeleton className="mt-2 h-[50px] rounded-md" />
-      <Skeleton className="h-[70px] rounded-md" />
-      <Skeleton className="h-[70px] rounded-md" />
-      <Skeleton className="h-[70px] rounded-md" />
+      <Skeleton className="mt-1 h-[228px] rounded-2xl md:mt-2 md:h-[50px] md:rounded-md" />
+      <Skeleton className="h-[76px] rounded-md" />
+      <Skeleton className="h-[76px] rounded-md" />
+      <Skeleton className="h-[76px] rounded-md md:h-[70px]" />
     </div>
   );
 }

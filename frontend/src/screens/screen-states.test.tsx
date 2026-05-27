@@ -44,7 +44,7 @@ describe("screen state helpers", () => {
 
     expect(container.firstChild).toHaveClass(
       "fixed",
-      "top-[100px]",
+      "top-[56px]",
       "pointer-events-none"
     );
   });

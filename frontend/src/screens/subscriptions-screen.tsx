@@ -17,6 +17,7 @@ import {
   AppShell,
   EpisodeRow,
   ModalScreen,
+  PageHeader,
   PlaylistQueue,
   PodcastCard,
   ShowNotes,
@@ -31,6 +32,7 @@ import {
 } from "@/components/ui/carousel";
 import { api, type Episode, type Podcast } from "@/lib/api";
 import { usePlaybackDispatch } from "@/lib/playback-context";
+import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
 import {
@@ -53,8 +55,10 @@ type PodcastWithEpisodes = Podcast & {
 };
 
 const EPISODE_ROW_HEIGHT = 70;
+const MOBILE_EPISODE_ROW_HEIGHT = 76;
 const EPISODE_OVERSCAN_ROWS = 4;
 const DEFAULT_EPISODE_VIEWPORT_HEIGHT = 350;
+const MOBILE_EPISODE_VIEWPORT_HEIGHT = 152;
 
 function episodeCountLabel(count: number) {
   return `${count} ${count === 1 ? "unlistened episode" : "unlistened episodes"}`;
@@ -94,6 +98,7 @@ function formatLastRefresh(podcasts: PodcastWithEpisodes[]) {
 }
 
 export function SubscriptionsScreen() {
+  const isMobile = useIsMobileViewport();
   const { reloadQueue } = usePlaybackDispatch();
   const [showAll, setShowAll] = useState(false);
   const [selectedPodcastId, setSelectedPodcastId] = useState<number | null>(null);
@@ -250,7 +255,10 @@ export function SubscriptionsScreen() {
 
     const syncMetrics = () => {
       setEpisodeViewportHeight(
-        container.clientHeight || DEFAULT_EPISODE_VIEWPORT_HEIGHT
+        container.clientHeight ||
+          (isMobile
+            ? MOBILE_EPISODE_VIEWPORT_HEIGHT
+            : DEFAULT_EPISODE_VIEWPORT_HEIGHT)
       );
       setEpisodeScrollTop(container.scrollTop);
     };
@@ -265,15 +273,17 @@ export function SubscriptionsScreen() {
     observer.observe(container);
 
     return () => observer.disconnect();
-  }, [selectedPodcast?.id, showAll, visibleEpisodes.length]);
+  }, [isMobile, selectedPodcast?.id, showAll, visibleEpisodes.length]);
+
+  const episodeRowHeight = isMobile ? MOBILE_EPISODE_ROW_HEIGHT : EPISODE_ROW_HEIGHT;
 
   const virtualEpisodeWindow = useMemo(() => {
     const startIndex = Math.max(
       0,
-      Math.floor(episodeScrollTop / EPISODE_ROW_HEIGHT) - EPISODE_OVERSCAN_ROWS
+      Math.floor(episodeScrollTop / episodeRowHeight) - EPISODE_OVERSCAN_ROWS
     );
     const visibleRowCount =
-      Math.ceil(episodeViewportHeight / EPISODE_ROW_HEIGHT) +
+      Math.ceil(episodeViewportHeight / episodeRowHeight) +
       EPISODE_OVERSCAN_ROWS * 2;
     const endIndex = Math.min(
       visibleEpisodes.length,
@@ -284,11 +294,11 @@ export function SubscriptionsScreen() {
       startIndex,
       endIndex,
       items: visibleEpisodes.slice(startIndex, endIndex),
-      topSpacerHeight: startIndex * EPISODE_ROW_HEIGHT,
+      topSpacerHeight: startIndex * episodeRowHeight,
       bottomSpacerHeight:
-        (visibleEpisodes.length - endIndex) * EPISODE_ROW_HEIGHT,
+        (visibleEpisodes.length - endIndex) * episodeRowHeight,
     };
-  }, [episodeScrollTop, episodeViewportHeight, visibleEpisodes]);
+  }, [episodeRowHeight, episodeScrollTop, episodeViewportHeight, visibleEpisodes]);
 
   async function runAction(action: () => Promise<unknown>) {
     setActionError(null);
@@ -399,46 +409,76 @@ export function SubscriptionsScreen() {
         pageActions={[]}
         pageHeaderVisible={false}
       >
-        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-md border border-border bg-card px-10 py-5">
-          <div className="flex w-full items-center gap-6">
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
-              <h1 className="truncate text-3xl leading-9 font-semibold tracking-normal text-foreground">
-                Subscriptions
-              </h1>
-              <p className="truncate text-base leading-6 font-medium text-muted-foreground">
-                {formatLastRefresh(podcasts)}
-              </p>
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5">
+          {isMobile ? (
+            <div className="pt-4">
+              <PageHeader
+                layout="mobile"
+                title="Subscriptions"
+                subtitle={formatLastRefresh(podcasts)}
+                actions={[
+                  {
+                    label: "Refresh all",
+                    icon: <HugeiconsIcon icon={RefreshDotIcon} data-icon="inline-start" />,
+                    variant: "secondary",
+                    onClick: () =>
+                      void runAction(async () => {
+                        await api.podcasts.refreshAll();
+                      }),
+                  },
+                  {
+                    label: showAll ? "Show unlistened podcasts" : "Show all",
+                    icon: <HugeiconsIcon icon={ViewIcon} data-icon="inline-start" />,
+                    variant: "default",
+                    onClick: () => {
+                      setEpisodeScrollTop(0);
+                      setShowAll((current) => !current);
+                    },
+                  },
+                ]}
+              />
             </div>
-            <div className="flex h-[34px] shrink-0 items-center gap-2 overflow-hidden">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() =>
-                  void runAction(async () => {
-                    await api.podcasts.refreshAll();
-                  })
-                }
-              >
-                <HugeiconsIcon
-                  icon={RefreshDotIcon}
-                  data-icon="inline-start"
-                />
-                Refresh all
-              </Button>
-              <Button
-                type="button"
-                variant="default"
-                className="shadow-xs"
-                onClick={() => {
-                  setEpisodeScrollTop(0);
-                  setShowAll((current) => !current);
-                }}
-              >
-                <HugeiconsIcon icon={ViewIcon} data-icon="inline-start" />
-                {showAll ? "Show unlistened podcasts" : "Show all"}
-              </Button>
+          ) : (
+            <div className="flex w-full items-center gap-6">
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
+                <h1 className="truncate text-3xl leading-9 font-semibold tracking-normal text-foreground">
+                  Subscriptions
+                </h1>
+                <p className="truncate text-base leading-6 font-medium text-muted-foreground">
+                  {formatLastRefresh(podcasts)}
+                </p>
+              </div>
+              <div className="flex h-[34px] shrink-0 items-center gap-2 overflow-hidden">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() =>
+                    void runAction(async () => {
+                      await api.podcasts.refreshAll();
+                    })
+                  }
+                >
+                  <HugeiconsIcon
+                    icon={RefreshDotIcon}
+                    data-icon="inline-start"
+                  />
+                  Refresh all
+                </Button>
+                <Button
+                  type="button"
+                  variant="default"
+                  className="shadow-xs"
+                  onClick={() => {
+                    setEpisodeScrollTop(0);
+                    setShowAll((current) => !current);
+                  }}
+                >
+                  <HugeiconsIcon icon={ViewIcon} data-icon="inline-start" />
+                  {showAll ? "Show unlistened podcasts" : "Show all"}
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
           <ScreenBannerStack>
             {error ? (
               <ErrorBanner onClose={() => setError(null)}>{error}</ErrorBanner>
@@ -457,11 +497,11 @@ export function SubscriptionsScreen() {
               />
             ))}
           </ScreenBannerStack>
-          <div className="min-h-0 flex-1 overflow-y-auto py-6">
+          <div className="min-h-0 flex-1 overflow-y-auto py-4 md:py-6">
             {loading ? (
               <ListLoadingState label="Loading subscriptions" />
             ) : visiblePodcasts.length > 0 ? (
-              <div className="flex w-full flex-col gap-6">
+              <div className="flex w-full flex-col gap-4 md:gap-6">
                 <div className="shrink-0">
                   <Carousel
                     className="w-full"
@@ -473,7 +513,9 @@ export function SubscriptionsScreen() {
                     <CarouselContent
                       className={cn(
                         "ml-0 gap-5",
-                        visiblePodcasts.length < 4 && "justify-center"
+                        isMobile
+                          ? visiblePodcasts.length < 2 && "justify-center"
+                          : visiblePodcasts.length < 4 && "justify-center"
                       )}
                     >
                       {visiblePodcasts.map((podcast) => {
@@ -486,11 +528,10 @@ export function SubscriptionsScreen() {
                         return (
                           <CarouselItem
                             key={podcast.id}
-                            className={
-                              visiblePodcasts.length < 4
-                                ? "basis-[285px] pl-0"
-                                : "basis-[285px] pl-0"
-                            }
+                            className={cn(
+                              "pl-0",
+                              isMobile ? "basis-[320px]" : "basis-[285px]"
+                            )}
                           >
                             <PodcastCard
                               selected={podcast.id === selectedPodcast?.id}
@@ -516,7 +557,7 @@ export function SubscriptionsScreen() {
                         );
                       })}
                     </CarouselContent>
-                    <div className="mt-2 flex items-center justify-center gap-5">
+                    <div className="mt-2 hidden items-center justify-center gap-5 md:flex">
                       <CarouselPrevious
                         size="icon"
                         className="static size-8 translate-x-0 translate-y-0 rounded-full"
@@ -530,8 +571,11 @@ export function SubscriptionsScreen() {
                 </div>
                 <PlaylistQueue
                   key={`${selectedPodcast.id}-${showAll ? "all" : "unlistened"}`}
-                  className="h-[400px] shrink-0"
-                  bodyClassName="h-[350px] min-h-0 overflow-y-auto"
+                  className={cn("shrink-0", isMobile ? "h-[202px]" : "h-[400px]")}
+                  bodyClassName={cn(
+                    "min-h-0 overflow-y-auto",
+                    isMobile ? "h-[152px]" : "h-[350px]"
+                  )}
                   bodyRef={episodeListRef}
                   bodyOnScroll={(event) =>
                     setEpisodeScrollTop(event.currentTarget.scrollTop)
@@ -577,11 +621,12 @@ export function SubscriptionsScreen() {
                     return (
                       <EpisodeRow
                         key={episode.id}
+                        layout={isMobile ? "mobile" : "desktop"}
                         showDragHandle={false}
                         title={episode.title}
                         podcastTitle={selectedPodcast.title}
                         subtitle={subtitle}
-                        dateLabel={publishedAt ? `${publishedAt} ·` : undefined}
+                        dateLabel={publishedAt || undefined}
                         durationLabel={duration || undefined}
                         thumbnailUrl={
                           selectedPodcast.imageUrl
@@ -677,7 +722,12 @@ export function SubscriptionsScreen() {
         </div>
       </AppShell>
       {modal === "show-notes" && showNotesEpisode && selectedPodcast ? (
-        <ModalScreen>
+        <ModalScreen
+          onClose={() => {
+            setModal(null);
+            setShowNotesEpisodeId(null);
+          }}
+        >
           <ShowNotes
             podcastTitle={selectedPodcast.title}
             episodeTitle={showNotesEpisode.title}

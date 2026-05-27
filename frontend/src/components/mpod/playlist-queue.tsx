@@ -25,7 +25,7 @@ export function PlaylistQueue({
   return (
     <Card
       className={cn(
-        "w-full gap-0 overflow-hidden rounded-md py-0",
+        "w-full gap-0 overflow-hidden rounded-2xl py-0 md:rounded-md",
         className
       )}
     >

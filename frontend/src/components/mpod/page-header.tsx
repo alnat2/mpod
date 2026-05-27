@@ -1,5 +1,3 @@
-import { HugeiconsIcon } from "@hugeicons/react";
-import { RefreshDotIcon, ViewIcon } from "@hugeicons/core-free-icons";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -15,33 +13,30 @@ type PageHeaderAction = {
 type PageHeaderProps = {
   actions?: PageHeaderAction[];
   className?: string;
+  layout?: "auto" | "desktop" | "mobile";
   subtitle?: string;
   title: string;
 };
 
-const defaultActions: PageHeaderAction[] = [
-  {
-    label: "Refresh all",
-    icon: <HugeiconsIcon icon={RefreshDotIcon} data-icon="inline-start" />,
-    variant: "secondary",
-  },
-  {
-    label: "Show all",
-    icon: <HugeiconsIcon icon={ViewIcon} data-icon="inline-start" />,
-    variant: "default",
-  },
-];
-
 export function PageHeader({
-  actions = defaultActions,
+  actions = [],
   className,
-  subtitle = "Short description",
+  layout = "auto",
+  subtitle = "",
   title,
 }: PageHeaderProps) {
+  const isMobile = layout === "mobile";
+  const isDesktop = layout === "desktop";
+
   return (
     <div
       className={cn(
-        "flex w-full flex-col items-start gap-3 md:flex-row md:items-center md:gap-6",
+        "flex w-full items-start",
+        isMobile
+          ? "flex-col gap-3"
+          : isDesktop
+            ? "flex-row items-center gap-6"
+            : "flex-col gap-3 md:flex-row md:items-center md:gap-6",
         className
       )}
     >
@@ -56,14 +51,20 @@ export function PageHeader({
         ) : null}
       </div>
       {actions.length > 0 ? (
-        <div className="flex h-[34px] w-full shrink-0 items-center gap-2 overflow-hidden md:w-auto">
+        <div
+          className={cn(
+            "flex h-[34px] shrink-0 items-center gap-2 overflow-hidden",
+            isMobile ? "w-full" : isDesktop ? "w-auto" : "w-full md:w-auto"
+          )}
+        >
           {actions.map((action) => (
             <Button
               key={action.label}
               type="button"
               variant={action.variant ?? "secondary"}
               className={cn(
-                "h-8 flex-1 justify-center md:flex-none",
+                "h-8 justify-center",
+                isMobile ? "flex-1" : isDesktop ? "flex-none" : "flex-1 md:flex-none",
                 action.variant === "default" && "shadow-xs"
               )}
               onClick={action.onClick}

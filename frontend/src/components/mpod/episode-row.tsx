@@ -9,6 +9,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
 import {
   DragDropVerticalIcon,
+  MoreVerticalIcon,
   PauseIcon,
   PlayIcon,
   PlayListRemoveIcon,
@@ -16,6 +17,12 @@ import {
 } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -36,6 +43,7 @@ type EpisodeRowAction = {
 type EpisodeRowProps = {
   className?: string;
   current?: boolean;
+  layout?: "auto" | "desktop" | "mobile";
   title: string;
   podcastTitle?: string;
   subtitle?: string;
@@ -43,8 +51,10 @@ type EpisodeRowProps = {
   durationLabel?: string;
   thumbnailUrl?: string;
   thumbnailAlt?: string;
+  showArtwork?: boolean;
   episodeRowId?: number;
   showDragHandle?: boolean;
+  mobileMenuAction?: EpisodeRowAction;
   draggable?: boolean;
   dragging?: boolean;
   onDragStart?: DragEventHandler<HTMLDivElement>;
@@ -89,9 +99,57 @@ function EpisodeIconButton({ action }: { action: EpisodeRowAction }) {
   );
 }
 
+function EpisodeActionsMenu({
+  action,
+  items,
+}: {
+  action: EpisodeRowAction;
+  items: EpisodeRowAction[];
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          aria-label={action.label}
+          className="rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary"
+          variant="outline"
+          size="icon-lg"
+          type="button"
+          onMouseDown={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <HugeiconsIcon
+            icon={action.icon}
+            className={cn("size-4", action.iconClassName)}
+            aria-hidden="true"
+          />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" sideOffset={8}>
+        {items.map((item) => (
+          <DropdownMenuItem
+            key={item.label}
+            disabled={item.disabled}
+            onSelect={() => item.onClick?.()}
+          >
+            <HugeiconsIcon
+              icon={item.icon}
+              className={cn("size-4", item.iconClassName)}
+              aria-hidden="true"
+            />
+            {item.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function EpisodeRow({
   className,
   current,
+  layout = "auto",
   title,
   podcastTitle,
   subtitle,
@@ -99,8 +157,10 @@ export function EpisodeRow({
   durationLabel,
   thumbnailUrl,
   thumbnailAlt = "",
+  showArtwork = true,
   episodeRowId,
   showDragHandle = true,
+  mobileMenuAction,
   draggable,
   dragging,
   onDragStart,
@@ -117,6 +177,8 @@ export function EpisodeRow({
   actions,
   children,
 }: EpisodeRowProps) {
+  const isMobile = layout === "mobile";
+  const isDesktop = layout === "desktop";
   const resolvedActions =
     actions ??
     [
@@ -131,11 +193,23 @@ export function EpisodeRow({
         ? `${podcastTitle} · now playing`
         : podcastTitle
       : undefined);
+  const resolvedMobileMenuAction = mobileMenuAction ?? {
+    label: "More actions",
+    icon: MoreVerticalIcon,
+  };
+  const desktopActions = children ?? resolvedActions.map((action) => (
+    <EpisodeIconButton action={action} key={action.label} />
+  ));
 
   return (
     <div
       className={cn(
-        "flex h-[70px] w-full shrink-0 items-center justify-center gap-3 border border-border bg-card px-3 text-foreground",
+        "flex w-full shrink-0 items-center border border-border bg-card text-foreground",
+        isMobile
+          ? "h-[76px] gap-2 px-2"
+          : isDesktop
+            ? "h-[70px] gap-3 px-3"
+            : "h-[76px] gap-2 px-2 md:h-[70px] md:gap-3 md:px-3",
         draggable && "cursor-grab",
         dragging && "opacity-60",
         current && "bg-accent",
@@ -164,18 +238,37 @@ export function EpisodeRow({
           <HugeiconsIcon icon={DragDropVerticalIcon} className="size-6" />
         </div>
       ) : null}
-      <Artwork
-        className="size-10"
-        src={thumbnailUrl}
-        alt={thumbnailAlt}
-        title={podcastTitle ?? resolvedSubtitle}
-      />
-      <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
-        <p className="truncate text-sm leading-5 font-semibold">{title}</p>
+      {showArtwork ? (
+        <Artwork
+          className={cn(
+            "size-10",
+            isMobile ? "hidden" : isDesktop ? "block" : "hidden md:block"
+          )}
+          src={thumbnailUrl}
+          alt={thumbnailAlt}
+          title={podcastTitle ?? resolvedSubtitle}
+        />
+      ) : null}
+      <div
+        className={cn(
+          "flex min-w-0 flex-1 flex-col justify-center",
+          isDesktop ? "gap-1" : "gap-0.5 md:gap-1"
+        )}
+      >
+        <p
+          className={cn(
+            "text-sm leading-5 font-semibold",
+            isMobile ? "line-clamp-2" : isDesktop ? "truncate" : "line-clamp-2 md:line-clamp-1"
+          )}
+        >
+          {title}
+        </p>
         {resolvedSubtitle ? (
           <p
             className={cn(
-              "truncate text-xs leading-4 text-muted-foreground",
+              isMobile
+                ? "text-xs leading-4 text-muted-foreground whitespace-nowrap"
+                : "truncate text-xs leading-4 text-muted-foreground",
               current && "text-chart-5"
             )}
           >
@@ -183,14 +276,37 @@ export function EpisodeRow({
           </p>
         ) : null}
       </div>
-      <div className="flex shrink-0 items-center gap-2 text-right text-xs leading-4 whitespace-nowrap text-muted-foreground">
+      <div
+        className={cn(
+          "flex shrink-0 text-right text-xs leading-4 whitespace-nowrap text-muted-foreground",
+          isMobile
+            ? "flex-col items-end justify-center gap-1"
+            : isDesktop
+              ? "flex-row items-center gap-2"
+              : "flex-col items-end justify-center gap-0.5 md:flex-row md:items-center md:gap-2"
+        )}
+      >
         {dateLabel ? <span>{dateLabel}</span> : null}
         {durationLabel ? <span>{durationLabel}</span> : null}
       </div>
-      <div className="flex shrink-0 items-center gap-2">
-        {children ?? resolvedActions.map((action) => (
-          <EpisodeIconButton action={action} key={action.label} />
-        ))}
+      <div
+        className={cn(
+          "shrink-0 items-center gap-2",
+          isMobile ? "flex" : isDesktop ? "hidden" : "flex md:hidden"
+        )}
+      >
+        <EpisodeActionsMenu
+          action={resolvedMobileMenuAction}
+          items={resolvedActions}
+        />
+      </div>
+      <div
+        className={cn(
+          "shrink-0 items-center gap-2",
+          isMobile ? "hidden" : isDesktop ? "flex" : "hidden md:flex"
+        )}
+      >
+        {desktopActions}
       </div>
     </div>
   );

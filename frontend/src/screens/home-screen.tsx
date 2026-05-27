@@ -33,6 +33,7 @@ import {
   getErrorMessage,
 } from "./screen-utils";
 import { useDelayedActions } from "./use-delayed-actions";
+import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
 
 function queueSummary(episodes: QueueEpisode[]) {
   const totalSeconds = episodes.reduce(
@@ -43,6 +44,7 @@ function queueSummary(episodes: QueueEpisode[]) {
 }
 
 export function HomeScreen() {
+  const isMobile = useIsMobileViewport();
   const {
     queue,
     currentEpisode,
@@ -226,8 +228,8 @@ export function HomeScreen() {
         pageActions={[]}
         pageHeaderVisible={false}
       >
-         <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-md border border-border bg-card px-10 py-5">
-           <div className="flex w-full items-center gap-6">
+         <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5">
+           <div className="flex w-full items-center gap-6 pt-4 md:pt-0">
              <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
                <h1 className="truncate text-3xl leading-9 font-semibold text-foreground">
                  Now playing
@@ -258,7 +260,7 @@ export function HomeScreen() {
           {loading ? (
             <CenterLoadingState className="mt-4" label="Loading playlist" />
           ) : currentEpisode ? (
-            <div className="flex min-h-0 flex-1 flex-col items-center gap-4 overflow-hidden px-0 py-6">
+            <div className="flex min-h-0 flex-1 flex-col items-center gap-4 overflow-hidden px-0 py-4 md:py-6">
               <Player
                 className="shrink-0"
                 title={currentEpisode.title}
@@ -287,19 +289,24 @@ export function HomeScreen() {
               />
               <PlaylistQueue
                 summary={queueSummary(visibleQueue)}
-                className="min-h-0 w-full max-w-[1040px] shrink-0"
+                className="min-h-0 w-full shrink-0 md:max-w-[1040px]"
+                bodyClassName="max-h-[228px] overflow-y-auto md:max-h-none"
               >
                 {visibleQueue.map((episode) => {
                   const canReorder = pendingActions.length === 0 && !reordering;
-                  const publishedAt = formatEpisodeDate(episode.publishedAt);
                   const isCurrentEpisode = currentEpisode?.id === episode.id;
 
                   return (
                     <EpisodeRow
+                      layout={isMobile ? "mobile" : "desktop"}
                       current={isCurrentEpisode}
                       title={episode.title}
                       podcastTitle={episode.podcastTitle}
-                      dateLabel={publishedAt ? `${publishedAt}` : undefined}
+                      dateLabel={
+                        isMobile
+                          ? undefined
+                          : formatEpisodeDate(episode.publishedAt) || undefined
+                      }
                       durationLabel={formatDuration(episode.duration)}
                       thumbnailUrl={episode.podcastImageUrl ?? undefined}
                       thumbnailAlt={`${episode.podcastTitle} artwork`}
@@ -349,7 +356,12 @@ export function HomeScreen() {
         </div>
       </AppShell>
       {modal === "show-notes" && showNotesEpisode ? (
-        <ModalScreen>
+        <ModalScreen
+          onClose={() => {
+            setModal(null);
+            setShowNotesEpisodeId(null);
+          }}
+        >
           <ShowNotes
             podcastTitle={showNotesEpisode.podcastTitle ?? ""}
             episodeTitle={showNotesEpisode.title ?? ""}

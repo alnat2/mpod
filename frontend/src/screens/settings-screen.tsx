@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { useNavigate } from "react-router-dom";
 
-import { AppShell } from "@/components/mpod";
+import { AppShell, PageHeader } from "@/components/mpod";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import {
   type SchedulerStatus,
   type SettingsValues,
 } from "@/lib/api";
+import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
 import { ErrorBanner, ScreenBannerStack } from "./screen-states";
@@ -125,6 +126,7 @@ function SettingsCard({
 }
 
 export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
+  const isMobile = useIsMobileViewport();
   const navigate = useNavigate();
   const [modal, setModal] = useState<AddPodcastModalMode>(null);
   const [settings, setSettings] = useState<SettingsValues | null>(null);
@@ -261,14 +263,20 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
         pageActions={[]}
         pageHeaderVisible={false}
       >
-        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-md border border-border bg-card px-10 py-5">
-          <div className="flex w-full items-center gap-6">
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
-              <h1 className="truncate text-3xl leading-9 font-semibold text-foreground">
-                Settings
-              </h1>
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5">
+          {isMobile ? (
+            <div className="pt-4">
+              <PageHeader layout="mobile" title="Settings" actions={[]} />
             </div>
-          </div>
+          ) : (
+            <div className="flex w-full items-center gap-6">
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
+                <h1 className="truncate text-3xl leading-9 font-semibold text-foreground">
+                  Settings
+                </h1>
+              </div>
+            </div>
+          )}
           <ScreenBannerStack>
             {error ? (
               <ErrorBanner onClose={() => setError(null)}>{error}</ErrorBanner>
@@ -279,15 +287,15 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
               </ErrorBanner>
             ) : null}
           </ScreenBannerStack>
-          <div className="min-h-0 flex-1 overflow-y-auto py-6">
+          <div className="min-h-0 flex-1 overflow-y-auto py-4 md:py-6">
             <div className="flex w-full flex-col gap-4">
-              <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
+              <div className="grid gap-4 md:gap-6 lg:grid-cols-[1fr_420px]">
                 <SettingsCard
                   title="Feed daily refresh"
                   description="Feeds are refreshed once per day at a single global time."
                   className="min-h-[193px]"
                 >
-                  <div className="flex w-[220px] items-center gap-2">
+                  <div className="flex w-full items-center gap-2 md:w-[220px]">
                     <Input
                       type="time"
                       value={dailyRefreshTime}
