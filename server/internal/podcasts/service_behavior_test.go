@@ -111,6 +111,48 @@ func TestCreateFromFeedRejectsHTMLLandingPageFixture(t *testing.T) {
 	}
 }
 
+func TestDeleteRemovesCascadeDataAndFiles(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	downloadPath := filepath.Join(downloadDir, "1", "episode.mp3")
+	if err := os.MkdirAll(filepath.Dir(downloadPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(downloadPath, []byte("audio"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	mustExecPodcast(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecPodcast(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path) VALUES (1, 1, 'ep-1', 'Episode', 'https://cdn.example.com/1.mp3', ?)`, downloadPath)
+	mustExecPodcast(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+	mustExecPodcast(t, db.SQL, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (1, 5, CURRENT_TIMESTAMP)`)
+
+	service := NewService(db.SQL, newPodcastTestClient(nil))
+	if err := service.Delete(context.Background(), 1); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+
+	assertPodcastCount(t, db.SQL, `SELECT COUNT(*) FROM podcasts`, 0)
+	assertPodcastCount(t, db.SQL, `SELECT COUNT(*) FROM episodes`, 0)
+	assertPodcastCount(t, db.SQL, `SELECT COUNT(*) FROM playlist`, 0)
+	assertPodcastCount(t, db.SQL, `SELECT COUNT(*) FROM playback`, 0)
+	if _, err := os.Stat(downloadPath); !os.IsNotExist(err) {
+		t.Fatalf("expected download file removal, stat err=%v", err)
+	}
+}
+
+func TestDeleteReturnsNotFoundForMissingPodcast(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	service := NewService(db.SQL, newPodcastTestClient(nil))
+	if err := service.Delete(context.Background(), 999); err != ErrPodcastNotFound {
+		t.Fatalf("expected ErrPodcastNotFound, got %v", err)
+	}
+}
+
 func TestRefreshUpsertsEpisodesWithoutDuplicates(t *testing.T) {
 	db := newBehaviorTestDB(t)
 	defer db.Close()
@@ -147,6 +189,24 @@ func TestRefreshUpsertsEpisodesWithoutDuplicates(t *testing.T) {
 	}
 	if episodeCount != 2 {
 		t.Fatalf("expected 2 episodes after refresh, got %d", episodeCount)
+	}
+}
+
+func mustExecPodcast(t *testing.T, db *sql.DB, query string, args ...any) {
+	t.Helper()
+	if _, err := db.Exec(query, args...); err != nil {
+		t.Fatalf("Exec %q failed: %v", query, err)
+	}
+}
+
+func assertPodcastCount(t *testing.T, db *sql.DB, query string, want int) {
+	t.Helper()
+	var got int
+	if err := db.QueryRow(query).Scan(&got); err != nil {
+		t.Fatalf("QueryRow %q failed: %v", query, err)
+	}
+	if got != want {
+		t.Fatalf("QueryRow %q = %d, want %d", query, got, want)
 	}
 }
 
