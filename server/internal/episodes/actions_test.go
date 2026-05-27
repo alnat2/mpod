@@ -85,6 +85,40 @@ func TestSetListenedFalseDoesNotDeleteDownload(t *testing.T) {
 	}
 }
 
+func TestSetListenedKeepsEpisodeUnlistenedWhenDownloadDeletionFails(t *testing.T) {
+	db := newActionsTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	downloadPath := filepath.Join(downloadDir, "problem-dir")
+	if err := os.MkdirAll(downloadPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(downloadPath, "nested.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	mustExecActions(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecActions(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path, is_listened) VALUES (1, 1, 'ep-1', 'Episode', 'https://example.com/1.mp3', ?, 0)`, downloadPath)
+
+	actions := NewActions(db.SQL, downloads.NewService(db.SQL, nil, downloadDir))
+	if err := actions.SetListened(context.Background(), 1, true); err == nil {
+		t.Fatal("expected SetListened to fail")
+	}
+
+	var listened bool
+	var downloadedPath sql.NullString
+	if err := db.SQL.QueryRow(`SELECT is_listened, downloaded_path FROM episodes WHERE id = 1`).Scan(&listened, &downloadedPath); err != nil {
+		t.Fatalf("query episode state: %v", err)
+	}
+	if listened {
+		t.Fatalf("expected episode to remain unlistened")
+	}
+	if !downloadedPath.Valid || downloadedPath.String != downloadPath {
+		t.Fatalf("expected downloaded_path to remain set, got %+v", downloadedPath)
+	}
+}
+
 func TestSetListenedMissingEpisode(t *testing.T) {
 	db := newActionsTestDB(t)
 	defer db.Close()

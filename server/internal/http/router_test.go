@@ -1459,6 +1459,45 @@ func TestEpisodePatchRejectsUnknownEpisode(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "EPISODE_NOT_FOUND")
 }
 
+func TestEpisodePatchKeepsEpisodeUnlistenedWhenDownloadDeletionFails(t *testing.T) {
+	downloadsDir := t.TempDir()
+	handler, db := newTestRouterWithConfig(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: downloadsDir,
+	})
+	cookie := register(t, handler, "admin", "secret")
+
+	downloadPath := filepath.Join(downloadsDir, "problem-dir")
+	if err := os.MkdirAll(downloadPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(downloadPath, "nested.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path, is_listened) VALUES (1, 1, 'ep-1', 'Episode', 'https://example.com/1.mp3', ?, 0)`, downloadPath)
+
+	req := httptest.NewRequest(nethttp.MethodPatch, "/api/episodes/1", bytes.NewReader([]byte(`{"isListened":true}`)))
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "EPISODE_PATCH_FAILED")
+
+	var listened bool
+	if err := db.SQL.QueryRow(`SELECT is_listened FROM episodes WHERE id = 1`).Scan(&listened); err != nil {
+		t.Fatalf("query listened state: %v", err)
+	}
+	if listened {
+		t.Fatalf("expected episode to remain unlistened after failed delete")
+	}
+}
+
 func TestEpisodeDownloadReturnsServerErrorOnClientFailure(t *testing.T) {
 	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
 		return nil, io.EOF

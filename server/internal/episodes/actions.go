@@ -24,6 +24,17 @@ func NewActions(db *sql.DB, downloads *downloads.Service) *Actions {
 }
 
 func (a *Actions) SetListened(ctx context.Context, episodeID int64, listened bool) error {
+	if listened {
+		if _, err := a.downloads.Delete(ctx, episodeID); err != nil {
+			switch err {
+			case downloads.ErrEpisodeNotFound:
+				return ErrEpisodeNotFound
+			default:
+				return fmt.Errorf("delete listened episode download: %w", err)
+			}
+		}
+	}
+
 	result, err := a.db.ExecContext(ctx, `UPDATE episodes SET is_listened = ? WHERE id = ?`, listened, episodeID)
 	if err != nil {
 		return fmt.Errorf("update listened state: %w", err)
@@ -34,12 +45,6 @@ func (a *Actions) SetListened(ctx context.Context, episodeID int64, listened boo
 	}
 	if rowsAffected == 0 {
 		return ErrEpisodeNotFound
-	}
-
-	if listened {
-		if _, err := a.downloads.Delete(ctx, episodeID); err != nil && err != downloads.ErrEpisodeNotFound {
-			return fmt.Errorf("delete listened episode download: %w", err)
-		}
 	}
 
 	return nil
