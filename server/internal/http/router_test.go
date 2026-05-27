@@ -957,6 +957,14 @@ func TestPlaylistRemoveReturnsServerErrorWhenDownloadDeletionFails(t *testing.T)
 		t.Fatalf("expected 500, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	assertErrorCode(t, rec.Body.Bytes(), "PLAYLIST_REMOVE_FAILED")
+
+	var playlistCount int
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM playlist WHERE episode_id = 1`).Scan(&playlistCount); err != nil {
+		t.Fatalf("count playlist rows: %v", err)
+	}
+	if playlistCount != 1 {
+		t.Fatalf("expected playlist item to remain after failed download delete, got %d rows", playlistCount)
+	}
 }
 
 func TestPlaybackEndpoints(t *testing.T) {
@@ -2001,6 +2009,7 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 	})
 	playlistService := playlist.NewService(appDB.SQL)
 	downloadsService := downloads.NewService(appDB.SQL, client, cfg.DownloadsDir)
+	playlistActions := playlist.NewActions(appDB.SQL, downloadsService)
 	podcastsService := podcasts.NewService(appDB.SQL, client)
 	schedulerService := scheduler.NewService(
 		appDB.SQL,
@@ -2010,19 +2019,20 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 	)
 
 	r := &Router{
-		logger:         log.New(io.Discard, "", 0),
-		config:         cfg,
-		db:             appDB.SQL,
-		auth:           auth.NewService(authDB.SQL),
-		episodes:       episodes.NewService(appDB.SQL),
-		episodeActions: episodes.NewActions(appDB.SQL, downloadsService),
-		playback:       playback.NewService(appDB.SQL, playlistService, downloadsService),
-		playlist:       playlistService,
-		downloads:      downloadsService,
-		podcasts:       podcastsService,
-		remoteClient:   client,
-		settings:       settingsService,
-		scheduler:      schedulerService,
+		logger:          log.New(io.Discard, "", 0),
+		config:          cfg,
+		db:              appDB.SQL,
+		auth:            auth.NewService(authDB.SQL),
+		episodes:        episodes.NewService(appDB.SQL),
+		episodeActions:  episodes.NewActions(appDB.SQL, downloadsService),
+		playback:        playback.NewService(appDB.SQL, playlistService, downloadsService),
+		playlist:        playlistService,
+		playlistActions: playlistActions,
+		downloads:       downloadsService,
+		podcasts:        podcastsService,
+		remoteClient:    client,
+		settings:        settingsService,
+		scheduler:       schedulerService,
 	}
 
 	mux := nethttp.NewServeMux()

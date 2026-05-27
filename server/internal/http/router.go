@@ -33,19 +33,20 @@ const (
 )
 
 type Router struct {
-	logger         *log.Logger
-	config         config.Config
-	db             *sql.DB
-	auth           *auth.Service
-	episodes       *episodes.Service
-	episodeActions *episodes.Actions
-	playback       *playback.Service
-	playlist       *playlist.Service
-	downloads      *downloads.Service
-	podcasts       *podcasts.Service
-	remoteClient   *nethttp.Client
-	settings       *settings.Service
-	scheduler      *scheduler.Service
+	logger          *log.Logger
+	config          config.Config
+	db              *sql.DB
+	auth            *auth.Service
+	episodes        *episodes.Service
+	episodeActions  *episodes.Actions
+	playback        *playback.Service
+	playlist        *playlist.Service
+	playlistActions *playlist.Actions
+	downloads       *downloads.Service
+	podcasts        *podcasts.Service
+	remoteClient    *nethttp.Client
+	settings        *settings.Service
+	scheduler       *scheduler.Service
 }
 
 type apiError struct {
@@ -72,21 +73,23 @@ func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerServi
 
 	playlistService := playlist.NewService(db)
 	downloadsService := downloads.NewService(db, client, cfg.DownloadsDir)
+	playlistActions := playlist.NewActions(db, downloadsService)
 
 	r := &Router{
-		logger:         logger,
-		config:         cfg,
-		db:             db,
-		auth:           auth.NewService(db),
-		episodes:       episodes.NewService(db),
-		episodeActions: episodes.NewActions(db, downloadsService),
-		playback:       playback.NewService(db, playlistService, downloadsService),
-		playlist:       playlistService,
-		downloads:      downloadsService,
-		podcasts:       podcasts.NewService(db, client),
-		remoteClient:   client,
-		settings:       settingsService,
-		scheduler:      schedulerService,
+		logger:          logger,
+		config:          cfg,
+		db:              db,
+		auth:            auth.NewService(db),
+		episodes:        episodes.NewService(db),
+		episodeActions:  episodes.NewActions(db, downloadsService),
+		playback:        playback.NewService(db, playlistService, downloadsService),
+		playlist:        playlistService,
+		playlistActions: playlistActions,
+		downloads:       downloadsService,
+		podcasts:        podcasts.NewService(db, client),
+		remoteClient:    client,
+		settings:        settingsService,
+		scheduler:       schedulerService,
 	}
 
 	mux := nethttp.NewServeMux()
@@ -665,11 +668,7 @@ func (r *Router) handlePlaylistRemove(w nethttp.ResponseWriter, req *nethttp.Req
 		return
 	}
 
-	if err := r.playlist.Remove(req.Context(), episodeID); err != nil {
-		r.writeAPIError(w, nethttp.StatusInternalServerError, "PLAYLIST_REMOVE_FAILED", "Failed to remove episode from playlist")
-		return
-	}
-	if _, err := r.downloads.Delete(req.Context(), episodeID); err != nil && err != downloads.ErrEpisodeNotFound {
+	if err := r.playlistActions.Remove(req.Context(), episodeID); err != nil {
 		r.writeAPIError(w, nethttp.StatusInternalServerError, "PLAYLIST_REMOVE_FAILED", "Failed to remove episode download")
 		return
 	}
