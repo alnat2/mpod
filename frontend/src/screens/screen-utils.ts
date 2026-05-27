@@ -1,4 +1,4 @@
-import { ApiError } from "@/lib/api";
+import { ApiError, type Episode } from "@/lib/api";
 
 export function getErrorMessage(error: unknown) {
   if (error instanceof ApiError) {
@@ -58,4 +58,20 @@ export function formatDateTime(value?: string | null) {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+export function getEpisodeShowNotes(
+  episode?: Pick<Episode, "showNotes" | "description"> | null
+) {
+  const showNotes = episode?.showNotes?.trim();
+  if (showNotes) {
+    return showNotes;
+  }
+
+  const description = episode?.description?.trim();
+  if (description) {
+    return description;
+  }
+
+  return "No show notes available.";
 }

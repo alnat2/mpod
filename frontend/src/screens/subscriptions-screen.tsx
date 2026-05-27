@@ -46,6 +46,7 @@ import {
   formatDuration,
   formatEpisodeDate,
   getErrorMessage,
+  getEpisodeShowNotes,
 } from "./screen-utils";
 import { useDelayedActions } from "./use-delayed-actions";
 import { cn } from "@/lib/utils";
@@ -736,7 +737,7 @@ export function SubscriptionsScreen() {
               setShowNotesEpisodeId(null);
             }}
           >
-            {showNotesEpisode.description?.trim() || "No show notes available."}
+            {getEpisodeShowNotes(showNotesEpisode)}
           </ShowNotes>
         </ModalScreen>
       ) : null}

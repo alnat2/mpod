@@ -136,6 +136,7 @@ describe("SubscriptionsScreen", () => {
     podcastId: 1,
     title: "QA reorder third",
     description: "Episode notes",
+    showNotes: "Sanitized episode notes",
     audioUrl: "https://example.com/audio.mp3",
     duration: 900,
     downloaded: false,
@@ -226,7 +227,8 @@ describe("SubscriptionsScreen", () => {
     expect(
       screen.getByText("Build Your SaaS - QA reorder third")
     ).toBeInTheDocument();
-    expect(screen.getByText("Episode notes")).toBeInTheDocument();
+    expect(screen.getByText("Sanitized episode notes")).toBeInTheDocument();
+    expect(screen.queryByText("Episode notes")).not.toBeInTheDocument();
   });
 
   it("virtualizes long episode lists and renders more rows after scrolling", async () => {

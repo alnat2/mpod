@@ -31,6 +31,7 @@ import {
   formatDuration,
   formatEpisodeDate,
   getErrorMessage,
+  getEpisodeShowNotes,
 } from "./screen-utils";
 import { useDelayedActions } from "./use-delayed-actions";
 import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
@@ -370,7 +371,7 @@ export function HomeScreen() {
               setShowNotesEpisodeId(null);
             }}
           >
-            {showNotesEpisode.description?.trim() || "No show notes available."}
+            {getEpisodeShowNotes(showNotesEpisode)}
           </ShowNotes>
         </ModalScreen>
       ) : null}

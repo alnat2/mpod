@@ -25,6 +25,7 @@ const queue = [
     podcastId: 11,
     title: "First queued episode",
     description: "First notes",
+    showNotes: "First sanitized notes",
     audioUrl: "https://example.com/1.mp3",
     duration: 1800,
     downloaded: false,
@@ -39,6 +40,7 @@ const queue = [
     podcastId: 22,
     title: "Actually playing",
     description: "Current notes",
+    showNotes: "Current sanitized notes",
     audioUrl: "https://example.com/2.mp3",
     duration: 2400,
     downloaded: false,
@@ -216,7 +218,8 @@ describe("HomeScreen", () => {
     const modal = await screen.findByTestId("modal");
     expect(modal).toHaveTextContent("Current Podcast");
     expect(modal).toHaveTextContent("Actually playing");
-    expect(modal).toHaveTextContent("Current notes");
+    expect(modal).toHaveTextContent("Current sanitized notes");
+    expect(modal).not.toHaveTextContent("Current notes");
   });
 
   it("schedules playlist removal from the row action", async () => {
