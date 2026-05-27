@@ -109,6 +109,7 @@ export function SubscriptionsScreen() {
   const [downloadingEpisodeIds, setDownloadingEpisodeIds] = useState<Set<number>>(
     () => new Set()
   );
+  const [refreshingAll, setRefreshingAll] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -311,6 +312,20 @@ export function SubscriptionsScreen() {
     }
   }
 
+  async function refreshAllPodcasts() {
+    setActionError(null);
+    setRefreshingAll(true);
+
+    try {
+      await api.podcasts.refreshAll();
+      setReloadKey((current) => current + 1);
+    } catch (caught) {
+      setActionError(getErrorMessage(caught));
+    } finally {
+      setRefreshingAll(false);
+    }
+  }
+
   async function downloadFromSubscription(episodeId: number) {
     setActionError(null);
     setDownloadingEpisodeIds((current) => new Set(current).add(episodeId));
@@ -420,12 +435,16 @@ export function SubscriptionsScreen() {
                 actions={[
                   {
                     label: "Refresh all",
-                    icon: <HugeiconsIcon icon={RefreshDotIcon} data-icon="inline-start" />,
+                    icon: (
+                      <HugeiconsIcon
+                        icon={refreshingAll ? Loading02Icon : RefreshDotIcon}
+                        className={refreshingAll ? "animate-spin" : undefined}
+                        data-icon="inline-start"
+                      />
+                    ),
+                    disabled: refreshingAll,
                     variant: "secondary",
-                    onClick: () =>
-                      void runAction(async () => {
-                        await api.podcasts.refreshAll();
-                      }),
+                    onClick: () => void refreshAllPodcasts(),
                   },
                   {
                     label: showAll ? "Show unlistened podcasts" : "Show all",
@@ -452,15 +471,13 @@ export function SubscriptionsScreen() {
               <div className="flex h-[34px] shrink-0 items-center gap-2 overflow-hidden">
                 <Button
                   type="button"
+                  disabled={refreshingAll}
                   variant="secondary"
-                  onClick={() =>
-                    void runAction(async () => {
-                      await api.podcasts.refreshAll();
-                    })
-                  }
+                  onClick={() => void refreshAllPodcasts()}
                 >
                   <HugeiconsIcon
-                    icon={RefreshDotIcon}
+                    icon={refreshingAll ? Loading02Icon : RefreshDotIcon}
+                    className={refreshingAll ? "animate-spin" : undefined}
                     data-icon="inline-start"
                   />
                   Refresh all

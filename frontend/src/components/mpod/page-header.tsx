@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type PageHeaderAction = {
+  disabled?: boolean;
   label: string;
   icon?: ReactNode;
   onClick?: () => void;
@@ -61,6 +62,7 @@ export function PageHeader({
             <Button
               key={action.label}
               type="button"
+              disabled={action.disabled}
               variant={action.variant ?? "secondary"}
               className={cn(
                 "h-8 justify-center",

@@ -275,4 +275,34 @@ describe("SubscriptionsScreen", () => {
       expect(addSpy).toHaveBeenCalledWith(101);
     });
   });
+
+  it("disables Refresh all while a refresh is in progress", async () => {
+    const user = userEvent.setup();
+    let resolveRefresh!: () => void;
+    const refreshPromise = new Promise<void>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const refreshSpy = vi
+      .spyOn(api.podcasts, "refreshAll")
+      .mockReturnValue(refreshPromise.then(() => ({ success: true })));
+
+    render(<SubscriptionsScreen />);
+
+    const refreshButton = await screen.findByRole("button", {
+      name: "Refresh all",
+    });
+    await user.click(refreshButton);
+
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(refreshButton).toBeDisabled();
+
+    await user.click(refreshButton);
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+
+    resolveRefresh();
+
+    await waitFor(() => {
+      expect(refreshButton).not.toBeDisabled();
+    });
+  });
 });
