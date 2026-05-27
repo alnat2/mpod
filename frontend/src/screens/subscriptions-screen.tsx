@@ -660,7 +660,7 @@ export function SubscriptionsScreen() {
                       <EpisodeRow
                         key={episode.id}
                         layout={isMobile ? "mobile" : "desktop"}
-                        showDragHandle={false}
+                        showDragHandle={isMobile}
                         title={episode.title}
                         podcastTitle={selectedPodcast.title}
                         subtitle={subtitle}
