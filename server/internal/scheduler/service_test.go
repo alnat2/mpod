@@ -167,6 +167,32 @@ func TestMaybeRunStartsOnlyOncePerDay(t *testing.T) {
 	}
 }
 
+func TestMaybeRunDoesNotRunAgainAfterSuccessfulRunSameDay(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	now := time.Now().Format("15:04")
+	if _, err := db.SQL.Exec(`UPDATE settings SET value = ? WHERE key = 'daily_refresh_time'`, now); err != nil {
+		t.Fatalf("update settings: %v", err)
+	}
+
+	var called atomic.Int32
+	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
+		called.Add(1)
+		return nil
+	})
+
+	service.maybeRun(context.Background())
+	waitForSchedulerIdle(t, service)
+
+	service.maybeRun(context.Background())
+	waitForSchedulerIdle(t, service)
+
+	if called.Load() != 1 {
+		t.Fatalf("expected successful scheduled run to happen once per day, got %d", called.Load())
+	}
+}
+
 func waitForSchedulerIdle(t *testing.T, service *Service) {
 	t.Helper()
 
