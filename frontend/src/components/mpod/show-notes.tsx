@@ -76,9 +76,10 @@ export function ShowNotes({
           />
         </div>
       </header>
-      <div className="max-h-[360px] w-full overflow-y-auto pr-1 text-base leading-6 whitespace-pre-wrap text-card-foreground md:max-h-[408px] md:pr-4">
-        {children}
-      </div>
+      <div
+        className="max-h-[360px] w-full overflow-y-auto pr-1 text-base leading-6 text-card-foreground break-words [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 [&_p]:mb-4 [&_p:last-child]:mb-0 md:max-h-[408px] md:pr-4"
+        dangerouslySetInnerHTML={{ __html: children }}
+      />
     </Card>
   );
 }

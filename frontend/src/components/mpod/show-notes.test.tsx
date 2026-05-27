@@ -14,7 +14,7 @@ describe("ShowNotes", () => {
           podcastTitle="Decoder Ring"
           episodeTitle="Why store loyalty cards became a UX minefield"
         >
-          Long form show notes
+          {"<p>Long form <strong>show notes</strong> with a <a href=\"https://example.com\">link</a>.</p>"}
         </ShowNotes>
       </TooltipProvider>
     );
@@ -25,7 +25,9 @@ describe("ShowNotes", () => {
         "Decoder Ring - Why store loyalty cards became a UX minefield"
       )
     ).toBeInTheDocument();
-    expect(screen.getByText("Long form show notes")).toBeInTheDocument();
+    expect(screen.getByText("Long form", { exact: false })).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "link" });
+    expect(link).toHaveAttribute("href", "https://example.com");
   });
 
   it("calls onClose from the close button", async () => {
