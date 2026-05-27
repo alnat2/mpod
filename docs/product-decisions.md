@@ -1064,6 +1064,10 @@ The initial schema should include a few fields and tables beyond the PRD so the 
 - `episodes.external_episode_key` must be computed during import/refresh and used for duplicate prevention.
 - `episodes.external_episode_key` must be unique per podcast.
 - `episodes.description` stores feed-provided episode summary or description text when available.
+- Episode API responses must expose a frontend-safe display value for show notes.
+- The preferred API field is `episodes.showNotes`.
+- For compatibility, episode API `description` may return the same sanitized display text instead of raw feed HTML.
+- The backend may keep raw feed-provided episode HTML in storage, but the frontend must not be required to trust or sanitize raw HTML itself.
 - `podcasts.description` stores feed-level podcast description when available.
 - `podcasts.image_url` stores feed artwork URL when available.
 - `settings` must persist `daily_refresh_time`.

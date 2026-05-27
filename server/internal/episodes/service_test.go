@@ -101,11 +101,39 @@ func TestGetByIDReturnsDownloadedDescriptionAndDuration(t *testing.T) {
 	if item.Description == nil || *item.Description != "Shownotes" {
 		t.Fatalf("expected description to be loaded, got %+v", item.Description)
 	}
+	if item.ShowNotes == nil || *item.ShowNotes != "Shownotes" {
+		t.Fatalf("expected showNotes to be loaded, got %+v", item.ShowNotes)
+	}
 	if item.Duration == nil || *item.Duration != 90 {
 		t.Fatalf("expected duration to be loaded, got %+v", item.Duration)
 	}
 	if !item.Downloaded {
 		t.Fatalf("expected downloaded flag to be true")
+	}
+}
+
+func TestListByPodcastSanitizesDescriptionIntoShowNotes(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	publishedAt := time.Date(2026, 4, 23, 8, 0, 0, 0, time.UTC)
+	mustExec(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExec(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, description, audio_url, published_at) VALUES (1, 1, 'ep-1', 'Episode', '<p>Hello&nbsp;<a href="https://example.com">world</a></p>', 'https://example.com/1.mp3', ?)`, publishedAt)
+
+	service := NewService(db.SQL)
+	items, err := service.ListByPodcast(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("ListByPodcast failed: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 episode, got %d", len(items))
+	}
+	want := "Hello world (https://example.com)"
+	if items[0].Description == nil || *items[0].Description != want {
+		t.Fatalf("expected sanitized description %q, got %+v", want, items[0].Description)
+	}
+	if items[0].ShowNotes == nil || *items[0].ShowNotes != want {
+		t.Fatalf("expected showNotes %q, got %+v", want, items[0].ShowNotes)
 	}
 }
 

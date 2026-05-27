@@ -43,6 +43,7 @@ export type Episode = {
   podcastId: number;
   title: string;
   description?: string | null;
+  showNotes?: string | null;
   audioUrl: string;
   duration: number | null;
   downloaded: boolean;

@@ -1368,7 +1368,7 @@ func TestEpisodeGetIncludesDescription(t *testing.T) {
 	handler, db := newTestRouter(t)
 	cookie := register(t, handler, "admin", "secret")
 	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
-	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, description, audio_url) VALUES (1, 1, 'ep-1', 'Episode', 'These are show notes.', 'https://example.com/audio.mp3')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, description, audio_url) VALUES (1, 1, 'ep-1', 'Episode', '<p>These are <a href="https://example.com/notes">show notes</a>.</p>', 'https://example.com/audio.mp3')`)
 
 	req := httptest.NewRequest(nethttp.MethodGet, "/api/episodes/1", nil)
 	req.SetPathValue("id", "1")
@@ -1379,8 +1379,38 @@ func TestEpisodeGetIncludesDescription(t *testing.T) {
 	if rec.Code != nethttp.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `"description":"These are show notes."`) {
-		t.Fatalf("expected description in episode payload, got %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), `"description":"These are show notes (https://example.com/notes)."`) {
+		t.Fatalf("expected sanitized description in episode payload, got %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"showNotes":"These are show notes (https://example.com/notes)."`) {
+		t.Fatalf("expected showNotes in episode payload, got %s", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), `<a href=`) || strings.Contains(rec.Body.String(), `&nbsp;`) {
+		t.Fatalf("expected no raw html leftovers in episode payload, got %s", rec.Body.String())
+	}
+}
+
+func TestPodcastEpisodesListIncludesSanitizedShowNotes(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+	now := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast One', 'https://example.com/feed.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, description, audio_url, published_at) VALUES (1, 1, 'ep-1', 'Episode 1', '<p>Read <a href="https://example.com/post">more</a></p>', 'https://cdn.example.com/1.mp3', ?)`, now)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/1/episodes", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"showNotes":"Read more (https://example.com/post)"`) {
+		t.Fatalf("expected sanitized showNotes in podcast episodes payload, got %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"description":"Read more (https://example.com/post)"`) {
+		t.Fatalf("expected sanitized description in podcast episodes payload, got %s", rec.Body.String())
 	}
 }
 

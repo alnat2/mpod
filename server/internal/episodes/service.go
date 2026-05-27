@@ -16,6 +16,7 @@ type Episode struct {
 	PodcastID   int64      `json:"podcastId"`
 	Title       string     `json:"title"`
 	Description *string    `json:"description,omitempty"`
+	ShowNotes   *string    `json:"showNotes,omitempty"`
 	AudioURL    string     `json:"audioUrl"`
 	Duration    *int64     `json:"duration"`
 	Downloaded  bool       `json:"downloaded"`
@@ -88,7 +89,8 @@ func scanEpisode(row scanner) (Episode, error) {
 		item.Duration = &duration.Int64
 	}
 	if description.Valid {
-		item.Description = &description.String
+		item.ShowNotes = sanitizeShowNotes(description.String)
+		item.Description = item.ShowNotes
 	}
 	item.Downloaded = downloadedPath.Valid && downloadedPath.String != ""
 	if publishedAt.Valid {
