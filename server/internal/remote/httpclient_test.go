@@ -69,3 +69,18 @@ func TestNewHTTPClientWithProxyDeciderWrapsTransportSelection(t *testing.T) {
 		t.Fatalf("expected decider client to wrap transport selection, got %T", client.Transport)
 	}
 }
+
+func TestNewHTTPClientWithProxyDeciderWithoutProxyConfigUsesDirectTransport(t *testing.T) {
+	client, err := NewHTTPClientWithProxyDecider(config.Config{}, func(_ context.Context) bool {
+		return true
+	})
+	if err != nil {
+		t.Fatalf("NewHTTPClientWithProxyDecider failed: %v", err)
+	}
+	if client.Timeout != 30*time.Second {
+		t.Fatalf("expected 30s timeout, got %v", client.Timeout)
+	}
+	if _, ok := client.Transport.(*http.Transport); !ok {
+		t.Fatalf("expected direct transport without proxy config, got %T", client.Transport)
+	}
+}
