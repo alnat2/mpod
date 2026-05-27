@@ -171,6 +171,52 @@ func TestGetProxyStatusReturnsObservedIdentityWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestGetProxyStatusReturnsUnknownWhenLookupUnavailable(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	service := NewService(db.SQL, true)
+	enabled := true
+	if _, err := service.Update(context.Background(), UpdateInput{ProxyEnabled: &enabled}); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	status, err := service.GetProxyStatus(context.Background())
+	if err != nil {
+		t.Fatalf("GetProxyStatus failed: %v", err)
+	}
+	if status.Status != ProxyStatusUnknown {
+		t.Fatalf("expected unknown state, got %+v", status)
+	}
+	if status.Error == nil || *status.Error != "Proxy status lookup is unavailable" {
+		t.Fatalf("expected unavailable lookup error, got %+v", status.Error)
+	}
+}
+
+func TestGetProxyStatusReturnsUnknownWhenLookupHasNoIdentity(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	service := NewServiceWithProxyStatusLookup(db.SQL, true, func(context.Context) (ProxyLookupResult, error) {
+		return ProxyLookupResult{}, nil
+	})
+	enabled := true
+	if _, err := service.Update(context.Background(), UpdateInput{ProxyEnabled: &enabled}); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	status, err := service.GetProxyStatus(context.Background())
+	if err != nil {
+		t.Fatalf("GetProxyStatus failed: %v", err)
+	}
+	if status.Status != ProxyStatusUnknown {
+		t.Fatalf("expected unknown state, got %+v", status)
+	}
+	if status.Error == nil || *status.Error != "Proxy status check returned no observable network identity" {
+		t.Fatalf("expected empty identity error, got %+v", status.Error)
+	}
+}
+
 func TestGetProxyStatusReturnsErrorStateWhenLookupFails(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
