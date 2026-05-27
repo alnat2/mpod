@@ -41,13 +41,27 @@ vi.mock("@/components/mpod", () => ({
   PodcastCard: ({
     title,
     onSelect,
+    onRefresh,
+    refreshing,
   }: {
     title: string;
     onSelect?: () => void;
+    onRefresh?: () => void;
+    refreshing?: boolean;
   }) => (
-    <button type="button" onClick={onSelect}>
-      {title}
-    </button>
+    <div>
+      <button type="button" onClick={onSelect}>
+        {title}
+      </button>
+      <button
+        type="button"
+        aria-label={`Refresh ${title}`}
+        disabled={refreshing}
+        onClick={onRefresh}
+      >
+        Refresh
+      </button>
+    </div>
   ),
   PlaylistQueue: ({
     children,
@@ -294,6 +308,42 @@ describe("SubscriptionsScreen", () => {
     await user.click(refreshButton);
 
     expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(refreshButton).toBeDisabled();
+
+    await user.click(refreshButton);
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+
+    resolveRefresh();
+
+    await waitFor(() => {
+      expect(refreshButton).not.toBeDisabled();
+    });
+  });
+
+  it("disables a podcast Refresh button while that refresh is in progress", async () => {
+    const user = userEvent.setup();
+    let resolveRefresh!: () => void;
+    const refreshPromise = new Promise<void>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const refreshSpy = vi
+      .spyOn(api.podcasts, "refresh")
+      .mockReturnValue(
+        refreshPromise.then(() => ({
+          success: true,
+          newEpisodes: 0,
+          lastChecked: "2026-05-27T10:00:00Z",
+        }))
+      );
+
+    render(<SubscriptionsScreen />);
+
+    const refreshButton = await screen.findByRole("button", {
+      name: "Refresh Build Your SaaS",
+    });
+    await user.click(refreshButton);
+
+    expect(refreshSpy).toHaveBeenCalledWith(1);
     expect(refreshButton).toBeDisabled();
 
     await user.click(refreshButton);

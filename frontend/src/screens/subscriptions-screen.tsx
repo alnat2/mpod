@@ -109,6 +109,9 @@ export function SubscriptionsScreen() {
   const [downloadingEpisodeIds, setDownloadingEpisodeIds] = useState<Set<number>>(
     () => new Set()
   );
+  const [refreshingPodcastIds, setRefreshingPodcastIds] = useState<Set<number>>(
+    () => new Set()
+  );
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -323,6 +326,24 @@ export function SubscriptionsScreen() {
       setActionError(getErrorMessage(caught));
     } finally {
       setRefreshingAll(false);
+    }
+  }
+
+  async function refreshPodcast(podcastId: number) {
+    setActionError(null);
+    setRefreshingPodcastIds((current) => new Set(current).add(podcastId));
+
+    try {
+      await api.podcasts.refresh(podcastId);
+      setReloadKey((current) => current + 1);
+    } catch (caught) {
+      setActionError(getErrorMessage(caught));
+    } finally {
+      setRefreshingPodcastIds((current) => {
+        const next = new Set(current);
+        next.delete(podcastId);
+        return next;
+      });
     }
   }
 
@@ -562,13 +583,12 @@ export function SubscriptionsScreen() {
                                   : undefined
                               }
                               artworkAlt={`${podcast.title} artwork`}
+                              refreshing={refreshingPodcastIds.has(podcast.id)}
                               onSelect={() => {
                                 setEpisodeScrollTop(0);
                                 setSelectedPodcastId(podcast.id);
                               }}
-                              onRefresh={() =>
-                                void runAction(() => api.podcasts.refresh(podcast.id))
-                              }
+                              onRefresh={() => void refreshPodcast(podcast.id)}
                               onUnsubscribe={() => scheduleUnsubscribePodcast(podcast)}
                             />
                           </CarouselItem>

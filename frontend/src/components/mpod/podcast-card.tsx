@@ -1,5 +1,5 @@
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Refresh01Icon } from "@hugeicons/core-free-icons";
+import { Loading02Icon, Refresh01Icon } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,7 @@ type PodcastCardProps = {
   onSelect?: () => void;
   onRefresh?: () => void;
   onUnsubscribe?: () => void;
+  refreshing?: boolean;
 };
 
 export function PodcastCard({
@@ -30,6 +31,7 @@ export function PodcastCard({
   onSelect,
   onRefresh,
   onUnsubscribe,
+  refreshing = false,
 }: PodcastCardProps) {
   return (
     <div
@@ -77,12 +79,17 @@ export function PodcastCard({
           variant="outline"
           className="h-8 flex-1 gap-1.5 rounded-lg px-3 shadow-xs"
           type="button"
+          disabled={refreshing}
           onClick={(event) => {
             event.stopPropagation();
             onRefresh?.();
           }}
         >
-          <HugeiconsIcon icon={Refresh01Icon} data-icon="inline-start" />
+          <HugeiconsIcon
+            icon={refreshing ? Loading02Icon : Refresh01Icon}
+            className={refreshing ? "animate-spin" : undefined}
+            data-icon="inline-start"
+          />
           Refresh
         </Button>
         <Button
