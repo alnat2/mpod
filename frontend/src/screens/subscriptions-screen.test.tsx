@@ -90,13 +90,19 @@ vi.mock("@/components/mpod", () => ({
   ),
   EpisodeRow: ({
     title,
+    subtitle,
+    showDragHandle,
     actions = [],
   }: {
     title: string;
+    subtitle?: string;
+    showDragHandle?: boolean;
     actions?: Array<{ label: string; onClick?: () => void }>;
   }) => (
     <div data-testid={`episode-row-${title}`}>
+      {showDragHandle ? <span data-testid={`drag-handle-${title}`} /> : null}
       <span>{title}</span>
+      {subtitle ? <span>{subtitle}</span> : null}
       {actions.map((action) => (
         <button
           key={action.label}
@@ -185,6 +191,8 @@ describe("SubscriptionsScreen", () => {
       "Show notes",
       "Mark as listened",
     ]);
+    expect(screen.getByTestId("drag-handle-QA reorder third")).toBeInTheDocument();
+    expect(row).not.toHaveTextContent("Build Your SaaS");
   });
 
   it("renders the state-based action variants", async () => {

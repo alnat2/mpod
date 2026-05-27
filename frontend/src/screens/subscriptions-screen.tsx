@@ -654,13 +654,13 @@ export function SubscriptionsScreen() {
                         : "Downloaded"
                       : episode.inPlaylist
                         ? "In playlist"
-                        : selectedPodcast.title;
+                        : undefined;
 
                     return (
                       <EpisodeRow
                         key={episode.id}
                         layout={isMobile ? "mobile" : "desktop"}
-                        showDragHandle={isMobile}
+                        showDragHandle
                         title={episode.title}
                         podcastTitle={selectedPodcast.title}
                         subtitle={subtitle}
