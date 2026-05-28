@@ -257,7 +257,7 @@ export function EpisodeRow({
       >
         <p
           className={cn(
-            "text-sm leading-5 font-semibold",
+            "min-w-0 text-sm leading-5 font-semibold",
             isMobile ? "line-clamp-2" : isDesktop ? "truncate" : "line-clamp-2 md:line-clamp-1"
           )}
         >
@@ -267,7 +267,7 @@ export function EpisodeRow({
           <p
             className={cn(
               isMobile
-                ? "truncate text-xs leading-4 text-muted-foreground"
+                ? "min-w-0 truncate text-xs leading-4 text-muted-foreground"
                 : "truncate text-xs leading-4 text-muted-foreground",
               current && "text-chart-5"
             )}
@@ -280,7 +280,7 @@ export function EpisodeRow({
         className={cn(
           "flex shrink-0 text-right text-xs leading-4 whitespace-nowrap text-muted-foreground",
           isMobile
-            ? "flex-col items-end justify-center gap-1"
+            ? "w-12 flex-col items-end justify-center gap-1"
             : isDesktop
               ? "flex-row items-center gap-2"
               : "flex-col items-end justify-center gap-0.5 md:flex-row md:items-center md:gap-2"

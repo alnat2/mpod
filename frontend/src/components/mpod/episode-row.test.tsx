@@ -21,6 +21,7 @@ describe("EpisodeRow", () => {
 
     expect(
       screen.getByText("Grammar Girl: For Writers and Language Lovers.")
-    ).toHaveClass("truncate");
+    ).toHaveClass("min-w-0", "truncate");
+    expect(screen.getByText("22m").parentElement).toHaveClass("w-12");
   });
 });
