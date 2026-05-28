@@ -104,6 +104,19 @@ function clampPosition(positionSeconds: number, durationSeconds?: number | null)
   return Math.min(durationSeconds, nonNegativePosition);
 }
 
+function getPositiveDuration(...values: Array<number | null | undefined>) {
+  return (
+    values.find(
+      (value): value is number =>
+        typeof value === "number" && Number.isFinite(value) && value > 0
+    ) ?? 0
+  );
+}
+
+function readAudioDuration(audio: HTMLAudioElement) {
+  return getPositiveDuration(audio.duration);
+}
+
 async function attemptAudioPlay(
   audio: HTMLAudioElement,
   onFailure: (error: unknown) => void
@@ -175,6 +188,10 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const [playing, setPlaying] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [positionSeconds, setPositionSeconds] = useState(0);
+  const [audioDuration, setAudioDuration] = useState<{
+    episodeId: number;
+    durationSeconds: number;
+  } | null>(null);
   const [speedLabel, setSpeedLabel] =
     useState<PlaybackSpeedLabel>(defaultPlaybackSpeed);
 
@@ -188,9 +205,17 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       : null;
   const currentEpisode = activeEpisode ?? queue[0] ?? null;
   const currentEpisodeRef = useRef<QueueEpisode | null>(null);
+  const currentEpisodeDurationRef = useRef(0);
   const pendingPlayEpisodeIdRef = useRef<number | null>(null);
   const currentEpisodeId = currentEpisode?.id;
-  const currentEpisodeDuration = currentEpisode?.duration ?? 0;
+  const currentAudioDuration =
+    audioDuration && audioDuration.episodeId === currentEpisodeId
+      ? audioDuration.durationSeconds
+      : 0;
+  const currentEpisodeDuration = getPositiveDuration(
+    currentEpisode?.duration,
+    currentAudioDuration
+  );
 
   const commitPlayback = useCallback(
     async (
@@ -201,12 +226,13 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       if (!episode) return;
 
       try {
+        const durationSeconds = currentEpisodeDurationRef.current;
         await api.playback.update({
           episodeId: episode.id,
           positionSeconds: Math.round(
-            clampPosition(nextPositionSeconds, episode.duration)
+            clampPosition(nextPositionSeconds, durationSeconds)
           ),
-          durationSeconds: episode.duration ?? 0,
+          durationSeconds: Math.round(durationSeconds),
           completed: options.completed ?? false,
           didSeek: options.didSeek ?? false,
           clientUpdatedAt: new Date().toISOString(),
@@ -261,6 +287,10 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   }, [currentEpisode]);
 
   useEffect(() => {
+    currentEpisodeDurationRef.current = currentEpisodeDuration;
+  }, [currentEpisodeDuration]);
+
+  useEffect(() => {
     const pendingEpisodeId = pendingPlayEpisodeIdRef.current;
     if (pendingEpisodeId === null) {
       return;
@@ -285,6 +315,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
     const onTimeUpdate = () => {
       setPositionSeconds(audio.currentTime);
+      const nextDuration = readAudioDuration(audio);
+      const episodeId = currentEpisodeRef.current?.id;
+      if (nextDuration && episodeId) {
+        setAudioDuration({ episodeId, durationSeconds: nextDuration });
+      }
     };
 
     const onPlaying = () => {
@@ -334,13 +369,25 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       setPlaybackError(describeMediaError(audio.error));
     };
 
+    const onDurationAvailable = () => {
+      const nextDuration = readAudioDuration(audio);
+      const episodeId = currentEpisodeRef.current?.id;
+      if (nextDuration && episodeId) {
+        setAudioDuration({ episodeId, durationSeconds: nextDuration });
+      }
+    };
+
     audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("loadedmetadata", onDurationAvailable);
+    audio.addEventListener("durationchange", onDurationAvailable);
     audio.addEventListener("playing", onPlaying);
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("error", onError);
 
     return () => {
       audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("loadedmetadata", onDurationAvailable);
+      audio.removeEventListener("durationchange", onDurationAvailable);
       audio.removeEventListener("playing", onPlaying);
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
@@ -541,27 +588,33 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
   const seekForward = useCallback(() => {
     if (!audioRef.current || !currentEpisode) return;
-    const nextPos = clampPosition(audioRef.current.currentTime + 15, currentEpisode.duration);
+    const nextPos = clampPosition(
+      audioRef.current.currentTime + 15,
+      currentEpisodeDuration
+    );
     audioRef.current.currentTime = nextPos;
     setPositionSeconds(nextPos);
     void commitPlayback(nextPos, { didSeek: true });
-  }, [currentEpisode, commitPlayback]);
+  }, [currentEpisode, currentEpisodeDuration, commitPlayback]);
 
   const seekBackward = useCallback(() => {
     if (!audioRef.current || !currentEpisode) return;
-    const nextPos = clampPosition(audioRef.current.currentTime - 10, currentEpisode.duration);
+    const nextPos = clampPosition(
+      audioRef.current.currentTime - 10,
+      currentEpisodeDuration
+    );
     audioRef.current.currentTime = nextPos;
     setPositionSeconds(nextPos);
     void commitPlayback(nextPos, { didSeek: true });
-  }, [currentEpisode, commitPlayback]);
+  }, [currentEpisode, currentEpisodeDuration, commitPlayback]);
 
   const seekTo = useCallback((positionSeconds: number) => {
     if (!audioRef.current || !currentEpisode) return;
-    const nextPos = clampPosition(positionSeconds, currentEpisode.duration);
+    const nextPos = clampPosition(positionSeconds, currentEpisodeDuration);
     audioRef.current.currentTime = nextPos;
     setPositionSeconds(nextPos);
     void commitPlayback(nextPos, { didSeek: true });
-  }, [currentEpisode, commitPlayback]);
+  }, [currentEpisode, currentEpisodeDuration, commitPlayback]);
 
   const updateSpeedLabel = useCallback((label: PlaybackSpeedLabel) => {
     setSpeedLabel(label);

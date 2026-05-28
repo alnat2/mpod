@@ -20,6 +20,7 @@ class FakeAudio {
 
   src = "";
   currentTime = 0;
+  duration = 0;
   playbackRate = 1;
   defaultPlaybackRate = 1;
   paused = true;
@@ -177,6 +178,7 @@ function Harness() {
     playing,
     playbackError,
     positionSeconds,
+    durationSeconds,
     speedLabel,
     playToggle,
     playEpisode,
@@ -195,6 +197,7 @@ function Harness() {
       <div data-testid="current-podcast">{currentEpisode?.podcastTitle ?? "none"}</div>
       <div data-testid="playing">{playing ? "yes" : "no"}</div>
       <div data-testid="position">{positionSeconds}</div>
+      <div data-testid="duration">{durationSeconds}</div>
       <div data-testid="speed">{speedLabel}</div>
       <div data-testid="playback-error">{playbackError ?? "none"}</div>
       <button type="button" onClick={() => playEpisode(2)}>
@@ -247,6 +250,10 @@ describe("PlaybackProvider", () => {
     FakeAudio.instances = [];
     dispatchHarnessProfilerCommits = 0;
     vi.stubGlobal("Audio", FakeAudio);
+    episodes.set(1, {
+      ...episodes.get(1)!,
+      duration: 1800,
+    });
 
     vi.spyOn(api.playlist, "list").mockResolvedValue({ items: playlistItems });
     vi.spyOn(api.podcasts, "list").mockResolvedValue({ podcasts });
@@ -377,6 +384,29 @@ describe("PlaybackProvider", () => {
         didSeek: true,
       })
     );
+  });
+
+  it("uses audio metadata duration when feed metadata is missing", async () => {
+    episodes.set(1, {
+      ...episodes.get(1)!,
+      duration: null,
+    });
+
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    expect(screen.getByTestId("duration")).toHaveTextContent("0");
+
+    const audio = FakeAudio.instances[0];
+    audio.duration = 1500;
+    audio.emit("loadedmetadata");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("duration")).toHaveTextContent("1500");
+    });
   });
 
   it("applies playback speed changes to the audio element", async () => {
