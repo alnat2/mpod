@@ -60,6 +60,12 @@ Examples:
    - tokens: verify both semantic token name and concrete value; do not assume matching names mean matching values
    - states: verify the exact variant/state node, not just the component set or a nearby frame
 7. If the user points to a visible rendered mismatch, treat that exact visible instance as unresolved until it is inspected directly in Figma and in the browser.
+7a. For component-level mismatches, verify structure before styling:
+   - count visible controls/buttons
+   - verify which controls exist and which do not
+   - verify text line count, wrap/truncation, and fit
+   - verify left/middle/right layout zones and overall silhouette
+   - if these do not match, do not describe the component as synced even if colors, borders, or spacing look close
 8. Apply sizing/layout rules:
    - `TopNav`, `AppShell`, `PageHeader`, and other shared primitives follow their component nodes
    - screen-only wrappers, spacing between sections, and local composition follow the exact screen node
@@ -77,6 +83,7 @@ For frontend UI created or changed from Figma:
 - do a real browser visual check after the change
 - compare the rendered result against the exact referenced Figma frame/component before calling the task complete
 - if the user highlighted a specific icon/control/row/card in a screenshot, compare that exact visible target rather than declaring the broader component synced
+- treat a mismatch in control count, icon count, text fit, or silhouette as a hard failure, not a minor polish issue
 
 ## Icon Verification Rule
 

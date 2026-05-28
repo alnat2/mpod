@@ -206,7 +206,7 @@ func (r *Router) handleRegister(w nethttp.ResponseWriter, req *nethttp.Request) 
 		return
 	}
 
-	auth.SetSessionCookie(w, sessionID, r.config.Environment == "production")
+	auth.SetSessionCookie(w, sessionID, auth.SessionCookieSecure(req))
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{
 		"user": user,
 	})
@@ -234,7 +234,7 @@ func (r *Router) handleLogin(w nethttp.ResponseWriter, req *nethttp.Request) {
 		return
 	}
 
-	auth.SetSessionCookie(w, sessionID, r.config.Environment == "production")
+	auth.SetSessionCookie(w, sessionID, auth.SessionCookieSecure(req))
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{
 		"user": user,
 	})
@@ -246,7 +246,7 @@ func (r *Router) handleLogout(w nethttp.ResponseWriter, req *nethttp.Request) {
 		return
 	}
 
-	auth.ClearSessionCookie(w, r.config.Environment == "production")
+	auth.ClearSessionCookie(w, auth.SessionCookieSecure(req))
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{
 		"success": true,
 	})

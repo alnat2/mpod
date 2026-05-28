@@ -33,12 +33,16 @@ import {
   getErrorMessage,
   getEpisodeShowNotes,
 } from "./screen-utils";
+import { useAudioMetadataDurations } from "./use-audio-metadata-durations";
 import { useDelayedActions } from "./use-delayed-actions";
 import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
 
-function queueSummary(episodes: QueueEpisode[]) {
+function queueSummary(
+  episodes: QueueEpisode[],
+  durationForEpisode: (episode: QueueEpisode) => number | null
+) {
   const totalSeconds = episodes.reduce(
-    (total, episode) => total + (episode.duration ?? 0),
+    (total, episode) => total + (durationForEpisode(episode) ?? 0),
     0
   );
   return `${episodes.length} ${episodes.length === 1 ? "episode" : "episodes"} · ${formatDuration(totalSeconds)}`;
@@ -101,13 +105,19 @@ export function HomeScreen() {
       ),
     [pendingPlaylistRemoveEpisodeIds, queue]
   );
+  const durationForQueueEpisode = useAudioMetadataDurations(visibleQueue);
 
   const showNotesEpisode =
     visibleQueue.find((episode) => episode.id === showNotesEpisodeId) ??
     (showNotesEpisodeId === currentEpisode?.id ? currentEpisode : null);
+  const currentVisibleQueueEpisode = visibleQueue.find(
+    (episode) => episode.id === currentEpisode?.id
+  );
   const currentEpisodeDuration =
-    currentEpisode?.duration ??
-    visibleQueue.find((episode) => episode.id === currentEpisode?.id)?.duration ??
+    (currentEpisode ? durationForQueueEpisode(currentEpisode) : null) ??
+    (currentVisibleQueueEpisode
+      ? durationForQueueEpisode(currentVisibleQueueEpisode)
+      : null) ??
     0;
   const displayDurationSeconds = durationSeconds || currentEpisodeDuration;
   const progressValue = useMemo(() => {
@@ -297,7 +307,7 @@ export function HomeScreen() {
                 onSpeedChange={setSpeedLabel}
               />
               <PlaylistQueue
-                summary={queueSummary(visibleQueue)}
+                summary={queueSummary(visibleQueue, durationForQueueEpisode)}
                 className="min-h-0 w-full shrink-0 md:max-w-[1040px]"
                 bodyClassName="max-h-[228px] overflow-y-auto md:max-h-none"
               >
@@ -316,7 +326,7 @@ export function HomeScreen() {
                           ? undefined
                           : formatEpisodeDate(episode.publishedAt) || undefined
                       }
-                      durationLabel={formatDuration(episode.duration)}
+                      durationLabel={formatDuration(durationForQueueEpisode(episode))}
                       thumbnailUrl={episode.podcastImageUrl ?? undefined}
                       thumbnailAlt={`${episode.podcastTitle} artwork`}
                       episodeRowId={episode.id}

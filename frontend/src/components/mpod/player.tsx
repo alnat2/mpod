@@ -161,7 +161,7 @@ export function Player({
         <Progress
           aria-label="Seek playback position"
           className={cn(
-            "h-2 bg-primary/20",
+            "h-4 bg-primary/20 md:h-2",
             onProgressSeek && "cursor-pointer"
           )}
           value={progressValue}

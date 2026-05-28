@@ -64,6 +64,12 @@ Before implementing from Figma, read:
    - when a visual component or screen changes, start/keep the dev server and inspect the result in a real browser
    - if the change is based on a Figma frame or component, compare the browser result against that exact Figma source before calling the task complete
    - if the user flagged a visible mismatch in a screenshot, verify that exact visible instance in the browser before closing the task
+   - for component-level Figma work, do not stop at “looks close”; explicitly verify:
+     - visible control/button count matches
+     - icon meaning and icon identity match
+     - text line count, wrap/truncation, and fit match
+     - left/middle/right layout zones match
+     - if any one of these fails, the component is not done
 
 ## Implementation Rules
 
@@ -132,6 +138,9 @@ Before finishing a component or screen:
 - Frontend token values were cross-checked when a change depended on semantic colors, borders, or selected/focus states.
 - The component matches the approved layout and documented behavior.
 - A real browser visual check was done for Figma-based UI changes.
+- The visible control/button count matches the referenced Figma component or frame.
+- Text fit was checked explicitly, including real line count and truncation/wrapping behavior.
+- The overall component silhouette matches, including row/card height and left/middle/right zone structure.
 - shadcn primitives and Hugeicons are used correctly.
 - No Lucide imports were introduced.
 - No draft-only Figma section was implemented.

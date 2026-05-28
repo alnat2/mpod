@@ -48,6 +48,7 @@ import {
   getErrorMessage,
   getEpisodeShowNotes,
 } from "./screen-utils";
+import { useAudioMetadataDurations } from "./use-audio-metadata-durations";
 import { useDelayedActions } from "./use-delayed-actions";
 import { cn } from "@/lib/utils";
 
@@ -304,6 +305,7 @@ export function SubscriptionsScreen() {
         (visibleEpisodes.length - endIndex) * episodeRowHeight,
     };
   }, [episodeRowHeight, episodeScrollTop, episodeViewportHeight, visibleEpisodes]);
+  const durationForEpisode = useAudioMetadataDurations(virtualEpisodeWindow.items);
 
   async function runAction(action: () => Promise<unknown>) {
     setActionError(null);
@@ -645,7 +647,7 @@ export function SubscriptionsScreen() {
                     />
                   ) : null}
                   {virtualEpisodeWindow.items.map((episode) => {
-                    const duration = formatDuration(episode.duration);
+                    const duration = formatDuration(durationForEpisode(episode));
                     const publishedAt = formatEpisodeDate(episode.publishedAt);
                     const downloading = downloadingEpisodeIds.has(episode.id);
                     const subtitle = episode.downloaded

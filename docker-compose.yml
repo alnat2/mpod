@@ -6,6 +6,7 @@ services:
     ports:
       - "${PORT:-5050}:5050"
     environment:
+      APP_ENV: ${APP_ENV:-production}
       PORT: 5050
       TZ: ${TZ:-UTC}
       SESSION_SECRET: ${SESSION_SECRET:-change-me}

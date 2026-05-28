@@ -84,6 +84,53 @@ func TestRegisterCreatesSessionAndSessionEndpointReflectsAuth(t *testing.T) {
 	}
 }
 
+func TestRegisterOnPlainHTTPDoesNotSetSecureSessionCookieInProduction(t *testing.T) {
+	handler, _ := newTestRouterWithConfig(t, config.Config{
+		Environment:  "production",
+		DownloadsDir: t.TempDir(),
+	})
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/auth/register", bytes.NewReader([]byte(`{"username":"admin","password":"secret"}`)))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	cookies := rec.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatalf("expected session cookie")
+	}
+	if cookies[0].Secure {
+		t.Fatalf("expected non-secure cookie for plain HTTP request, got %+v", cookies[0])
+	}
+}
+
+func TestRegisterWithForwardedHTTPSSetsSecureSessionCookie(t *testing.T) {
+	handler, _ := newTestRouterWithConfig(t, config.Config{
+		Environment:  "production",
+		DownloadsDir: t.TempDir(),
+	})
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/auth/register", bytes.NewReader([]byte(`{"username":"admin","password":"secret"}`)))
+	req.Header.Set("X-Forwarded-Proto", "https")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	cookies := rec.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatalf("expected session cookie")
+	}
+	if !cookies[0].Secure {
+		t.Fatalf("expected secure cookie for forwarded HTTPS request, got %+v", cookies[0])
+	}
+}
+
 func TestSessionEndpointReportsSetupRequiredWhenNoUserExists(t *testing.T) {
 	handler, _ := newTestRouter(t)
 

@@ -51,7 +51,7 @@ Set up Storybook for `mpod` so component development happens locally on the MacB
 
 ## Infra
 - owner: adm infra chat
-- status: in_progress
+- status: ready_for_validation
 - done:
   - confirmed the preferred architecture is local Storybook development plus static hosting on NAS
   - confirmed NAS has Docker Compose and `rsync` available for static hosting and deployment
@@ -61,12 +61,12 @@ Set up Storybook for `mpod` so component development happens locally on the MacB
   - created placeholder static site in `/home/cross/mpod-storybook/storybook-static`
   - started the `mpod-storybook` container on NAS with port mapping `6006:80`
   - created local deploy helper `/Users/cross/Documents/adm/scripts/deploy-mpod-storybook.sh`
+  - published the current local `frontend/storybook-static` build to NAS
+  - verified on NAS that `http://127.0.0.1:6006/` serves real Storybook HTML and metadata
 - next:
-  - align exact frontend build command and output path with frontend chat
-  - perform first real publish after frontend chat produces a Storybook static build
   - decide whether direct port `6006` is enough or whether Storybook should later sit behind an existing reverse proxy
+  - optionally add a more structured release flow or backup strategy for future publishes
 - blocked:
-  - waiting for frontend chat to confirm build command and any special static asset expectations
   - direct LAN reachability of `192.168.0.222:6006` could not be confirmed from this Codex environment, although the site responds on NAS itself via `http://127.0.0.1:6006`
 - notes:
   - Current publish target on NAS: `/home/cross/mpod-storybook/storybook-static`
@@ -83,3 +83,4 @@ Set up Storybook for `mpod` so component development happens locally on the MacB
 ## Latest Handoff
 - 2026-05-24: File created to coordinate Storybook frontend work in `mpod` and static hosting work on NAS.
 - 2026-05-24: Infra prepared a first NAS hosting target at `/home/cross/mpod-storybook` with `nginx` on port `6006`, plus a local deploy helper script.
+- 2026-05-24: Infra published the first real Storybook static build to NAS and verified it locally on NAS at `http://127.0.0.1:6006/`.
