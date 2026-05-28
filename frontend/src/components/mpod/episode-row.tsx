@@ -267,7 +267,7 @@ export function EpisodeRow({
           <p
             className={cn(
               isMobile
-                ? "text-xs leading-4 text-muted-foreground whitespace-nowrap"
+                ? "truncate text-xs leading-4 text-muted-foreground"
                 : "truncate text-xs leading-4 text-muted-foreground",
               current && "text-chart-5"
             )}
