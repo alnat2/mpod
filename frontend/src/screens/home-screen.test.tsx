@@ -18,6 +18,7 @@ const reloadQueueMock = vi.fn().mockResolvedValue(undefined);
 const updateQueueMock = vi.fn();
 const scheduleActionMock = vi.fn();
 const undoActionMock = vi.fn();
+let playbackDurationSeconds = 2400;
 
 const queue = [
   {
@@ -71,7 +72,7 @@ vi.mock("@/lib/playback-context", () => ({
     playToggle: playToggleMock,
     playEpisode: playEpisodeMock,
     positionSeconds: 96,
-    durationSeconds: 2400,
+    durationSeconds: playbackDurationSeconds,
     speedLabel: "Speed 1.3x",
     setSpeedLabel: setSpeedLabelMock,
     clearPlaybackError: clearPlaybackErrorMock,
@@ -98,15 +99,23 @@ vi.mock("@/components/mpod", () => ({
   Player: ({
     title,
     podcastTitle,
+    durationLabel,
+    onProgressSeek,
     onNotes,
   }: {
     title: string;
     podcastTitle: string;
+    durationLabel: string;
+    onProgressSeek?: (progressRatio: number) => void;
     onNotes?: () => void;
   }) => (
     <section data-testid="player">
       <div>{title}</div>
       <div>{podcastTitle}</div>
+      <div>{durationLabel}</div>
+      <button type="button" onClick={() => onProgressSeek?.(0.5)}>
+        Seek middle
+      </button>
       <button type="button" onClick={onNotes}>
         Notes
       </button>
@@ -180,6 +189,7 @@ describe("HomeScreen", () => {
     updateQueueMock.mockReset();
     scheduleActionMock.mockReset();
     undoActionMock.mockReset();
+    playbackDurationSeconds = 2400;
   });
 
   it("renders the player from the active playback episode, not queue order", async () => {
@@ -220,6 +230,19 @@ describe("HomeScreen", () => {
     expect(modal).toHaveTextContent("Actually playing");
     expect(modal).toHaveTextContent("Current sanitized notes");
     expect(modal).not.toHaveTextContent("Current notes");
+  });
+
+  it("uses episode metadata duration when audio duration is not loaded yet", async () => {
+    const user = userEvent.setup();
+    playbackDurationSeconds = 0;
+
+    render(<HomeScreen />);
+
+    const player = await screen.findByTestId("player");
+    expect(player).toHaveTextContent("40:00");
+
+    await user.click(screen.getByRole("button", { name: "Seek middle" }));
+    expect(seekToMock).toHaveBeenCalledWith(1200);
   });
 
   it("schedules playlist removal from the row action", async () => {

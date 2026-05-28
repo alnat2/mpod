@@ -105,10 +105,18 @@ export function HomeScreen() {
   const showNotesEpisode =
     visibleQueue.find((episode) => episode.id === showNotesEpisodeId) ??
     (showNotesEpisodeId === currentEpisode?.id ? currentEpisode : null);
+  const currentEpisodeDuration =
+    currentEpisode?.duration ??
+    visibleQueue.find((episode) => episode.id === currentEpisode?.id)?.duration ??
+    0;
+  const displayDurationSeconds = durationSeconds || currentEpisodeDuration;
   const progressValue = useMemo(() => {
-    if (!durationSeconds) return 0;
-    return Math.min(100, Math.round((positionSeconds / durationSeconds) * 100));
-  }, [durationSeconds, positionSeconds]);
+    if (!displayDurationSeconds) return 0;
+    return Math.min(
+      100,
+      Math.round((positionSeconds / displayDurationSeconds) * 100)
+    );
+  }, [displayDurationSeconds, positionSeconds]);
 
   useEffect(() => {
     if (draggedEpisodeId === null) {
@@ -269,7 +277,7 @@ export function HomeScreen() {
                 artworkUrl={currentEpisode.podcastImageUrl ?? undefined}
                 artworkAlt={`${currentEpisode.podcastTitle} artwork`}
                 elapsedLabel={formatClock(positionSeconds)}
-                durationLabel={formatClock(durationSeconds)}
+                durationLabel={formatClock(displayDurationSeconds)}
                 playing={playing}
                 progressValue={progressValue}
                 speedLabel={speedLabel}
@@ -277,7 +285,7 @@ export function HomeScreen() {
                 onForward={seekForward}
                 onPlay={playToggle}
                 onProgressSeek={(progressRatio) =>
-                  seekTo(durationSeconds * progressRatio)
+                  seekTo(displayDurationSeconds * progressRatio)
                 }
                 onNotes={() => {
                   if (currentEpisode) {
