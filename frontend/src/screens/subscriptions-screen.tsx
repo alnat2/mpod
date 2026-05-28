@@ -662,7 +662,6 @@ export function SubscriptionsScreen() {
                         layout={isMobile ? "mobile" : "desktop"}
                         showDragHandle
                         title={episode.title}
-                        podcastTitle={selectedPodcast.title}
                         subtitle={subtitle}
                         dateLabel={publishedAt || undefined}
                         durationLabel={duration || undefined}

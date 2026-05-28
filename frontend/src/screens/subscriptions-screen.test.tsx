@@ -193,6 +193,7 @@ describe("SubscriptionsScreen", () => {
     ]);
     expect(screen.getByTestId("drag-handle-QA reorder third")).toBeInTheDocument();
     expect(row).not.toHaveTextContent("Build Your SaaS");
+    expect(row).not.toHaveTextContent(podcast.title);
   });
 
   it("renders the state-based action variants", async () => {
