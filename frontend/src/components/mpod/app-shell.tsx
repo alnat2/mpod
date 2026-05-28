@@ -39,7 +39,7 @@ export function AppShell({
         className="hidden md:flex"
         onAdd={onAddPodcast}
       />
-      <main className="flex min-h-0 w-full max-w-[1200px] flex-1 flex-col text-foreground">
+      <main className="flex min-h-0 w-full max-w-[1200px] flex-1 flex-col pb-[65px] text-foreground md:pb-0">
         {pageHeaderVisible ? (
           <PageHeader
             className="py-4 md:py-5"
@@ -52,7 +52,7 @@ export function AppShell({
       </main>
       <BottomNav
         activeItem={activeNavItem}
-        className="md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 mx-auto md:hidden"
         onAdd={onAddPodcast}
       />
     </div>
