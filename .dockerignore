@@ -1,12 +1,44 @@
+# OS
 .DS_Store
+._*
+
+# Version control
 .git
 .gitignore
+
+# Environment and config
+.env
+.env.example
+docker-compose.yml
+
+# Node
 node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Build output (rebuilt inside Docker)
 dist
 build
 coverage
-.env
+
+# Data directories (not needed in image)
+local-data
+data
+
+# Documentation (not needed in image)
+docs
+skills
+*.md
+
+# Frontend dev-only artifacts
+frontend/storybook-static
+frontend/test-results
+frontend/e2e
+frontend/.storybook
+frontend/.agents
+frontend/.DS_Store
+frontend/debug-storybook.log
+frontend/frontend.log
+frontend/skills-lock.json
