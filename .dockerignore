@@ -42,3 +42,6 @@ frontend/.DS_Store
 frontend/debug-storybook.log
 frontend/frontend.log
 frontend/skills-lock.json
+
+# Go vendor (Dockerfile uses go mod download instead)
+server/vendor

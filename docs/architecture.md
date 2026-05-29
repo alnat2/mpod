@@ -121,6 +121,21 @@ Migration guidance:
 - persist schema version in the database
 - treat initial schema design as part of application architecture, not temporary bootstrap code
 
+### SQLite Driver
+
+The project uses `github.com/mattn/go-sqlite3` (CGO-based) as the SQLite driver.
+
+This driver was chosen over `modernc.org/sqlite` (pure Go) because:
+- `modernc.org/sqlite` contains ~9 MB per-platform generated Go source files that take 30–90 minutes to compile on low-power hardware (NAS, CI runners with limited CPU/RAM), making Docker builds impractical on the deployment target
+- `mattn/go-sqlite3` compiles SQLite as native C code via CGO, which takes seconds regardless of hardware
+- The Docker build image (`golang:1.24-alpine`) already includes the necessary C toolchain with `build-base`
+- The trade-off (CGO requirement in build) is acceptable because the app is built exclusively inside Docker containers where gcc is controlled
+
+Build implications:
+- Dockerfile uses `CGO_ENABLED=1` and installs `build-base` in the builder stage
+- The final runtime image remains a minimal `alpine` with no C toolchain
+- Dependencies are downloaded via `go mod download` during Docker build rather than vendored, keeping the build context small (~20 MB instead of ~250 MB)
+
 ### Filesystem Storage
 
 The local filesystem stores downloaded episode audio files under `/data/downloads`.
