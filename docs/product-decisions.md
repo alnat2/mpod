@@ -702,7 +702,8 @@ Example:
 
 ### Decision
 Downloaded episode files are temporary local copies. By default, removing an episode from the playlist deletes its downloaded file, and marking an episode as listened deletes its downloaded file.
-For manual UI actions that offer undo, the app keeps the downloaded file during the undo window and applies the file-deleting change only after the undo window expires.
+Manual listened-state changes and playlist removal are immediate actions. The backend applies their file lifecycle side effects immediately.
+Podcast unsubscribe keeps a 15-second undo window. During that window, the app keeps the downloaded files and applies the file-deleting unsubscribe only after the undo window expires.
 
 ### Rules
 - Downloaded files are stored on local disk.
@@ -730,29 +731,29 @@ For manual UI actions that offer undo, the app keeps the downloaded file during 
 - `PATCH /api/episodes/:id` with `isListened = true` deletes the local file by default and clears `downloaded_path`.
 - If there is no local file, these actions still succeed as state updates.
 
-### Undo Window For Manual UI Actions
-- Manual UI actions that expose `Undo` should keep the previous backend/file state during the 15-second undo window.
-- During the undo window, the UI may show a pending listened or pending removed state, but the downloaded file remains saved and `downloaded_path` remains valid.
-- If the user clicks `Undo`, cancel the pending action; the episode returns to its previous state and remains downloaded if it was downloaded before the action.
-- If the undo window expires, commit the action and apply the normal file lifecycle rule.
-- The simplest MVP implementation is to keep the action pending in the frontend and send the backend mutation only when the undo window expires.
-- This pending undo rule applies to manual actions from the UI, not automatic playback completion.
+### Undo Window For Destructive UI Actions
+- Podcast unsubscribe exposes `Undo` and keeps the previous backend/file state during the 15-second undo window.
+- During the unsubscribe undo window, downloaded files remain saved and `downloaded_path` remains valid.
+- If the user clicks `Undo`, cancel the pending unsubscribe; the podcast, episodes, playlist entries, playback state, and downloaded files remain unchanged.
+- If the undo window expires, commit the unsubscribe and apply the normal podcast-deletion file lifecycle rule.
+- Manual mark-listened, mark-unlistened, `Mark all listened`, and remove-from-playlist do not use the 15-second undo window in MVP.
+- These non-undo actions should update quickly in the UI and then reconcile from backend state.
 
 ### Marking Listened
 - Marking an episode as listened updates `is_listened = true`.
 - By default, marking listened also deletes the downloaded file.
-- When manual mark-listened is shown with `Undo`, the downloaded file is deleted only after the 15-second undo window expires.
-- If the user clicks `Undo` before the window expires, the episode remains unlistened and downloaded.
+- Manual mark-listened is immediate and does not show a 15-second undo banner.
+- The downloaded file is deleted when the backend mark-listened action commits.
 - Marking an episode as unlistened does not restore a file that was already deleted by a committed action.
 - If playback completion marks an episode as listened, the same file deletion rule applies.
 - A frontend `Mark all listened` action may mark all affected unlistened episodes for the selected podcast as listened.
-- `Mark all listened` follows the same manual undo and file lifecycle rules as individual mark-listened actions.
-- A separate bulk backend endpoint is not required for MVP; the frontend may keep the bulk action pending during the undo window and then commit individual mark-listened mutations after the window expires.
+- `Mark all listened` is immediate and follows the same file lifecycle rules as individual mark-listened actions.
+- A separate bulk backend endpoint is not required for MVP; the frontend may commit individual mark-listened mutations immediately.
 
 ### Playlist Behavior
 - Adding an episode to playlist does not download it automatically.
 - Removing an episode from playlist deletes its local file by default.
-- When manual remove-from-playlist is shown with `Undo`, the downloaded file is deleted only after the 15-second undo window expires.
+- Manual remove-from-playlist is immediate and does not show a 15-second undo banner.
 - Removing an episode from playlist does not delete the episode database record.
 
 ### Podcast Deletion

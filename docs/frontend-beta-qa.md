@@ -26,7 +26,8 @@ Use this checklist before a beta push and after any high-risk frontend change.
   - `Show notes`
   - `Mark as listened` / `Mark as unlistened`
 - Open `Show notes` and confirm the modal opens and closes
-- Use `Mark all listened` and confirm the undo banner appears with countdown
+- Use `Mark all listened` and confirm affected unlistened rows update immediately without an undo banner
+- Use podcast `Unsubscribe` and confirm the undo banner appears with a 15-second countdown
 
 ## Home / Playback
 

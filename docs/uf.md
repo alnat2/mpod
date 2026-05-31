@@ -359,19 +359,15 @@ Goal:
 
 Mark listened behavior:
 1. User chooses mark listened from an episode row or episode action menu.
-2. UI shows a pending listened state and 15-second undo feedback.
-3. During the undo window, the downloaded file remains saved and the previous backend/file state is still recoverable.
-4. If the user clicks `Undo`, the pending action is canceled; the row returns to `Mark listened` and remains downloaded if it was downloaded before the action.
-5. If the undo window expires, the action is committed; backend marks the episode listened and applies approved file lifecycle behavior.
-6. UI updates listened and downloaded state from the backend response.
+2. UI updates the row immediately without showing a 15-second undo banner.
+3. Backend marks the episode listened and applies approved file lifecycle behavior, including downloaded-file deletion by default.
+4. UI reconciles listened and downloaded state from the backend response.
 
 Mark all listened behavior:
 1. User chooses `Mark all listened` from the selected podcast episode-list header.
-2. UI creates one pending bulk listened action for the affected unlistened episodes and shows 15-second undo feedback.
-3. During the undo window, affected downloaded files remain saved and the previous backend/file state is still recoverable.
-4. If the user clicks `Undo`, the pending bulk action is canceled; all affected rows return to their previous states and remain downloaded if they were downloaded before the action.
-5. If the undo window expires, the affected mark-listened changes are committed; backend marks the affected episodes listened and applies approved file lifecycle behavior.
-6. UI updates listened and downloaded state from the backend responses.
+2. UI updates the affected unlistened rows immediately without showing a 15-second undo banner.
+3. Backend marks the affected episodes listened and applies approved file lifecycle behavior, including downloaded-file deletion by default.
+4. UI reconciles listened and downloaded state from the backend responses.
 
 Mark unlistened behavior:
 1. User chooses mark unlistened from an episode row or episode action menu.
@@ -388,16 +384,15 @@ Design intent:
 - completion should feel automatic and predictable
 - manual listened/unlistened should feel like a quick correction action, not the primary way to consume episodes
 - listened state should be visible as metadata or filtering context
-- destructive side effects should use undo feedback instead of a blocking confirmation dialog where practical
-- undo feedback should remain available for 15 seconds before it disappears
-- undo feedback should display the remaining undo window as a live seconds countdown
-- for manual undoable actions, file deletion should happen only after the 15-second undo window expires
-- if the user clicks `Undo`, restore the previous row state, including downloaded state
-- simplest MVP implementation: keep the action pending in frontend state and send the backend mutation only when the undo window expires
+- manual listened-state actions should feel immediate and should not show undo feedback in MVP
+- destructive unsubscribe should use undo feedback instead of a blocking confirmation dialog where practical
+- unsubscribe undo feedback should remain available for 15 seconds before it disappears
+- unsubscribe undo feedback should display the remaining undo window as a live seconds countdown
+- for unsubscribe, file deletion should happen only after the 15-second undo window expires
 
 Backend rules:
 - marking an episode listened deletes its local file by default
-- for manual UI mark-listened with undo, deletion happens after the undo window expires, not before
+- manual UI mark-listened is immediate, so deletion happens when the backend mutation commits
 - marking an episode unlistened does not restore a file that was already deleted by a committed action
 - final episode state is determined by the backend response
 
@@ -450,17 +445,17 @@ Users do not need to manually manage files as a primary workflow.
 Instead, the app applies the approved lifecycle rules behind the scenes.
 
 Important user-facing outcomes:
-- removing an episode from playlist removes it from the queue and deletes its local file by default after any undo window expires
-- marking an episode as listened deletes its local file by default after any undo window expires
+- removing an episode from playlist removes it from the queue immediately and deletes its local file by default when the backend mutation commits
+- marking an episode as listened deletes its local file by default when the backend mutation commits
 - marking an episode as unlistened restores listened state only, not deleted local files
-- unsubscribing from a podcast removes the subscription, associated episodes, playlist entries, playback state, and downloaded files
+- unsubscribing from a podcast removes the subscription, associated episodes, playlist entries, playback state, and downloaded files after the 15-second undo window expires
 
 Design intent:
 - cleanup should be predictable
 - destructive outcomes should be communicated clearly at action time
-- use undo feedback instead of confirmation dialogs where the action can be safely reversed
-- keep destructive-action undo feedback available for 15 seconds
-- for manual undoable actions, keep the downloaded file during the undo window and commit file deletion only after the window expires
+- use undo feedback instead of confirmation dialogs for podcast unsubscribe
+- keep unsubscribe undo feedback available for 15 seconds
+- for unsubscribe, keep downloaded files during the undo window and commit file deletion only after the window expires
 - if an action cannot be safely undone, explain the consequence before or at the action point without creating unnecessary modal friction
 
 ## Unsubscribe Flow
