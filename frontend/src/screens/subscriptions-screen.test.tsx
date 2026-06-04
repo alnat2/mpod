@@ -194,6 +194,37 @@ describe("SubscriptionsScreen", () => {
     expect(screen.getByTestId("drag-handle-QA reorder third")).toBeInTheDocument();
     expect(row).not.toHaveTextContent("Build Your SaaS");
     expect(row).not.toHaveTextContent(podcast.title);
+    expect(screen.getByText("1 podcast")).toBeInTheDocument();
+    expect(screen.getByText("1 / 1 episodes")).toBeInTheDocument();
+  });
+
+  it("shows total podcasts and selected podcast total/unlistened episode counts", async () => {
+    const secondPodcast: Podcast = {
+      ...podcast,
+      id: 2,
+      title: "Second Show",
+      rssUrl: "https://example.com/second.xml",
+    };
+    vi.spyOn(api.podcasts, "list").mockResolvedValue({
+      podcasts: [podcast, secondPodcast],
+    });
+    vi.spyOn(api.podcasts, "episodes").mockImplementation((podcastId) =>
+      Promise.resolve({
+        episodes:
+          podcastId === podcast.id
+            ? [
+                baseEpisode,
+                { ...baseEpisode, id: 102, title: "Listened", isListened: true },
+              ]
+            : [{ ...baseEpisode, id: 201, podcastId: 2, title: "Second episode" }],
+      })
+    );
+
+    render(<SubscriptionsScreen />);
+
+    expect(await screen.findByText("2 podcasts")).toBeInTheDocument();
+    expect(screen.getByText("2 / 1 episodes")).toBeInTheDocument();
+    expect(screen.queryByText("Build Your SaaS episodes")).not.toBeInTheDocument();
   });
 
   it("renders the state-based action variants", async () => {
@@ -323,6 +354,7 @@ describe("SubscriptionsScreen", () => {
     render(<SubscriptionsScreen />);
 
     expect(await screen.findByText("No unlistened podcasts")).toBeInTheDocument();
+    expect(screen.getByText("1 podcast")).toBeInTheDocument();
     expect(screen.getByText("All caught up")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add RSS feed" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Import OPML" })).toBeInTheDocument();

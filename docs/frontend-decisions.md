@@ -159,7 +159,9 @@ Rules:
 
 Decision:
 - subscription browsing should show podcasts with unlistened episodes by default
+- the Subscriptions page header metadata should display the current number of subscribed podcasts, not the latest refresh time
 - by default, the selected podcast episode list should also show only unlistened episodes
+- the selected podcast episode-list header summary should display total episode count and unlistened episode count for that podcast, for example `123 / 2 episodes`, instead of repeating the selected podcast name
 - podcast cards may expose a manual refresh control for refreshing a single subscription
 - when no subscriptions exist, the Subscriptions screen should use a dedicated empty state that points to adding an RSS feed or importing OPML
 - when subscriptions exist but none have unlistened episodes in the default view, the Subscriptions screen should use a dedicated `all caught up` empty state instead of the no-subscriptions copy

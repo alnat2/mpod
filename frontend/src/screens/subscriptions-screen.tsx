@@ -67,6 +67,14 @@ function episodeCountLabel(count: number) {
   return `${count} ${count === 1 ? "unlistened episode" : "unlistened episodes"}`;
 }
 
+function podcastCountLabel(count: number) {
+  return `${count} ${count === 1 ? "podcast" : "podcasts"}`;
+}
+
+function episodeSummaryLabel(totalCount: number, unlistenedCount: number) {
+  return `${totalCount} / ${unlistenedCount} episodes`;
+}
+
 type SubscriptionsEmptyStateProps = {
   description: string;
   onAddRss: () => void;
@@ -105,39 +113,6 @@ function SubscriptionsEmptyState({
       </div>
     </section>
   );
-}
-
-function formatLastRefresh(podcasts: PodcastWithEpisodes[]) {
-  const timestamps = podcasts
-    .map((podcast) => podcast.lastChecked)
-    .filter(Boolean)
-    .map((value) => new Date(value as string).getTime())
-    .filter(Number.isFinite);
-
-  if (timestamps.length === 0) {
-    return "Last refresh · never";
-  }
-
-  const lastChecked = new Date(Math.max(...timestamps));
-  const now = new Date();
-  const isSameDay =
-    lastChecked.getFullYear() === now.getFullYear() &&
-    lastChecked.getMonth() === now.getMonth() &&
-    lastChecked.getDate() === now.getDate();
-
-  if (isSameDay) {
-    return `Last refresh · today ${new Intl.DateTimeFormat(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    }).format(lastChecked)}`;
-  }
-
-  return `Last refresh · ${new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(lastChecked)}`;
 }
 
 export function SubscriptionsScreen() {
@@ -336,15 +311,16 @@ export function SubscriptionsScreen() {
   const durationForEpisode = useAudioMetadataDurations(virtualEpisodeWindow.items);
   const hasSubscriptions = podcastsWithPending.length > 0;
   const noVisibleUnlistenedPodcasts = hasSubscriptions && visiblePodcasts.length === 0;
+  const selectedPodcastTotalEpisodeCount = selectedPodcast?.episodes.length ?? 0;
+  const selectedPodcastUnlistenedEpisodeCount =
+    selectedPodcast?.episodes.filter((episode) => !episode.isListened).length ?? 0;
   const pageTitle = hasSubscriptions
     ? noVisibleUnlistenedPodcasts
       ? "No unlistened podcasts"
       : "Subscriptions"
     : "No podcasts";
   const pageSubtitle = hasSubscriptions
-    ? noVisibleUnlistenedPodcasts
-      ? "All subscriptions are caught up."
-      : formatLastRefresh(podcasts)
+    ? podcastCountLabel(podcastsWithPending.length)
     : "Start with one RSS feed or import subscriptions from another app.";
   const pageActions =
     hasSubscriptions
@@ -740,7 +716,10 @@ export function SubscriptionsScreen() {
                   bodyOnScroll={(event) =>
                     setEpisodeScrollTop(event.currentTarget.scrollTop)
                   }
-                  summary={`${selectedPodcast.title} episodes`}
+                  summary={episodeSummaryLabel(
+                    selectedPodcastTotalEpisodeCount,
+                    selectedPodcastUnlistenedEpisodeCount
+                  )}
                   headerAction={
                     <>
                       {visibleEpisodes.some((episode) => !episode.isListened) && (
