@@ -32,6 +32,8 @@ Set up Storybook for `mpod` so component development happens locally on the MacB
   - confirmed static Storybook build succeeds
   - confirmed static output directory is `frontend/storybook-static`
   - fixed shrink-to-fit canvas issues for width-constrained stories by adding explicit story wrappers for `AuthCard`, `AddPodcast`, `FileDropzone`, `Player`, and `ShowNotes`
+  - configured the built-in Storybook 10 viewport for `mpod/mobile/*` stories so Tailwind responsive variants use a real `360px × 800px` iframe viewport instead of the manager window width
+  - added shared mobile viewport helpers in `frontend/src/components/mpod/storybook-viewport.ts`
   - visually verified the updated stories in Chromium against the built Storybook output
 - next:
   - expand stories to additional screen-level compositions only where they provide clear value beyond component stories
@@ -44,6 +46,8 @@ Set up Storybook for `mpod` so component development happens locally on the MacB
   - Local dev command: `cd frontend && npm run storybook`
   - Static build command: `cd frontend && npm run build-storybook`
   - Static build output: `frontend/storybook-static`
+  - Mobile stories use the `mpodMobile` viewport through story `globals`; keep this in place for every `mpod/mobile/*` story because wrapper width alone does not stop Tailwind `md:` classes from matching the Storybook iframe viewport.
+  - Storybook 10 includes viewport support in the core `storybook` package; do not add `@storybook/addon-viewport` unless Storybook packaging changes, because no matching `10.x` addon package is currently published.
   - No custom Storybook base path is configured in the first pass; static hosting should serve the build at site root for its host/port.
   - Router-dependent stories use `MemoryRouter` in a global decorator, so Storybook does not require the app router or a backend session.
   - App CSS is loaded from `frontend/src/index.css`; static assets are bundled by Vite/Storybook from normal imports, with no separate asset sync step needed beyond copying `storybook-static`.

@@ -2,12 +2,18 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 
 import { Player } from "./player";
 import { featuredEpisode } from "./story-fixtures";
+import {
+  mobileStoryGlobals,
+  mobileStoryParameters,
+} from "./storybook-viewport";
 import { MobileComponentFrame } from "./storybook-mobile";
 
 const meta = {
   title: "mpod/mobile/Player",
   component: Player,
   tags: ["autodocs"],
+  globals: mobileStoryGlobals,
+  parameters: mobileStoryParameters,
   args: {
     title: featuredEpisode.title,
     podcastTitle: featuredEpisode.podcastTitle,

@@ -1,12 +1,18 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 import { AppShell } from "./app-shell";
+import {
+  mobileStoryGlobals,
+  mobileStoryParameters,
+} from "./storybook-viewport";
 import { MobileShellFrame } from "./storybook-mobile";
 
 const meta = {
   title: "mpod/mobile/AppShell",
   component: AppShell,
   tags: ["autodocs"],
+  globals: mobileStoryGlobals,
+  parameters: mobileStoryParameters,
   args: {
     activeNavItem: "Subscriptions",
     pageTitle: "Subscriptions",

@@ -1,5 +1,6 @@
 import type { Preview } from "@storybook/react-vite";
 
+import { mpodMobileViewport } from "../src/components/mpod/storybook-viewport";
 import "../src/index.css";
 import { StorybookProviders } from "./storybook-providers";
 
@@ -22,6 +23,11 @@ const preview: Preview = {
     options: {
       storySort: {
         order: ["UI", "mpod"],
+      },
+    },
+    viewport: {
+      options: {
+        mpodMobile: mpodMobileViewport,
       },
     },
   },
