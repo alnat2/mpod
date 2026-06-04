@@ -123,11 +123,31 @@ Design intent:
 - the first useful action should be obvious
 - the empty state should reduce uncertainty, especially for self-hosted users landing in a blank app
 - the empty state should be useful without becoming a marketing page
+- this state is only for no subscriptions; if subscriptions exist but all are listened, use the all-caught-up Subscriptions state instead
 
 Backend rules:
 - adding a podcast validates and fetches the feed before creation
 - OPML import triggers immediate fetch for newly added subscriptions
 - duplicate subscriptions are rejected by the backend
+
+## All Caught Up Subscriptions Flow
+
+Goal:
+- explain the default Subscriptions view when subscribed podcasts exist but none have unlistened episodes
+
+User steps:
+1. User opens Subscriptions while the default unlistened-only filter is active.
+2. The backend returns subscriptions, but no subscribed podcast has unlistened episodes.
+3. The UI shows an all-caught-up empty state instead of the no-subscriptions state.
+4. User can add another RSS feed, import OPML, or choose `Show all` to browse listened episodes.
+
+Design intent:
+- avoid implying that the library is empty when subscriptions still exist
+- keep the next useful actions visible without adding a separate route or extra filter UI
+
+Backend rules:
+- podcast and episode state still comes from the backend
+- the frontend decides which empty state to show from the returned subscriptions and listened-state flags
 
 ## Add Podcast Flow
 
@@ -191,7 +211,7 @@ User steps:
 2. User sees podcasts with unlistened episodes by default.
 3. If at least one podcast subscription exists, user can refresh all podcasts from Subscriptions or refresh a single podcast from its card.
 4. User can choose `Show all` to show every subscribed podcast, regardless of listened or unlistened episode state; the selected podcast episode list also switches to all episodes, including listened and unlistened episodes.
-5. After `Show all` is active, the UI offers `Show unlistened podcasts` to return both the podcast cards and selected podcast episode list to the default unlistened-only filtered output.
+5. After `Show all` is active, the UI offers `Show unlistened` to return both the podcast cards and selected podcast episode list to the default unlistened-only filtered output.
 6. User chooses a podcast card.
 7. The episode list area updates in the same podcasts screen, showing unlistened episodes by default or all episodes while `Show all` is active.
 8. User decides what to do with each episode:
@@ -204,23 +224,15 @@ Design intent:
 - podcast browsing is the main organizational view
 - the user should be able to move from subscription-level browsing to episode action with little friction
 - the podcast selector should default to subscriptions with unlistened episodes so completed subscriptions do not crowd the main work view
-- the `Show all` / `Show unlistened podcasts` control is screen-local state for Subscriptions; it does not need to persist after leaving the screen
-- while `Show all` is active, selecting a different podcast keeps the episode list in all-episodes mode until the user returns to `Show unlistened podcasts`
-- on the subscriptions page, the podcast-card container should show a visible area of two card rows
-- when podcast cards do not fit inside that two-row visible area, the podcast-card container should scroll instead of expanding the visible area or adding a `Show less` collapse action
+- detailed Subscriptions filtering and podcast-card container rules are canonical in [frontend-decisions.md](frontend-decisions.md#subscription-list-defaults)
 - single-podcast refresh can be exposed on podcast cards as a lightweight supporting action
 - downloading and playlist operations should be available directly from episode lists
 - episode rows should make title, date, downloaded state, listened state, and playlist state visible where relevant
-- when an episode is already downloaded, the row-level download icon should switch to a muted visual state
-- icon-only episode-row controls should use clear tooltips that match the current action or state: `Download`, `Downloaded`, `Add to playlist`, `Remove from playlist`, and `Mark as listened`
+- detailed episode-row action labels, download state treatment, and manual listened-state rules are canonical in [frontend-decisions.md](frontend-decisions.md#manual-listened-state-actions)
 - when a download fails, show a dismissible notification at the top of the screen for 10 seconds and return the affected row to a normal inline `Download` action
 - screen-level error and undo banners should render out of flow in a fixed overlay positioned `100px` from the top of the viewport
 - the 10-second download-failure notification timeout is separate from the 15-second destructive-action undo window
 - episode rows should use `Mark listened` and `Mark unlistened` actions for manual listened-state changes, not `Show listened` or `Show unlistened` filter buttons
-- `Mark all listened` is a selected-podcast episode-list action, not a global action for all subscriptions
-- in default Subscriptions mode, `Mark all listened` affects the selected podcast's currently shown unlistened episodes
-- in `Show all` mode, `Mark all listened` affects only unlistened episodes for the selected podcast and leaves already listened episodes unchanged
-- hide or disable `Mark all listened` when there are no unlistened episodes in the selected podcast's current episode-list scope
 - do not expose a separate `Delete` or `Delete download` episode action in the MVP UI
 - downloaded files are cleaned up through playback completion or manual `mark listened`
 - manual listened and unlistened actions should be available without making them visually heavier than queue or download
@@ -311,8 +323,7 @@ User steps:
 6. If the user leaves and comes back later, the backend-provided playback state is used to resume.
 
 Playback speed:
-- the player should expose these speed options: `Speed 0.5x`, `Speed 0.75x`, `Speed 1x`, `Speed 1.3x`, `Speed 1.5x`, and `Speed 2x`
-- if nothing has been selected yet, the default playback speed is `Speed 1.3x`
+- playback speed options and default speed are canonical in [frontend-decisions.md](frontend-decisions.md#playback-speed-control)
 - playback speed selection should be restored from backend-owned state so it stays consistent across devices
 - backend playback progress remains stored in seconds
 

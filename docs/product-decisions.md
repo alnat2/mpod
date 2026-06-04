@@ -1077,6 +1077,7 @@ The initial schema should include a few fields and tables beyond the PRD so the 
 - The backend may keep raw feed-provided episode HTML in storage, but the frontend must not be required to trust or sanitize raw HTML itself.
 - `podcasts.description` stores feed-level podcast description when available.
 - `podcasts.image_url` stores feed artwork URL when available.
+- The frontend must display `frontend/public/podcast_fallback.png` when podcast artwork is missing, still loading, or fails to load.
 - `settings` must persist `daily_refresh_time`.
 - `settings` must persist `proxy_enabled`.
 - Scheduler state persistence must store enough information to expose:

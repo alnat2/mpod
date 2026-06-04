@@ -161,11 +161,14 @@ Decision:
 - subscription browsing should show podcasts with unlistened episodes by default
 - by default, the selected podcast episode list should also show only unlistened episodes
 - podcast cards may expose a manual refresh control for refreshing a single subscription
+- when no subscriptions exist, the Subscriptions screen should use a dedicated empty state that points to adding an RSS feed or importing OPML
+- when subscriptions exist but none have unlistened episodes in the default view, the Subscriptions screen should use a dedicated `all caught up` empty state instead of the no-subscriptions copy
+- when a podcast card leaves the default Subscriptions view because the podcast is unsubscribed or because it no longer has unlistened episodes, use a subtle exit animation before removing the card from the visible list
 - provide a `Show all` action to remove the default podcast filter and show every subscribed podcast, regardless of whether it currently has unlistened episodes
 - when `Show all` is active, the selected podcast episode list should also show all episodes for that podcast, including listened and unlistened episodes
-- when all podcasts are visible, provide `Show unlistened podcasts` to return both the podcast cards and the selected podcast episode list to the default unlistened-only filtered output
-- the `Show all` / `Show unlistened podcasts` state is local to the Subscriptions screen and does not need to persist after leaving that screen
-- while `Show all` is active, selecting a different podcast keeps the selected podcast episode list in all-episodes mode until the user returns to `Show unlistened podcasts`
+- when all podcasts are visible, provide `Show unlistened` to return both the podcast cards and the selected podcast episode list to the default unlistened-only filtered output
+- the `Show all` / `Show unlistened` state is local to the Subscriptions screen and does not need to persist after leaving that screen
+- while `Show all` is active, selecting a different podcast keeps the selected podcast episode list in all-episodes mode until the user returns to `Show unlistened`
 - the subscriptions page podcast-card container should show a visible area of two card rows
 - if podcast cards do not fit inside that two-row visible area, enable scrolling inside the podcast-card container instead of expanding the visible area or adding a `Show less` collapse action
 
