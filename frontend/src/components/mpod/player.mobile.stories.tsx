@@ -16,6 +16,8 @@ const meta = {
     elapsedLabel: featuredEpisode.elapsedLabel,
     durationLabel: featuredEpisode.durationLabel,
     progressValue: featuredEpisode.progressValue,
+    speedLabel: "Speed 1.5x",
+    notesDisabled: false,
   },
   decorators: [
     (Story) => (

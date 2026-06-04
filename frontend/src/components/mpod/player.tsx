@@ -60,11 +60,15 @@ function TransportButton({
   icon,
   onClick,
   primary,
+  className,
+  iconClassName,
 }: {
   label: string;
   icon: IconSvgElement;
   onClick?: () => void;
   primary?: boolean;
+  className?: string;
+  iconClassName?: string;
 }) {
   return (
     <Tooltip>
@@ -75,14 +79,15 @@ function TransportButton({
             "inline-flex shrink-0 items-center justify-center rounded-full text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
             primary
               ? "size-14 bg-primary text-primary-foreground shadow-2xs md:size-12"
-              : "size-11 hover:bg-muted md:size-8"
+              : "size-11 hover:bg-muted md:size-8",
+            className
           )}
           type="button"
           onClick={onClick}
         >
           <HugeiconsIcon
             icon={icon}
-            className={cn(primary ? "size-8" : "size-11 md:size-8")}
+            className={cn(primary ? "size-8" : "size-11 md:size-8", iconClassName)}
             aria-hidden="true"
           />
         </button>
@@ -90,6 +95,10 @@ function TransportButton({
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );
+}
+
+function compactSpeedLabel(speedLabel: PlaybackSpeedLabel) {
+  return speedLabel.replace(/^Speed\s/, "").replace(/x$/, "");
 }
 
 export function Player({
@@ -172,7 +181,7 @@ export function Player({
           <span>{durationLabel}</span>
         </div>
       </div>
-      <div className="flex items-center justify-center gap-4">
+      <div className="hidden items-center justify-center gap-4 md:flex">
         <TransportButton
           label="Go back 10 seconds"
           icon={GoBackward10SecIcon}
@@ -190,7 +199,70 @@ export function Player({
           onClick={onForward}
         />
       </div>
-      <div className="flex items-center justify-center gap-2 md:gap-3">
+      <div className="flex w-full items-center justify-between md:hidden">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={activeSpeedLabel}
+              className="inline-flex size-14 shrink-0 items-center justify-center rounded-xl border-2 border-primary bg-card text-xl leading-7 font-medium text-primary shadow-xs outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              {compactSpeedLabel(activeSpeedLabel)}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-[274px]">
+            <DropdownMenuRadioGroup
+              value={activeSpeedLabel}
+              onValueChange={handleSpeedChange}
+            >
+              {playbackSpeedOptions.map((option) => (
+                <DropdownMenuRadioItem value={option} key={option}>
+                  {option}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <TransportButton
+          label="Go back 10 seconds"
+          icon={GoBackward10SecIcon}
+          className="size-12 hover:bg-transparent"
+          iconClassName="size-12"
+          onClick={onBack}
+        />
+        <TransportButton
+          label={playing ? "Pause" : "Play"}
+          icon={playing ? PauseIcon : PlayIcon}
+          onClick={onPlay}
+          primary
+        />
+        <TransportButton
+          label="Go forward 15 seconds"
+          icon={GoForward15SecIcon}
+          className="size-12 hover:bg-transparent"
+          iconClassName="size-12"
+          onClick={onForward}
+        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label="Notes"
+              disabled={notesDisabled}
+              className="inline-flex size-12 shrink-0 items-center justify-center rounded-full text-primary outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:text-muted-foreground disabled:opacity-50"
+              onClick={onNotes}
+            >
+              <HugeiconsIcon
+                icon={NoteIcon}
+                className="size-12"
+                aria-hidden="true"
+              />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Notes</TooltipContent>
+        </Tooltip>
+      </div>
+      <div className="hidden items-center justify-center gap-3 md:flex">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button className="h-9 shadow-xs" variant="outline" type="button">
