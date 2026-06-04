@@ -1,6 +1,6 @@
 # Server Testing
 
-The Go backend vendors its module dependencies under [vendor/](/Users/cross/Documents/mpod/server/vendor:1), so tests do not need a first-run download from `proxy.golang.org`.
+The Go backend uses standard Go modules from [go.mod](/Users/cross/Documents/mpod/server/go.mod:1) and [go.sum](/Users/cross/Documents/mpod/server/go.sum:1). Tests do not rely on a committed `vendor/` tree.
 
 ## Run tests
 
@@ -16,18 +16,17 @@ cd server
 GOCACHE=/tmp/mpod-go-build-cache go test ./...
 ```
 
-## Refresh vendored dependencies
+## Refresh module dependencies
 
-When `go.mod` or `go.sum` changes, refresh the vendor tree on a machine with network access:
+When dependencies change, refresh module metadata on a machine with network access:
 
 ```bash
 cd server
 go mod tidy
-go mod vendor
 ```
 
 ## Notes
 
-- The committed `vendor/` tree is the source used by `go test` in this module by default.
-- `GOMODCACHE` is no longer required for normal test runs.
-- `go mod tidy` and `go mod vendor` still require network access when adding or updating dependencies.
+- `go test` uses module resolution from `go.mod` and `go.sum`.
+- `GOMODCACHE` is not required for normal test runs, but first-run dependency download still needs network access.
+- `go mod tidy` requires network access when adding or updating dependencies.
