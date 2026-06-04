@@ -210,7 +210,7 @@ export function Player({
               {compactSpeedLabel(activeSpeedLabel)}
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="min-w-[274px]">
+          <DropdownMenuContent align="start">
             <DropdownMenuRadioGroup
               value={activeSpeedLabel}
               onValueChange={handleSpeedChange}
