@@ -153,13 +153,13 @@ export function Player({
       )}
     >
       <Artwork
-        className="size-[120px] rounded-lg md:size-40"
+        className="hidden size-40 rounded-lg md:block"
         src={artworkUrl}
         alt={artworkAlt}
         title={podcastTitle}
       />
       <div className="flex w-full flex-col gap-2">
-        <h2 className="line-clamp-2 text-xl leading-7 font-bold md:text-lg">
+        <h2 className="line-clamp-2 text-lg leading-7 font-bold">
           {title}
         </h2>
         <p className="truncate text-sm leading-5 text-muted-foreground">
@@ -205,7 +205,7 @@ export function Player({
             <button
               type="button"
               aria-label={activeSpeedLabel}
-              className="inline-flex size-11 shrink-0 items-center justify-center rounded-[10px] border-2 border-primary bg-card text-lg leading-7 font-medium text-primary shadow-xs outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              className="inline-flex size-9 shrink-0 items-center justify-center rounded-[10px] border-2 border-primary bg-card text-sm leading-5 font-semibold text-primary shadow-xs outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               {compactSpeedLabel(activeSpeedLabel)}
             </button>
@@ -226,8 +226,8 @@ export function Player({
         <TransportButton
           label="Go back 10 seconds"
           icon={GoBackward10SecIcon}
-          className="size-11 hover:bg-transparent"
-          iconClassName="size-11"
+          className="size-10 hover:bg-transparent"
+          iconClassName="size-10"
           onClick={onBack}
         />
         <TransportButton
@@ -239,8 +239,8 @@ export function Player({
         <TransportButton
           label="Go forward 15 seconds"
           icon={GoForward15SecIcon}
-          className="size-11 hover:bg-transparent"
-          iconClassName="size-11"
+          className="size-10 hover:bg-transparent"
+          iconClassName="size-10"
           onClick={onForward}
         />
         <Tooltip>
@@ -249,12 +249,12 @@ export function Player({
               type="button"
               aria-label="Notes"
               disabled={notesDisabled}
-              className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-primary outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:text-muted-foreground disabled:opacity-50"
+              className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-primary outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:text-muted-foreground disabled:opacity-50"
               onClick={onNotes}
             >
               <HugeiconsIcon
                 icon={NoteIcon}
-                className="size-11"
+                className="size-9"
                 aria-hidden="true"
               />
             </button>
