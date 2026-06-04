@@ -101,6 +101,46 @@ describe("AddPodcastModal", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("shows a loading state while an OPML import is pending", async () => {
+    const user = userEvent.setup();
+    let resolveImport!: () => void;
+    vi.spyOn(api.podcasts, "importOPML").mockReturnValue(
+      new Promise((resolve) => {
+        resolveImport = () =>
+          resolve({
+            success: true,
+            imported: 1,
+            skipped: 0,
+          });
+      })
+    );
+
+    const { container } = render(
+      <AddPodcastModal
+        mode="opml"
+        onClose={vi.fn()}
+        onModeChange={vi.fn()}
+      />
+    );
+
+    const input = container.querySelector('input[type="file"]');
+    const file = new File(["<opml />"], "feeds.opml", {
+      type: "application/xml",
+    });
+
+    expect(input).not.toBeNull();
+    await user.upload(input as HTMLInputElement, file);
+    await user.click(screen.getByRole("button", { name: "Import file" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Importing..." })
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Close" })).toBeDisabled();
+
+    resolveImport();
+  });
+
   it("shows a submit error without closing the modal", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();

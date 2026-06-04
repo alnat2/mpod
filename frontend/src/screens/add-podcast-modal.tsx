@@ -58,6 +58,7 @@ export function AddPodcastModal({
         onClose={onClose}
         onModeChange={(nextMode) => onModeChange(nextMode)}
         onSubmit={(value) => void handleSubmit(value)}
+        submitting={submitting}
       />
     </ModalScreen>
   );
