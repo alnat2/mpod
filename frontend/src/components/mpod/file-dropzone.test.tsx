@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { FileDropzone } from "./file-dropzone";
 
 describe("FileDropzone", () => {
-  it("uses a real label for the file input so mobile Safari can open the picker", async () => {
+  it("keeps the file input inside the visible browse control so mobile Safari can open the picker", async () => {
     const user = userEvent.setup();
     const handleFileChange = vi.fn();
 
@@ -13,8 +13,9 @@ describe("FileDropzone", () => {
 
     const input = screen.getByLabelText("Browse files");
     expect(input).toHaveAttribute("type", "file");
-    expect(input).toHaveClass("sr-only");
+    expect(input).toHaveClass("opacity-0");
     expect(input).not.toHaveClass("hidden");
+    expect(input).not.toHaveClass("sr-only");
 
     const file = new File(["<opml />"], "feeds.opml", {
       type: "text/x-opml",
