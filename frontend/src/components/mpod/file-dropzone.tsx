@@ -1,8 +1,8 @@
 import { HugeiconsIcon } from "@hugeicons/react";
 import { FileUploadIcon } from "@hugeicons/core-free-icons";
-import { useRef, useState, type DragEvent } from "react";
+import { useId, useState, type DragEvent } from "react";
 
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type FileDropzoneProps = {
@@ -18,7 +18,7 @@ export function FileDropzone({
   fileName,
   onFileChange,
 }: FileDropzoneProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputId = useId();
   const [dragActive, setDragActive] = useState(false);
 
   function preventFileNavigation(event: DragEvent<HTMLDivElement>) {
@@ -93,8 +93,8 @@ export function FileDropzone({
         ) : null}
       </div>
       <input
-        ref={inputRef}
-        className="hidden"
+        id={inputId}
+        className="sr-only"
         type="file"
         accept=".opml,text/x-opml,text/xml,application/xml"
         disabled={disabled}
@@ -102,15 +102,17 @@ export function FileDropzone({
           onFileChange?.(event.target.files?.[0] ?? null);
         }}
       />
-      <Button
-        variant="link"
-        className="h-9 px-4 no-underline hover:no-underline"
-        type="button"
-        disabled={disabled}
-        onClick={() => inputRef.current?.click()}
+      <label
+        htmlFor={disabled ? undefined : inputId}
+        aria-disabled={disabled}
+        className={cn(
+          buttonVariants({ variant: "link" }),
+          "h-9 cursor-pointer px-4 no-underline hover:no-underline",
+          disabled && "pointer-events-none opacity-50"
+        )}
       >
         Browse files
-      </Button>
+      </label>
     </div>
   );
 }
