@@ -18,7 +18,7 @@ export function AuthShell({
   return (
     <main
       className={cn(
-        "flex min-h-screen items-start justify-center bg-background px-5 py-5 md:items-center md:px-6 md:py-18",
+        "flex min-h-screen max-w-[100vw] overflow-x-hidden items-start justify-center bg-background px-5 py-5 md:items-center md:px-6 md:py-18",
         className
       )}
     >
