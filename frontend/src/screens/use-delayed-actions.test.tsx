@@ -16,10 +16,9 @@ describe("useDelayedActions", () => {
 
     act(() => {
       result.current.scheduleAction({
-        kind: "unsubscribe-podcast",
-        podcastId: 42,
-        episodeIds: [],
-        message: "Unsubscribed",
+        kind: "remove-playlist",
+        episodeIds: [42],
+        message: "Removed episode",
         commit,
       });
     });
@@ -31,49 +30,6 @@ describe("useDelayedActions", () => {
     });
 
     expect(commit).toHaveBeenCalledTimes(1);
-    expect(onCommitted).toHaveBeenCalledTimes(1);
-    expect(result.current.pendingActions).toHaveLength(0);
-
-    vi.useRealTimers();
-  });
-
-  it("keeps the optimistic action visible until the commit settles", async () => {
-    vi.useFakeTimers();
-
-    let resolveCommit: (() => void) | undefined;
-    const commit = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveCommit = resolve;
-        })
-    );
-    const onCommitted = vi.fn();
-
-    const { result } = renderHook(() =>
-      useDelayedActions({ onCommitted })
-    );
-
-    act(() => {
-      result.current.scheduleAction({
-        kind: "unsubscribe-podcast",
-        episodeIds: [7],
-        message: "Unsubscribed",
-        commit,
-      });
-    });
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(undoDelayMs);
-    });
-
-    expect(commit).toHaveBeenCalledTimes(1);
-    expect(result.current.pendingActions).toHaveLength(1);
-
-    await act(async () => {
-      resolveCommit?.();
-      await Promise.resolve();
-    });
-
     expect(onCommitted).toHaveBeenCalledTimes(1);
     expect(result.current.pendingActions).toHaveLength(0);
 
@@ -88,10 +44,9 @@ describe("useDelayedActions", () => {
 
     act(() => {
       result.current.scheduleAction({
-        kind: "unsubscribe-podcast",
-        podcastId: 7,
-        episodeIds: [],
-        message: "Unsubscribed",
+        kind: "mark-listened",
+        episodeIds: [7],
+        message: "Marked listened",
         commit,
       });
     });

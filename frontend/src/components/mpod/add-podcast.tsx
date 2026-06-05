@@ -2,10 +2,7 @@ import type { FormEvent } from "react";
 import { useState } from "react";
 
 import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  Loading02Icon,
-  MultiplicationSignIcon,
-} from "@hugeicons/core-free-icons";
+import { MultiplicationSignIcon } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -36,7 +33,6 @@ type AddPodcastProps = {
   onClose?: () => void;
   onCancel?: () => void;
   onSubmit?: (value: AddPodcastSubmit) => void;
-  submitting?: boolean;
 };
 
 export function AddPodcast({
@@ -48,7 +44,6 @@ export function AddPodcast({
   onClose,
   onCancel,
   onSubmit,
-  submitting = false,
 }: AddPodcastProps) {
   const isModeControlled = mode !== undefined && onModeChange !== undefined;
   const [uncontrolledMode, setUncontrolledMode] = useState<AddPodcastMode>(
@@ -174,20 +169,7 @@ export function AddPodcast({
             type="submit"
             disabled={disabled || (isOpml && !opmlFile)}
           >
-            {submitting ? (
-              <>
-                <HugeiconsIcon
-                  icon={Loading02Icon}
-                  className="animate-spin"
-                  data-icon="inline-start"
-                />
-                {isOpml ? "Importing..." : "Adding..."}
-              </>
-            ) : isOpml ? (
-              "Import file"
-            ) : (
-              "Add Feed"
-            )}
+            {isOpml ? "Import file" : "Add Feed"}
           </Button>
         </CardFooter>
       </form>

@@ -2,7 +2,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { FileUploadIcon } from "@hugeicons/core-free-icons";
 import { useState, type DragEvent } from "react";
 
-import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type FileDropzoneProps = {
@@ -91,26 +90,18 @@ export function FileDropzone({
           </p>
         ) : null}
       </div>
-      <label
-        aria-disabled={disabled}
+      <input
         className={cn(
-          buttonVariants({ variant: "link" }),
-          "relative h-9 cursor-pointer overflow-hidden px-4 no-underline hover:no-underline",
+          "block h-9 w-[132px] cursor-pointer overflow-hidden text-sm text-transparent file:mr-0 file:h-9 file:w-[132px] file:cursor-pointer file:rounded-md file:border-0 file:bg-transparent file:px-4 file:text-sm file:font-medium file:text-primary file:underline-offset-4 file:hover:underline",
           disabled && "pointer-events-none opacity-50"
         )}
-      >
-        <span aria-hidden="true">Browse files</span>
-        <input
-          className="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
-          type="file"
-          accept=".opml,text/x-opml,text/xml,application/xml"
-          disabled={disabled}
-          aria-label="Browse files"
-          onChange={(event) => {
-            onFileChange?.(event.target.files?.[0] ?? null);
-          }}
-        />
-      </label>
+        type="file"
+        disabled={disabled}
+        aria-label="Browse files"
+        onChange={(event) => {
+          onFileChange?.(event.target.files?.[0] ?? null);
+        }}
+      />
     </div>
   );
 }

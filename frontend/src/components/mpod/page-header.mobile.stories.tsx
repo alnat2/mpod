@@ -1,18 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 import { PageHeader } from "./page-header";
-import {
-  mobileStoryGlobals,
-  mobileStoryParameters,
-} from "./storybook-viewport";
 import { MobileComponentFrame } from "./storybook-mobile";
 
 const meta = {
   title: "mpod/mobile/PageHeader",
   component: PageHeader,
   tags: ["autodocs"],
-  globals: mobileStoryGlobals,
-  parameters: mobileStoryParameters,
   args: {
     layout: "mobile",
     title: "Subscriptions",

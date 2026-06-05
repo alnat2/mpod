@@ -24,6 +24,7 @@ import {
   EmptyState,
   ErrorBanner,
   ScreenBannerStack,
+  UndoBanner,
 } from "./screen-states";
 import {
   formatClock,
@@ -33,6 +34,7 @@ import {
   getEpisodeShowNotes,
 } from "./screen-utils";
 import { useAudioMetadataDurations } from "./use-audio-metadata-durations";
+import { useDelayedActions } from "./use-delayed-actions";
 import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
 
 function queueSummary(
@@ -77,12 +79,32 @@ export function HomeScreen() {
   const queueRef = useRef<QueueEpisode[]>([]);
   const dragOriginQueueRef = useRef<QueueEpisode[]>([]);
   const dragMovedRef = useRef(false);
+  const { pendingActions, scheduleAction, undoAction } = useDelayedActions({
+    onCommitted: () => setReloadKey((current) => current + 1),
+    onError: (caught) => setActionError(getErrorMessage(caught)),
+  });
 
   useEffect(() => {
     void reloadQueue();
   }, [reloadKey, reloadQueue]);
 
-  const visibleQueue = queue;
+  const pendingPlaylistRemoveEpisodeIds = useMemo(
+    () =>
+      new Set(
+        pendingActions
+          .filter((action) => action.kind === "remove-playlist")
+          .flatMap((action) => action.episodeIds)
+      ),
+    [pendingActions]
+  );
+
+  const visibleQueue = useMemo(
+    () =>
+      queue.filter(
+        (episode) => !pendingPlaylistRemoveEpisodeIds.has(episode.id)
+      ),
+    [pendingPlaylistRemoveEpisodeIds, queue]
+  );
   const durationForQueueEpisode = useAudioMetadataDurations(visibleQueue);
 
   const showNotesEpisode =
@@ -112,18 +134,18 @@ export function HomeScreen() {
     }
   }, [draggedEpisodeId, queue]);
 
-  async function removeFromPlaylist(episode: Pick<Episode, "id" | "title">) {
+  function scheduleRemoveFromPlaylist(episode: Pick<Episode, "id" | "title">) {
     setActionError(null);
-    const previousQueue = queueRef.current;
-    setQueue(previousQueue.filter((item) => item.id !== episode.id));
-
-    try {
-      await api.playlist.remove(episode.id);
-      setReloadKey((current) => current + 1);
-    } catch (caught) {
-      setQueue(previousQueue);
-      setActionError(getErrorMessage(caught));
+    if (pendingPlaylistRemoveEpisodeIds.has(episode.id)) {
+      return;
     }
+
+    scheduleAction({
+      kind: "remove-playlist",
+      episodeIds: [episode.id],
+      message: `Removed "${episode.title}" from playlist.`,
+      commit: () => api.playlist.remove(episode.id),
+    });
   }
 
   const moveQueueItem = useCallback((
@@ -245,11 +267,19 @@ export function HomeScreen() {
                  {playbackError}
                </ErrorBanner>
              ) : null}
+             {pendingActions.map((action) => (
+               <UndoBanner
+                 key={action.id}
+                 expiresAt={action.expiresAt}
+                 message={action.message}
+                 onUndo={() => undoAction(action.id)}
+               />
+             ))}
            </ScreenBannerStack>
           {loading ? (
             <CenterLoadingState className="mt-4" label="Loading playlist" />
           ) : currentEpisode ? (
-            <div className="flex min-h-0 flex-1 flex-col items-center gap-4 overflow-hidden px-0 pt-4 pb-5 md:py-6">
+            <div className="flex min-h-0 flex-1 flex-col items-center gap-4 overflow-hidden px-0 py-4 md:py-6">
               <Player
                 className="shrink-0"
                 title={currentEpisode.title}
@@ -278,11 +308,11 @@ export function HomeScreen() {
               />
               <PlaylistQueue
                 summary={queueSummary(visibleQueue, durationForQueueEpisode)}
-                className="min-h-0 w-full flex-1 md:max-w-[1040px]"
-                bodyClassName="mpod-scroll min-h-0 flex-1 overflow-y-auto pb-20 md:max-h-none md:pb-0"
+                className="min-h-0 w-full shrink-0 md:max-w-[1040px]"
+                bodyClassName="max-h-[228px] overflow-y-auto md:max-h-none"
               >
                 {visibleQueue.map((episode) => {
-                  const canReorder = !reordering;
+                  const canReorder = pendingActions.length === 0 && !reordering;
                   const isCurrentEpisode = currentEpisode?.id === episode.id;
 
                   return (
@@ -326,7 +356,7 @@ export function HomeScreen() {
                         {
                           label: "Remove from playlist",
                           icon: PlayListRemoveIcon,
-                          onClick: () => void removeFromPlaylist(episode),
+                          onClick: () => scheduleRemoveFromPlaylist(episode),
                         },
                       ]}
                       key={episode.id}

@@ -2,9 +2,7 @@ package remote
 
 import (
 	"context"
-	"io"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -84,73 +82,5 @@ func TestNewHTTPClientWithProxyDeciderWithoutProxyConfigUsesDirectTransport(t *t
 	}
 	if _, ok := client.Transport.(*http.Transport); !ok {
 		t.Fatalf("expected direct transport without proxy config, got %T", client.Transport)
-	}
-}
-
-func TestNewClientWithRoundTrippersUsesProxyWhenEnabled(t *testing.T) {
-	directCalls := 0
-	proxyCalls := 0
-	client := newClientWithRoundTrippers(
-		roundTripperFunc(func(*http.Request) (*http.Response, error) {
-			directCalls++
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader("direct")),
-				Header:     make(http.Header),
-			}, nil
-		}),
-		roundTripperFunc(func(*http.Request) (*http.Response, error) {
-			proxyCalls++
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader("proxy")),
-				Header:     make(http.Header),
-			}, nil
-		}),
-		func(_ context.Context) bool { return true },
-	)
-
-	resp, err := client.Get("https://example.com")
-	if err != nil {
-		t.Fatalf("client.Get failed: %v", err)
-	}
-	resp.Body.Close()
-
-	if directCalls != 0 || proxyCalls != 1 {
-		t.Fatalf("expected proxy path only, got direct=%d proxy=%d", directCalls, proxyCalls)
-	}
-}
-
-func TestNewClientWithRoundTrippersUsesDirectWhenProxyDisabled(t *testing.T) {
-	directCalls := 0
-	proxyCalls := 0
-	client := newClientWithRoundTrippers(
-		roundTripperFunc(func(*http.Request) (*http.Response, error) {
-			directCalls++
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader("direct")),
-				Header:     make(http.Header),
-			}, nil
-		}),
-		roundTripperFunc(func(*http.Request) (*http.Response, error) {
-			proxyCalls++
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader("proxy")),
-				Header:     make(http.Header),
-			}, nil
-		}),
-		func(_ context.Context) bool { return false },
-	)
-
-	resp, err := client.Get("https://example.com")
-	if err != nil {
-		t.Fatalf("client.Get failed: %v", err)
-	}
-	resp.Body.Close()
-
-	if directCalls != 1 || proxyCalls != 0 {
-		t.Fatalf("expected direct path only, got direct=%d proxy=%d", directCalls, proxyCalls)
 	}
 }

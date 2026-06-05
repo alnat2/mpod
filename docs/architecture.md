@@ -153,7 +153,7 @@ One reasonable starting structure:
 
 ```text
 mpod/
-  frontend/
+  client/
     src/
       app/
       components/
@@ -266,7 +266,7 @@ Responsible for:
 - verify file existence when needed
 - keep `downloaded_path` aligned with disk state
 
-This module should use one shared HTTP client configuration path so proxy-aware network behavior is consistent across all outbound backend network operations, including RSS fetching, scheduled refreshes, media downloads, audio proxying, image proxying, and proxy identity lookup.
+This module should use one shared HTTP client configuration path so proxy-aware network behavior is consistent across RSS fetching and media downloads.
 
 ### Scheduler Module
 
@@ -434,9 +434,8 @@ Manual refresh may target a single podcast or all podcasts, but the backend must
 
 Playback uses a backend audio endpoint instead of exposing storage paths to the frontend.
 When a downloaded file exists locally, the backend serves that file.
-When no local file exists, the backend proxies the remote episode audio URL through the authenticated audio endpoint.
-Remote proxying must preserve playback needs such as Range requests so browser media controls can seek.
-This keeps file storage, authentication, and proxy-aware network behavior on the backend while still allowing streaming before download.
+When no local file exists, the backend redirects to the remote episode audio URL.
+This keeps file storage decisions on the backend while still allowing streaming before download.
 
 ## Configuration Boundaries
 

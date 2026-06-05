@@ -1,18 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 import { AuthShell } from "./auth-shell";
-import {
-  mobileStoryGlobals,
-  mobileStoryParameters,
-} from "./storybook-viewport";
 import { MobileShellFrame } from "./storybook-mobile";
 
 const meta = {
   title: "mpod/mobile/AuthShell",
   component: AuthShell,
   tags: ["autodocs"],
-  globals: mobileStoryGlobals,
-  parameters: mobileStoryParameters,
   args: {
     headline: "Create the only account for your podcast library",
     className: "min-h-0 h-full",

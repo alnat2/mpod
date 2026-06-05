@@ -1,18 +1,12 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 import { PodcastCard } from "./podcast-card";
-import {
-  mobileStoryGlobals,
-  mobileStoryParameters,
-} from "./storybook-viewport";
 import { MobileComponentFrame } from "./storybook-mobile";
 
 const meta = {
   title: "mpod/mobile/PodcastCard",
   component: PodcastCard,
   tags: ["autodocs"],
-  globals: mobileStoryGlobals,
-  parameters: mobileStoryParameters,
   args: {
     title: "Decoder Ring",
     description: "Culture stories behind everyday design",

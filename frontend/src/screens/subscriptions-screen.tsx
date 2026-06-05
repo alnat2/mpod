@@ -6,7 +6,6 @@ import {
   DownloadSquare02Icon,
   Loading02Icon,
   NoteIcon,
-  PodcastIcon,
   PlayListAddIcon,
   PlayListRemoveIcon,
   RefreshDotIcon,
@@ -37,6 +36,7 @@ import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
 import {
+  EmptyState,
   ErrorBanner,
   ListLoadingState,
   ScreenBannerStack,
@@ -61,58 +61,42 @@ const MOBILE_EPISODE_ROW_HEIGHT = 76;
 const EPISODE_OVERSCAN_ROWS = 4;
 const DEFAULT_EPISODE_VIEWPORT_HEIGHT = 350;
 const MOBILE_EPISODE_VIEWPORT_HEIGHT = 152;
-const PODCAST_EXIT_ANIMATION_MS = 220;
 
 function episodeCountLabel(count: number) {
   return `${count} ${count === 1 ? "unlistened episode" : "unlistened episodes"}`;
 }
 
-function podcastCountLabel(count: number) {
-  return `${count} ${count === 1 ? "podcast" : "podcasts"}`;
-}
+function formatLastRefresh(podcasts: PodcastWithEpisodes[]) {
+  const timestamps = podcasts
+    .map((podcast) => podcast.lastChecked)
+    .filter(Boolean)
+    .map((value) => new Date(value as string).getTime())
+    .filter(Number.isFinite);
 
-function episodeSummaryLabel(totalCount: number, unlistenedCount: number) {
-  return `${totalCount} / ${unlistenedCount} episodes`;
-}
+  if (timestamps.length === 0) {
+    return "Last refresh · never";
+  }
 
-type SubscriptionsEmptyStateProps = {
-  description: string;
-  onAddRss: () => void;
-  onImportOpml: () => void;
-  title: string;
-};
+  const lastChecked = new Date(Math.max(...timestamps));
+  const now = new Date();
+  const isSameDay =
+    lastChecked.getFullYear() === now.getFullYear() &&
+    lastChecked.getMonth() === now.getMonth() &&
+    lastChecked.getDate() === now.getDate();
 
-function SubscriptionsEmptyState({
-  description,
-  onAddRss,
-  onImportOpml,
-  title,
-}: SubscriptionsEmptyStateProps) {
-  return (
-    <section className="flex min-h-[256px] w-full items-center justify-center overflow-hidden rounded-lg bg-card p-12">
-      <div className="flex w-full max-w-96 flex-col items-center gap-6 text-center">
-        <div className="flex w-full flex-col items-center gap-2">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
-            <HugeiconsIcon icon={PodcastIcon} aria-hidden="true" />
-          </div>
-          <h2 className="text-lg leading-7 font-medium text-card-foreground">
-            {title}
-          </h2>
-          <p className="text-sm leading-5 text-muted-foreground">
-            {description}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <Button type="button" onClick={onAddRss}>
-            Add RSS feed
-          </Button>
-          <Button variant="outline" type="button" onClick={onImportOpml}>
-            Import OPML
-          </Button>
-        </div>
-      </div>
-    </section>
-  );
+  if (isSameDay) {
+    return `Last refresh · today ${new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(lastChecked)}`;
+  }
+
+  return `Last refresh · ${new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(lastChecked)}`;
 }
 
 export function SubscriptionsScreen() {
@@ -135,16 +119,10 @@ export function SubscriptionsScreen() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [episodeScrollTop, setEpisodeScrollTop] = useState(0);
-  const [exitingPodcastIds, setExitingPodcastIds] = useState<Set<number>>(
-    () => new Set()
-  );
   const [episodeViewportHeight, setEpisodeViewportHeight] = useState(
     DEFAULT_EPISODE_VIEWPORT_HEIGHT
   );
   const episodeListRef = useRef<HTMLDivElement | null>(null);
-  const podcastExitTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(
-    new Set()
-  );
   const { pendingActions, scheduleAction, undoAction } = useDelayedActions({
     onCommitted: () => setReloadKey((current) => current + 1),
     onError: (caught) => setActionError(getErrorMessage(caught)),
@@ -198,14 +176,24 @@ export function SubscriptionsScreen() {
     };
   }, [reloadKey]);
 
-  useEffect(
-    () => () => {
-      podcastExitTimeoutsRef.current.forEach((timeoutId) =>
-        clearTimeout(timeoutId)
-      );
-      podcastExitTimeoutsRef.current.clear();
-    },
-    []
+  const pendingListenedEpisodeIds = useMemo(
+    () =>
+      new Set(
+        pendingActions
+          .filter((action) => action.kind === "mark-listened" || action.kind === "mark-unlistened")
+          .flatMap((action) => action.episodeIds)
+      ),
+    [pendingActions]
+  );
+
+  const pendingPlaylistRemoveEpisodeIds = useMemo(
+    () =>
+      new Set(
+        pendingActions
+          .filter((action) => action.kind === "remove-playlist")
+          .flatMap((action) => action.episodeIds)
+      ),
+    [pendingActions]
   );
 
   const pendingUnsubscribePodcastIds = useMemo(
@@ -222,21 +210,29 @@ export function SubscriptionsScreen() {
   const podcastsWithPending = useMemo(
     () =>
       podcasts
-        .filter((podcast) => !pendingUnsubscribePodcastIds.has(podcast.id)),
-    [pendingUnsubscribePodcastIds, podcasts]
+        .filter((podcast) => !pendingUnsubscribePodcastIds.has(podcast.id))
+        .map((podcast) => ({
+          ...podcast,
+          episodes: podcast.episodes.map((episode) => ({
+            ...episode,
+            inPlaylist:
+              episode.inPlaylist && !pendingPlaylistRemoveEpisodeIds.has(episode.id),
+          })),
+        })),
+    [pendingPlaylistRemoveEpisodeIds, pendingUnsubscribePodcastIds, podcasts]
   );
 
   const visiblePodcasts = useMemo(
     () =>
       podcastsWithPending.filter(
         (podcast) =>
-          exitingPodcastIds.has(podcast.id) ||
           showAll ||
           podcast.episodes.some(
-            (episode) => !episode.isListened
+            (episode) =>
+              !episode.isListened && !pendingListenedEpisodeIds.has(episode.id)
           )
       ),
-    [exitingPodcastIds, podcastsWithPending, showAll]
+    [pendingListenedEpisodeIds, podcastsWithPending, showAll]
   );
 
   const selectedPodcast =
@@ -251,9 +247,10 @@ export function SubscriptionsScreen() {
     () =>
       selectedPodcast?.episodes.filter(
         (episode) =>
+          !pendingListenedEpisodeIds.has(episode.id) &&
           (showAll || !episode.isListened)
       ) ?? [],
-    [selectedPodcast?.episodes, showAll]
+    [pendingListenedEpisodeIds, selectedPodcast?.episodes, showAll]
   );
 
   useEffect(() => {
@@ -309,46 +306,6 @@ export function SubscriptionsScreen() {
     };
   }, [episodeRowHeight, episodeScrollTop, episodeViewportHeight, visibleEpisodes]);
   const durationForEpisode = useAudioMetadataDurations(virtualEpisodeWindow.items);
-  const hasSubscriptions = podcastsWithPending.length > 0;
-  const noVisibleUnlistenedPodcasts = hasSubscriptions && visiblePodcasts.length === 0;
-  const selectedPodcastTotalEpisodeCount = selectedPodcast?.episodes.length ?? 0;
-  const selectedPodcastUnlistenedEpisodeCount =
-    selectedPodcast?.episodes.filter((episode) => !episode.isListened).length ?? 0;
-  const pageTitle = hasSubscriptions
-    ? noVisibleUnlistenedPodcasts
-      ? "No unlistened podcasts"
-      : "Subscriptions"
-    : "No podcasts";
-  const pageSubtitle = hasSubscriptions
-    ? podcastCountLabel(podcastsWithPending.length)
-    : "Start with one RSS feed or import subscriptions from another app.";
-  const pageActions =
-    hasSubscriptions
-      ? [
-          {
-            label: "Refresh all",
-            icon: (
-              <HugeiconsIcon
-                icon={refreshingAll ? Loading02Icon : RefreshDotIcon}
-                className={refreshingAll ? "animate-spin" : undefined}
-                data-icon="inline-start"
-              />
-            ),
-            disabled: refreshingAll,
-            variant: "secondary" as const,
-            onClick: () => void refreshAllPodcasts(),
-          },
-          {
-            label: showAll ? "Show unlistened" : "Show all",
-            icon: <HugeiconsIcon icon={ViewIcon} data-icon="inline-start" />,
-            variant: "default" as const,
-            onClick: () => {
-              setEpisodeScrollTop(0);
-              setShowAll((current) => !current);
-            },
-          },
-        ]
-      : [];
 
   async function runAction(action: () => Promise<unknown>) {
     setActionError(null);
@@ -358,47 +315,6 @@ export function SubscriptionsScreen() {
     } catch (caught) {
       setActionError(getErrorMessage(caught));
     }
-  }
-
-  function shouldReduceMotion() {
-    return (
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    );
-  }
-
-  function animatePodcastExit(podcastIds: number[]) {
-    const uniquePodcastIds = Array.from(new Set(podcastIds));
-    if (uniquePodcastIds.length === 0 || shouldReduceMotion()) {
-      return Promise.resolve();
-    }
-
-    setExitingPodcastIds((current) => {
-      const next = new Set(current);
-      uniquePodcastIds.forEach((podcastId) => next.add(podcastId));
-      return next;
-    });
-
-    return new Promise<void>((resolve) => {
-      const timeoutId = setTimeout(() => {
-        podcastExitTimeoutsRef.current.delete(timeoutId);
-        resolve();
-      }, PODCAST_EXIT_ANIMATION_MS);
-
-      podcastExitTimeoutsRef.current.add(timeoutId);
-    });
-  }
-
-  function clearPodcastExit(podcastIds: number[]) {
-    if (podcastIds.length === 0) {
-      return;
-    }
-
-    setExitingPodcastIds((current) => {
-      const next = new Set(current);
-      podcastIds.forEach((podcastId) => next.delete(podcastId));
-      return next;
-    });
   }
 
   async function refreshAllPodcasts() {
@@ -461,14 +377,11 @@ export function SubscriptionsScreen() {
     }
   }
 
-  async function scheduleUnsubscribePodcast(podcast: Pick<Podcast, "id" | "title">) {
+  function scheduleUnsubscribePodcast(podcast: Pick<Podcast, "id" | "title">) {
     setActionError(null);
     if (pendingUnsubscribePodcastIds.has(podcast.id)) {
       return;
     }
-
-    const exitingIds = [podcast.id];
-    await animatePodcastExit(exitingIds);
 
     scheduleAction({
       kind: "unsubscribe-podcast",
@@ -480,111 +393,49 @@ export function SubscriptionsScreen() {
         await reloadQueue();
       },
     });
-    clearPodcastExit(exitingIds);
   }
 
-  async function markListened(
+  function scheduleMarkListened(
     episodes: Array<Pick<Episode, "id" | "title">>,
     isListened: boolean
   ) {
     setActionError(null);
-    const episodeIds = new Set(episodes.map((episode) => episode.id));
-    const actionableEpisodes = episodes.filter((episode) => episodeIds.has(episode.id));
+    const actionableEpisodes = episodes.filter(
+      (episode) => !pendingListenedEpisodeIds.has(episode.id)
+    );
     if (actionableEpisodes.length === 0) {
       return;
     }
 
-    const previousPodcasts = podcasts;
-    const exitingIds =
-      isListened && !showAll
-        ? podcasts
-            .filter((podcast) =>
-              podcast.episodes.some((episode) => episodeIds.has(episode.id))
-            )
-            .filter((podcast) =>
-              podcast.episodes.every(
-                (episode) => episode.isListened || episodeIds.has(episode.id)
-              )
-            )
-            .map((podcast) => podcast.id)
-        : [];
-
-    await animatePodcastExit(exitingIds);
-
-    setPodcasts((current) =>
-      current.map((podcast) => ({
-        ...podcast,
-        episodes: podcast.episodes.map((episode) =>
-          episodeIds.has(episode.id) ? { ...episode, isListened } : episode
-        ),
-      }))
-    );
-    clearPodcastExit(exitingIds);
-
-    try {
-      for (const episode of actionableEpisodes) {
-        await api.episodes.setListened(episode.id, isListened);
-      }
-      setReloadKey((current) => current + 1);
-    } catch (caught) {
-      setPodcasts(previousPodcasts);
-      setActionError(getErrorMessage(caught));
-    }
+    scheduleAction({
+      kind: isListened ? "mark-listened" : "mark-unlistened",
+      episodeIds: actionableEpisodes.map((episode) => episode.id),
+      message:
+        actionableEpisodes.length === 1
+          ? `${isListened ? "Marked" : "Marked"} "${actionableEpisodes[0].title}" as ${isListened ? "listened" : "unlistened"}`
+          : `${isListened ? "Marked" : "Marked"} ${actionableEpisodes.length} episodes as ${isListened ? "listened" : "unlistened"}`,
+      commit: async () => {
+        for (const episode of actionableEpisodes) {
+          await api.episodes.setListened(episode.id, isListened);
+        }
+      },
+    });
   }
 
-  async function removeFromPlaylist(
+  function scheduleRemoveFromPlaylist(
     episode: Pick<Episode, "id" | "title">
   ) {
     setActionError(null);
-    const previousPodcasts = podcasts;
-    setPodcasts((current) =>
-      current.map((podcast) => ({
-        ...podcast,
-        episodes: podcast.episodes.map((item) =>
-          item.id === episode.id ? { ...item, inPlaylist: false } : item
-        ),
-      }))
-    );
-
-    try {
-      await api.playlist.remove(episode.id);
-      await reloadQueue();
-      setReloadKey((current) => current + 1);
-    } catch (caught) {
-      setPodcasts(previousPodcasts);
-      setActionError(getErrorMessage(caught));
+    if (pendingPlaylistRemoveEpisodeIds.has(episode.id)) {
+      return;
     }
-  }
 
-  function renderPodcastCard(podcast: PodcastWithEpisodes) {
-    const unlistenedCount = podcast.episodes.filter(
-      (episode) => !episode.isListened
-    ).length;
-
-    return (
-      <PodcastCard
-        selected={podcast.id === selectedPodcast?.id}
-        title={podcast.title}
-        description={podcast.description ?? podcast.rssUrl}
-        episodeCountLabel={episodeCountLabel(unlistenedCount)}
-        artworkUrl={
-          podcast.imageUrl ? api.podcasts.imagePath(podcast.id) : undefined
-        }
-        artworkAlt={`${podcast.title} artwork`}
-        refreshing={refreshingPodcastIds.has(podcast.id)}
-        onSelect={() => {
-          setEpisodeScrollTop(0);
-          setSelectedPodcastId(podcast.id);
-        }}
-        onRefresh={() => void refreshPodcast(podcast.id)}
-        onUnsubscribe={() => void scheduleUnsubscribePodcast(podcast)}
-        className={cn(
-          "transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none",
-          exitingPodcastIds.has(podcast.id) &&
-            "pointer-events-none scale-[0.98] opacity-0"
-        )}
-      />
-    );
+    scheduleAction({
+      kind: "remove-playlist",
+      episodeIds: [episode.id],
+      message: `Removed "${episode.title}" from playlist.`,
+      commit: () => api.playlist.remove(episode.id),
+    });
   }
 
   return (
@@ -592,48 +443,81 @@ export function SubscriptionsScreen() {
       <AppShell
         activeNavItem="Subscriptions"
         onAddPodcast={() => setModal("rss")}
-        pageTitle={pageTitle}
-        pageSubtitle={pageSubtitle}
+        pageTitle="Subscriptions"
+        pageSubtitle={formatLastRefresh(podcasts)}
         pageActions={[]}
         pageHeaderVisible={false}
       >
-        <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5">
           {isMobile ? (
             <div className="pt-4">
               <PageHeader
                 layout="mobile"
-                title={pageTitle}
-                subtitle={pageSubtitle}
-                actions={pageActions}
+                title="Subscriptions"
+                subtitle={formatLastRefresh(podcasts)}
+                actions={[
+                  {
+                    label: "Refresh all",
+                    icon: (
+                      <HugeiconsIcon
+                        icon={refreshingAll ? Loading02Icon : RefreshDotIcon}
+                        className={refreshingAll ? "animate-spin" : undefined}
+                        data-icon="inline-start"
+                      />
+                    ),
+                    disabled: refreshingAll,
+                    variant: "secondary",
+                    onClick: () => void refreshAllPodcasts(),
+                  },
+                  {
+                    label: showAll ? "Show unlistened podcasts" : "Show all",
+                    icon: <HugeiconsIcon icon={ViewIcon} data-icon="inline-start" />,
+                    variant: "default",
+                    onClick: () => {
+                      setEpisodeScrollTop(0);
+                      setShowAll((current) => !current);
+                    },
+                  },
+                ]}
               />
             </div>
           ) : (
             <div className="flex w-full items-center gap-6">
               <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
                 <h1 className="truncate text-3xl leading-9 font-semibold tracking-normal text-foreground">
-                  {pageTitle}
+                  Subscriptions
                 </h1>
                 <p className="truncate text-base leading-6 font-medium text-muted-foreground">
-                  {pageSubtitle}
+                  {formatLastRefresh(podcasts)}
                 </p>
               </div>
-              {pageActions.length > 0 ? (
-                <div className="flex h-[34px] shrink-0 items-center gap-2 overflow-hidden">
-                  {pageActions.map((action) => (
-                    <Button
-                      key={action.label}
-                      type="button"
-                      disabled={action.disabled}
-                      variant={action.variant}
-                      className={action.variant === "default" ? "shadow-xs" : undefined}
-                      onClick={action.onClick}
-                    >
-                      {action.icon}
-                      {action.label}
-                    </Button>
-                  ))}
-                </div>
-              ) : null}
+              <div className="flex h-[34px] shrink-0 items-center gap-2 overflow-hidden">
+                <Button
+                  type="button"
+                  disabled={refreshingAll}
+                  variant="secondary"
+                  onClick={() => void refreshAllPodcasts()}
+                >
+                  <HugeiconsIcon
+                    icon={refreshingAll ? Loading02Icon : RefreshDotIcon}
+                    className={refreshingAll ? "animate-spin" : undefined}
+                    data-icon="inline-start"
+                  />
+                  Refresh all
+                </Button>
+                <Button
+                  type="button"
+                  variant="default"
+                  className="shadow-xs"
+                  onClick={() => {
+                    setEpisodeScrollTop(0);
+                    setShowAll((current) => !current);
+                  }}
+                >
+                  <HugeiconsIcon icon={ViewIcon} data-icon="inline-start" />
+                  {showAll ? "Show unlistened podcasts" : "Show all"}
+                </Button>
+              </div>
             </div>
           )}
           <ScreenBannerStack>
@@ -654,72 +538,89 @@ export function SubscriptionsScreen() {
               />
             ))}
           </ScreenBannerStack>
-          <div className="mpod-scroll min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-4 pb-20 md:py-6">
+          <div className="min-h-0 flex-1 overflow-y-auto py-4 md:py-6">
             {loading ? (
               <ListLoadingState label="Loading subscriptions" />
             ) : visiblePodcasts.length > 0 ? (
-              <div className="flex w-full min-w-0 flex-col gap-4 md:gap-6">
-                <div className="min-w-0 shrink-0">
-                  {isMobile && visiblePodcasts.length === 1 ? (
-                    <div className="flex w-full max-w-full justify-center overflow-hidden">
-                      {renderPodcastCard(visiblePodcasts[0])}
-                    </div>
-                  ) : (
-                    <Carousel
-                      className="w-full max-w-full overflow-hidden"
-                      opts={{
-                        align: "start",
-                        containScroll: "trimSnaps",
-                      }}
+              <div className="flex w-full flex-col gap-4 md:gap-6">
+                <div className="shrink-0">
+                  <Carousel
+                    className="w-full"
+                    opts={{
+                      align: "start",
+                      containScroll: "trimSnaps",
+                    }}
+                  >
+                    <CarouselContent
+                      className={cn(
+                        "ml-0 gap-5",
+                        isMobile
+                          ? visiblePodcasts.length < 2 && "justify-center"
+                          : visiblePodcasts.length < 4 && "justify-center"
+                      )}
                     >
-                      <CarouselContent
-                        className={cn(
-                          "ml-0 gap-5",
-                          !isMobile && visiblePodcasts.length < 4 && "justify-center"
-                        )}
-                      >
-                        {visiblePodcasts.map((podcast) => (
+                      {visiblePodcasts.map((podcast) => {
+                        const unlistenedCount = podcast.episodes.filter(
+                          (episode) =>
+                            !episode.isListened &&
+                            !pendingListenedEpisodeIds.has(episode.id)
+                        ).length;
+
+                        return (
                           <CarouselItem
                             key={podcast.id}
                             className={cn(
                               "pl-0",
-                              isMobile
-                                ? "basis-[min(320px,100%)]"
-                                : "basis-[285px]"
+                              isMobile ? "basis-[320px]" : "basis-[285px]"
                             )}
                           >
-                            {renderPodcastCard(podcast)}
+                            <PodcastCard
+                              selected={podcast.id === selectedPodcast?.id}
+                              title={podcast.title}
+                              description={podcast.description ?? podcast.rssUrl}
+                              episodeCountLabel={episodeCountLabel(unlistenedCount)}
+                              artworkUrl={
+                                podcast.imageUrl
+                                  ? api.podcasts.imagePath(podcast.id)
+                                  : undefined
+                              }
+                              artworkAlt={`${podcast.title} artwork`}
+                              refreshing={refreshingPodcastIds.has(podcast.id)}
+                              onSelect={() => {
+                                setEpisodeScrollTop(0);
+                                setSelectedPodcastId(podcast.id);
+                              }}
+                              onRefresh={() => void refreshPodcast(podcast.id)}
+                              onUnsubscribe={() => scheduleUnsubscribePodcast(podcast)}
+                            />
                           </CarouselItem>
-                        ))}
-                      </CarouselContent>
-                      <div className="mt-2 hidden items-center justify-center gap-5 md:flex">
-                        <CarouselPrevious
-                          size="icon"
-                          className="static size-8 translate-x-0 translate-y-0 rounded-full"
-                        />
-                        <CarouselNext
-                          size="icon"
-                          className="static size-8 translate-x-0 translate-y-0 rounded-full"
-                        />
-                      </div>
-                    </Carousel>
-                  )}
+                        );
+                      })}
+                    </CarouselContent>
+                    <div className="mt-2 hidden items-center justify-center gap-5 md:flex">
+                      <CarouselPrevious
+                        size="icon"
+                        className="static size-8 translate-x-0 translate-y-0 rounded-full"
+                      />
+                      <CarouselNext
+                        size="icon"
+                        className="static size-8 translate-x-0 translate-y-0 rounded-full"
+                      />
+                    </div>
+                  </Carousel>
                 </div>
                 <PlaylistQueue
                   key={`${selectedPodcast.id}-${showAll ? "all" : "unlistened"}`}
                   className={cn("shrink-0", isMobile ? "h-[202px]" : "h-[400px]")}
                   bodyClassName={cn(
-                    "mpod-scroll min-h-0 overflow-y-auto",
+                    "min-h-0 overflow-y-auto",
                     isMobile ? "h-[152px]" : "h-[350px]"
                   )}
                   bodyRef={episodeListRef}
                   bodyOnScroll={(event) =>
                     setEpisodeScrollTop(event.currentTarget.scrollTop)
                   }
-                  summary={episodeSummaryLabel(
-                    selectedPodcastTotalEpisodeCount,
-                    selectedPodcastUnlistenedEpisodeCount
-                  )}
+                  summary={`${selectedPodcast.title} episodes`}
                   headerAction={
                     <>
                       {visibleEpisodes.some((episode) => !episode.isListened) && (
@@ -727,7 +628,7 @@ export function SubscriptionsScreen() {
                           variant="link"
                           type="button"
                           onClick={() =>
-                            void markListened(
+                            scheduleMarkListened(
                               visibleEpisodes.filter((episode) => !episode.isListened),
                               true
                             )
@@ -803,7 +704,7 @@ export function SubscriptionsScreen() {
                               : PlayListAddIcon,
                             onClick: () =>
                               episode.inPlaylist
-                                ? void removeFromPlaylist(episode)
+                                ? scheduleRemoveFromPlaylist(episode)
                                 : void runAction(() => api.playlist.add(episode.id)),
                           },
                           {
@@ -821,8 +722,8 @@ export function SubscriptionsScreen() {
                             icon: episode.isListened ? ViewOffIcon : ViewIcon,
                             onClick: () =>
                               episode.isListened
-                                ? void markListened([episode], false)
-                                : void markListened([episode], true),
+                                ? scheduleMarkListened([episode], false)
+                                : scheduleMarkListened([episode], true),
                           },
                         ]}
                       />
@@ -837,19 +738,23 @@ export function SubscriptionsScreen() {
                 </PlaylistQueue>
               </div>
             ) : (
-              <SubscriptionsEmptyState
-                title={
-                  hasSubscriptions
-                    ? "All caught up"
-                    : "No podcasts yet"
+              <EmptyState
+                title="No podcasts yet"
+                description="Add one RSS feed or bring subscriptions from another podcast app with OPML."
+                actions={
+                  <>
+                    <Button type="button" onClick={() => setModal("rss")}>
+                      Add RSS feed
+                    </Button>
+                    <Button
+                      variant="outline"
+                      type="button"
+                      onClick={() => setModal("opml")}
+                    >
+                      Import OPML
+                    </Button>
+                  </>
                 }
-                description={
-                  hasSubscriptions
-                    ? "There are no unlistened episodes right now. Add another feed, import OPML, or use Show all to browse listened episodes."
-                    : "Add one RSS feed or bring subscriptions from another podcast app with OPML."
-                }
-                onAddRss={() => setModal("rss")}
-                onImportOpml={() => setModal("opml")}
               />
             )}
           </div>

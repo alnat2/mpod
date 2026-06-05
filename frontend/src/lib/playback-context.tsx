@@ -199,7 +199,6 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const sourcePrimedRef = useRef(false);
   const userInitiatedPlayRef = useRef(false);
   const queueRef = useRef<QueueEpisode[]>([]);
-  const playingRef = useRef(false);
   const activeEpisode =
     activeEpisodeId !== null
       ? queue.find((episode) => episode.id === activeEpisodeId) ?? null
@@ -217,31 +216,6 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     currentEpisode?.duration,
     currentAudioDuration
   );
-
-  function writePlaybackState(episodeId: number, playback: PlaybackState | null) {
-    setQueue((current) =>
-      current.map((episode) =>
-        episode.id === episodeId ? { ...episode, playback } : episode
-      )
-    );
-  }
-
-  function isNewerPlaybackState(
-    nextPlayback: PlaybackState | null,
-    currentPlayback: PlaybackState | null | undefined
-  ) {
-    if (!nextPlayback) {
-      return false;
-    }
-    if (!currentPlayback) {
-      return true;
-    }
-
-    return (
-      new Date(nextPlayback.lastUpdated).getTime() >
-      new Date(currentPlayback.lastUpdated).getTime()
-    );
-  }
 
   const commitPlayback = useCallback(
     async (
@@ -265,85 +239,6 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         });
       } catch {
         // silently fail for background sync
-      }
-    },
-    []
-  );
-
-  const commitPlaybackBeacon = useCallback((nextPositionSeconds: number) => {
-    const episode = currentEpisodeRef.current;
-    if (!episode || typeof navigator === "undefined" || !navigator.sendBeacon) {
-      return false;
-    }
-
-    const durationSeconds = currentEpisodeDurationRef.current;
-    const body = JSON.stringify({
-      episodeId: episode.id,
-      positionSeconds: Math.round(
-        clampPosition(nextPositionSeconds, durationSeconds)
-      ),
-      durationSeconds: Math.round(durationSeconds),
-      completed: false,
-      didSeek: false,
-      clientUpdatedAt: new Date().toISOString(),
-    });
-
-    return navigator.sendBeacon(
-      "/api/playback",
-      new Blob([body], { type: "application/json" })
-    );
-  }, []);
-
-  const commitCurrentPlayback = useCallback(
-    (options: { beacon?: boolean } = {}) => {
-      const audio = audioRef.current;
-      if (!audio || !currentEpisodeRef.current) {
-        return;
-      }
-
-      if (options.beacon && commitPlaybackBeacon(audio.currentTime)) {
-        return;
-      }
-
-      void commitPlayback(audio.currentTime);
-    },
-    [commitPlayback, commitPlaybackBeacon]
-  );
-
-  const refreshPlaybackState = useCallback(
-    async (
-      episode: QueueEpisode,
-      options: { applyEvenIfNotNewer?: boolean } = {}
-    ) => {
-      try {
-        const response = await api.playback.get(episode.id);
-        const nextPlayback = response.playback;
-        const shouldApply =
-          options.applyEvenIfNotNewer ||
-          isNewerPlaybackState(nextPlayback, episode.playback);
-
-        if (!shouldApply) {
-          return episode;
-        }
-
-        writePlaybackState(episode.id, nextPlayback);
-
-        const current = currentEpisodeRef.current;
-        if (current?.id === episode.id && nextPlayback) {
-          const nextPosition = clampPosition(
-            nextPlayback.positionSeconds,
-            currentEpisodeDurationRef.current
-          );
-          const audio = audioRef.current;
-          if (audio && sourcePrimedRef.current) {
-            audio.currentTime = nextPosition;
-          }
-          setPositionSeconds(nextPosition);
-        }
-
-        return { ...episode, playback: nextPlayback };
-      } catch {
-        return episode;
       }
     },
     []
@@ -388,39 +283,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   }, [queue]);
 
   useEffect(() => {
-    playingRef.current = playing;
-  }, [playing]);
-
-  useEffect(() => {
     currentEpisodeRef.current = currentEpisode;
   }, [currentEpisode]);
 
   useEffect(() => {
     currentEpisodeDurationRef.current = currentEpisodeDuration;
   }, [currentEpisodeDuration]);
-
-  useEffect(() => {
-    const syncVisiblePlaybackState = () => {
-      if (document.visibilityState !== "visible" || playingRef.current) {
-        return;
-      }
-
-      const episode = currentEpisodeRef.current;
-      if (!episode) {
-        return;
-      }
-
-      void refreshPlaybackState(episode);
-    };
-
-    window.addEventListener("focus", syncVisiblePlaybackState);
-    document.addEventListener("visibilitychange", syncVisiblePlaybackState);
-
-    return () => {
-      window.removeEventListener("focus", syncVisiblePlaybackState);
-      document.removeEventListener("visibilitychange", syncVisiblePlaybackState);
-    };
-  }, [refreshPlaybackState]);
 
   useEffect(() => {
     const pendingEpisodeId = pendingPlayEpisodeIdRef.current;
@@ -658,39 +526,15 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(intervalId);
   }, [playing, currentEpisodeId, commitPlayback]);
 
-  useEffect(() => {
-    const flushPlaybackState = () => {
-      commitCurrentPlayback({ beacon: true });
-    };
-
-    window.addEventListener("pagehide", flushPlaybackState);
-    document.addEventListener("visibilitychange", flushPlaybackState);
-
-    return () => {
-      window.removeEventListener("pagehide", flushPlaybackState);
-      document.removeEventListener("visibilitychange", flushPlaybackState);
-    };
-  }, [commitCurrentPlayback]);
-
   const playToggle = useCallback(() => {
     setPlaybackError(null);
     userInitiatedPlayRef.current = true;
     const audio = audioRef.current;
-
-    if (playing) {
-      commitCurrentPlayback();
-      setPlaying(false);
-      return;
-    }
-
-    if (audio && currentEpisode) {
-      void (async () => {
-        const syncedEpisode = await refreshPlaybackState(currentEpisode);
-        const nextPosition =
-          syncedEpisode.playback?.positionSeconds ?? positionSeconds ?? 0;
+    if (!playing && audio && currentEpisode) {
+      const nextPosition = positionSeconds || currentEpisode.playback?.positionSeconds || 0;
       primeAudioSource(
         audio,
-          syncedEpisode,
+        currentEpisode,
         speedLabel,
         nextPosition,
         setPositionSeconds,
@@ -698,43 +542,24 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
           sourcePrimedRef.current = true;
         }
       );
-        setPlaying(true);
-      })();
-      return;
     }
-
-    setPlaying(true);
-  }, [
-    commitCurrentPlayback,
-    currentEpisode,
-    playing,
-    positionSeconds,
-    refreshPlaybackState,
-    speedLabel,
-  ]);
+    setPlaying((p) => !p);
+  }, [currentEpisode, playing, positionSeconds, speedLabel]);
 
   const playEpisode = useCallback((episodeId: number) => {
     setPlaybackError(null);
     userInitiatedPlayRef.current = true;
     const queuedEpisode =
       queue.find((episode) => episode.id === episodeId) ?? null;
-    void (async () => {
-      const syncedEpisode = queuedEpisode
-        ? await refreshPlaybackState(queuedEpisode)
-        : null;
-      pendingPlayEpisodeIdRef.current = syncedEpisode ? null : episodeId;
-      setActiveEpisodeId(episodeId);
-      const audio = audioRef.current;
-      if (!audio) {
-        setPlaying(true);
-        return;
-      }
-
-      const initialPos = syncedEpisode?.playback?.positionSeconds ?? 0;
+    pendingPlayEpisodeIdRef.current = queuedEpisode ? null : episodeId;
+    setActiveEpisodeId(episodeId);
+    const audio = audioRef.current;
+    if (audio) {
+      const initialPos = queuedEpisode?.playback?.positionSeconds ?? 0;
       if (queuedEpisode) {
         primeAudioSource(
           audio,
-          syncedEpisode ?? queuedEpisode,
+          queuedEpisode,
           speedLabel,
           initialPos,
           setPositionSeconds,
@@ -757,9 +582,9 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         setPlaying(false);
         setPlaybackError(describeAudioError(error));
       });
-      setPlaying(true);
-    })();
-  }, [queue, refreshPlaybackState, speedLabel]);
+    }
+    setPlaying(true);
+  }, [queue, speedLabel]);
 
   const seekForward = useCallback(() => {
     if (!audioRef.current || !currentEpisode) return;

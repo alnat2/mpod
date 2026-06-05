@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -10,44 +10,48 @@ type ArtworkProps = {
   title?: string;
 };
 
-const FALLBACK_ARTWORK_SRC = "/podcast_fallback.png";
+function getArtworkInitials(title?: string) {
+  if (!title?.trim()) {
+    return "mp";
+  }
+
+  return title
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase();
+}
 
 export function Artwork({
   alt = "",
   className,
   imageClassName,
   src,
+  title,
 }: ArtworkProps) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
-  const showRemoteImage = Boolean(src && failedSrc !== src);
-  const remoteImageLoaded = Boolean(src && loadedSrc === src);
+  const initials = useMemo(() => getArtworkInitials(title), [title]);
+  const showImage = Boolean(src && failedSrc !== src);
 
   return (
     <div
       className={cn(
-        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted text-muted-foreground",
+        "flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted text-muted-foreground",
         className
       )}
     >
-      <img
-        className={cn("size-full object-cover", imageClassName)}
-        src={FALLBACK_ARTWORK_SRC}
-        alt={showRemoteImage ? "" : alt}
-      />
-      {showRemoteImage ? (
+      {showImage ? (
         <img
-          className={cn(
-            "absolute inset-0 size-full object-cover transition-opacity duration-150",
-            remoteImageLoaded ? "opacity-100" : "opacity-0",
-            imageClassName
-          )}
+          className={cn("size-full object-cover", imageClassName)}
           src={src ?? undefined}
           alt={alt}
-          onLoad={() => setLoadedSrc(src ?? null)}
           onError={() => setFailedSrc(src ?? null)}
         />
-      ) : null}
+      ) : (
+        <span className="text-xs font-medium leading-none">{initials}</span>
+      )}
     </div>
   );
 }

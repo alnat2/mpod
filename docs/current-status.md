@@ -61,7 +61,7 @@ The Go backend scaffold is now in place with:
 - episode download, download deletion, and authenticated audio playback delivery
 - playback get/update with sync conflict rules
 - episode listened/unlistened patch endpoint
-- shared outbound HTTP client with optional SOCKS5 support; proxy enabled routes all backend outbound network traffic through the proxy, proxy disabled uses direct network access
+- shared outbound HTTP client with optional SOCKS5 support
 - settings get/update for `daily_refresh_time`
 - settings proxy on/off switch and proxy-configured status when SOCKS5 runtime configuration is available
 - proxy runtime status endpoint for observed external IP/country when proxy usage is enabled

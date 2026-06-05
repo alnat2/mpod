@@ -10,7 +10,6 @@
     "build-storybook": "storybook build --output-dir storybook-static",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:mobile:ios": "node tests/mobile/ios-safari-smoke.mjs",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "preview": "vite preview"
@@ -47,8 +46,6 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "appium": "^3.5.0",
-    "appium-xcuitest-driver": "^11.9.0",
     "eslint": "latest",
     "eslint-plugin-react-hooks": "latest",
     "eslint-plugin-react-refresh": "latest",
@@ -59,7 +56,6 @@
     "typescript": "latest",
     "typescript-eslint": "latest",
     "vite": "latest",
-    "vitest": "^4.1.7",
-    "webdriverio": "^9.27.2"
+    "vitest": "^4.1.7"
   }
 }

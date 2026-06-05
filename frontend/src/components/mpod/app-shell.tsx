@@ -10,7 +10,6 @@ type AppShellProps = {
   activeNavItem?: string;
   children?: ReactNode;
   className?: string;
-  mainClassName?: string;
   onAddPodcast?: () => void;
   pageActions?: ComponentProps<typeof PageHeader>["actions"];
   pageHeaderVisible?: boolean;
@@ -22,7 +21,6 @@ export function AppShell({
   activeNavItem,
   children,
   className,
-  mainClassName,
   onAddPodcast,
   pageActions,
   pageHeaderVisible = true,
@@ -32,7 +30,7 @@ export function AppShell({
   return (
     <div
       className={cn(
-        "flex h-dvh w-full min-w-0 flex-col items-center overflow-hidden bg-background px-5 md:h-full md:px-6 md:pb-8 xl:px-20",
+        "flex h-svh w-full flex-col items-center overflow-hidden bg-background px-5 md:px-6 md:pb-8 xl:px-20",
         className,
       )}
     >
@@ -41,12 +39,7 @@ export function AppShell({
         className="hidden md:flex"
         onAdd={onAddPodcast}
       />
-      <main
-        className={cn(
-          "flex min-h-0 w-full max-w-[1200px] min-w-0 flex-1 flex-col overflow-hidden pb-[65px] text-foreground md:pb-0",
-          mainClassName,
-        )}
-      >
+      <main className="flex min-h-0 w-full max-w-[1200px] flex-1 flex-col pb-[65px] text-foreground md:pb-0">
         {pageHeaderVisible ? (
           <PageHeader
             className="py-4 md:py-5"

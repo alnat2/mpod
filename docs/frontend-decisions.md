@@ -116,8 +116,7 @@ Rules:
 - manual UI actions that expose undo and delete downloaded files should keep the downloaded file during the undo window
 - if the user clicks `Undo`, cancel the pending action and restore the previous row state, including downloaded state
 - if the undo window expires, commit the action and let the backend apply the approved file lifecycle rule
-- podcast unsubscribe is the MVP action that uses the 15-second destructive-action undo window
-- manual mark-listened, mark-unlistened, `Mark all listened`, and remove-from-playlist are immediate actions and do not show undo feedback
+- simplest MVP implementation: keep the action pending in frontend state and send the backend mutation only when the undo window expires
 - if an action cannot be safely undone, the UI must clearly communicate the consequence at the action point
 - use concise toast, banner, or inline feedback with an `Undo` action where practical
 - avoid modal confirmations by default unless a future product decision explicitly requires one
@@ -151,26 +150,26 @@ Rules:
 - if there are no unlistened episodes in the selected podcast's current episode-list scope, hide or disable `Mark all listened`
 - marking listened should communicate that the downloaded file is deleted by default
 - downloaded files are cleaned up through playback completion or manual `mark listened`, not through a separate delete-download control
-- manual `Mark listened` and `Mark all listened` are immediate actions and should not show a 15-second undo banner
-- when manual `Mark listened` or `Mark all listened` commits, backend lifecycle behavior deletes downloaded files as appropriate
+- prefer undo feedback over confirmation when the manual listened action has destructive side effects
+- during the 15-second undo window after manual `Mark listened`, keep the file and show the row as a pending listened action
+- if the user clicks `Undo`, the row should return to `Mark listened` and keep its downloaded state
+- if the undo window expires, commit `Mark listened` and remove the downloaded file through backend lifecycle behavior
+- `Mark all listened` should use one bulk undo feedback window; during that window, keep affected downloaded files and previous backend/file state recoverable
+- if the user clicks `Undo` for `Mark all listened`, cancel the pending action for all affected episodes and restore their previous row states, including downloaded state
+- if the undo window expires, commit the affected mark-listened changes and let backend lifecycle behavior delete downloaded files as appropriate
 - marking unlistened should not imply that a file deleted by an already committed action will be restored
 
 ### Subscription List Defaults
 
 Decision:
 - subscription browsing should show podcasts with unlistened episodes by default
-- the Subscriptions page header metadata should display the current number of subscribed podcasts, not the latest refresh time
 - by default, the selected podcast episode list should also show only unlistened episodes
-- the selected podcast episode-list header summary should display total episode count and unlistened episode count for that podcast, for example `123 / 2 episodes`, instead of repeating the selected podcast name
 - podcast cards may expose a manual refresh control for refreshing a single subscription
-- when no subscriptions exist, the Subscriptions screen should use a dedicated empty state that points to adding an RSS feed or importing OPML
-- when subscriptions exist but none have unlistened episodes in the default view, the Subscriptions screen should use a dedicated `all caught up` empty state instead of the no-subscriptions copy
-- when a podcast card leaves the default Subscriptions view because the podcast is unsubscribed or because it no longer has unlistened episodes, use a subtle exit animation before removing the card from the visible list
 - provide a `Show all` action to remove the default podcast filter and show every subscribed podcast, regardless of whether it currently has unlistened episodes
 - when `Show all` is active, the selected podcast episode list should also show all episodes for that podcast, including listened and unlistened episodes
-- when all podcasts are visible, provide `Show unlistened` to return both the podcast cards and the selected podcast episode list to the default unlistened-only filtered output
-- the `Show all` / `Show unlistened` state is local to the Subscriptions screen and does not need to persist after leaving that screen
-- while `Show all` is active, selecting a different podcast keeps the selected podcast episode list in all-episodes mode until the user returns to `Show unlistened`
+- when all podcasts are visible, provide `Show unlistened podcasts` to return both the podcast cards and the selected podcast episode list to the default unlistened-only filtered output
+- the `Show all` / `Show unlistened podcasts` state is local to the Subscriptions screen and does not need to persist after leaving that screen
+- while `Show all` is active, selecting a different podcast keeps the selected podcast episode list in all-episodes mode until the user returns to `Show unlistened podcasts`
 - the subscriptions page podcast-card container should show a visible area of two card rows
 - if podcast cards do not fit inside that two-row visible area, enable scrolling inside the podcast-card container instead of expanding the visible area or adding a `Show less` collapse action
 

@@ -9,7 +9,6 @@
 # Go
 server/bin/
 server/coverage.out
-server/vendor/
 
 # Frontend
 client/node_modules/

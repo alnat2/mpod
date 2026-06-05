@@ -18,7 +18,10 @@ func NewHTTPClient(cfg config.Config) (*http.Client, error) {
 func NewHTTPClientWithProxyDecider(cfg config.Config, proxyEnabled func(context.Context) bool) (*http.Client, error) {
 	directTransport := http.DefaultTransport.(*http.Transport).Clone()
 	if cfg.SOCKS5Host == "" {
-		return newClientWithRoundTrippers(directTransport, nil, proxyEnabled), nil
+		return &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: directTransport,
+		}, nil
 	}
 
 	proxyTransport := directTransport.Clone()
@@ -30,7 +33,20 @@ func NewHTTPClientWithProxyDecider(cfg config.Config, proxyEnabled func(context.
 		return dialer.Dial(network, addr)
 	}
 
-	return newClientWithRoundTrippers(directTransport, proxyTransport, proxyEnabled), nil
+	transport := http.RoundTripper(proxyTransport)
+	if proxyEnabled != nil {
+		transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			if proxyEnabled(req.Context()) {
+				return proxyTransport.RoundTrip(req)
+			}
+			return directTransport.RoundTrip(req)
+		})
+	}
+
+	return &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: transport,
+	}, nil
 }
 
 func credentials(cfg config.Config) *proxy.Auth {
@@ -47,25 +63,4 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
-}
-
-func newClientWithRoundTrippers(direct, proxy http.RoundTripper, proxyEnabled func(context.Context) bool) *http.Client {
-	transport := direct
-	if proxy != nil {
-		transport = proxy
-	}
-
-	if proxy != nil && proxyEnabled != nil {
-		transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-			if proxyEnabled(req.Context()) {
-				return proxy.RoundTrip(req)
-			}
-			return direct.RoundTrip(req)
-		})
-	}
-
-	return &http.Client{
-		Timeout:   30 * time.Second,
-		Transport: transport,
-	}
 }

@@ -702,8 +702,7 @@ Example:
 
 ### Decision
 Downloaded episode files are temporary local copies. By default, removing an episode from the playlist deletes its downloaded file, and marking an episode as listened deletes its downloaded file.
-Manual listened-state changes and playlist removal are immediate actions. The backend applies their file lifecycle side effects immediately.
-Podcast unsubscribe keeps a 15-second undo window. During that window, the app keeps the downloaded files and applies the file-deleting unsubscribe only after the undo window expires.
+For manual UI actions that offer undo, the app keeps the downloaded file during the undo window and applies the file-deleting change only after the undo window expires.
 
 ### Rules
 - Downloaded files are stored on local disk.
@@ -731,29 +730,29 @@ Podcast unsubscribe keeps a 15-second undo window. During that window, the app k
 - `PATCH /api/episodes/:id` with `isListened = true` deletes the local file by default and clears `downloaded_path`.
 - If there is no local file, these actions still succeed as state updates.
 
-### Undo Window For Destructive UI Actions
-- Podcast unsubscribe exposes `Undo` and keeps the previous backend/file state during the 15-second undo window.
-- During the unsubscribe undo window, downloaded files remain saved and `downloaded_path` remains valid.
-- If the user clicks `Undo`, cancel the pending unsubscribe; the podcast, episodes, playlist entries, playback state, and downloaded files remain unchanged.
-- If the undo window expires, commit the unsubscribe and apply the normal podcast-deletion file lifecycle rule.
-- Manual mark-listened, mark-unlistened, `Mark all listened`, and remove-from-playlist do not use the 15-second undo window in MVP.
-- These non-undo actions should update quickly in the UI and then reconcile from backend state.
+### Undo Window For Manual UI Actions
+- Manual UI actions that expose `Undo` should keep the previous backend/file state during the 15-second undo window.
+- During the undo window, the UI may show a pending listened or pending removed state, but the downloaded file remains saved and `downloaded_path` remains valid.
+- If the user clicks `Undo`, cancel the pending action; the episode returns to its previous state and remains downloaded if it was downloaded before the action.
+- If the undo window expires, commit the action and apply the normal file lifecycle rule.
+- The simplest MVP implementation is to keep the action pending in the frontend and send the backend mutation only when the undo window expires.
+- This pending undo rule applies to manual actions from the UI, not automatic playback completion.
 
 ### Marking Listened
 - Marking an episode as listened updates `is_listened = true`.
 - By default, marking listened also deletes the downloaded file.
-- Manual mark-listened is immediate and does not show a 15-second undo banner.
-- The downloaded file is deleted when the backend mark-listened action commits.
+- When manual mark-listened is shown with `Undo`, the downloaded file is deleted only after the 15-second undo window expires.
+- If the user clicks `Undo` before the window expires, the episode remains unlistened and downloaded.
 - Marking an episode as unlistened does not restore a file that was already deleted by a committed action.
 - If playback completion marks an episode as listened, the same file deletion rule applies.
 - A frontend `Mark all listened` action may mark all affected unlistened episodes for the selected podcast as listened.
-- `Mark all listened` is immediate and follows the same file lifecycle rules as individual mark-listened actions.
-- A separate bulk backend endpoint is not required for MVP; the frontend may commit individual mark-listened mutations immediately.
+- `Mark all listened` follows the same manual undo and file lifecycle rules as individual mark-listened actions.
+- A separate bulk backend endpoint is not required for MVP; the frontend may keep the bulk action pending during the undo window and then commit individual mark-listened mutations after the window expires.
 
 ### Playlist Behavior
 - Adding an episode to playlist does not download it automatically.
 - Removing an episode from playlist deletes its local file by default.
-- Manual remove-from-playlist is immediate and does not show a 15-second undo banner.
+- When manual remove-from-playlist is shown with `Undo`, the downloaded file is deleted only after the 15-second undo window expires.
 - Removing an episode from playlist does not delete the episode database record.
 
 ### Podcast Deletion
@@ -1000,15 +999,9 @@ Optional:
 - Default proxy runtime values are `SOCKS5_HOST=192.168.0.222` and `SOCKS5_PORT=1080`.
 - If proxy variables are provided and proxy usage is enabled in Settings, they are used for:
   - RSS feed fetching
-  - OPML import feed fetching
-  - manual podcast refresh
-  - scheduled podcast refresh
   - episode streaming
   - episode downloads
-  - podcast artwork proxying
-  - proxy runtime identity lookup
-- When proxy usage is enabled, all backend outbound HTTP network operations must use the configured proxy path.
-- If proxy variables are not provided, or if proxy usage is disabled in Settings, all backend outbound HTTP network operations use direct connection.
+- If proxy variables are not provided, or if proxy usage is disabled in Settings, network requests use direct connection.
 - The Settings screen must provide a proxy on/off switch when proxy configuration is available.
 - The proxy switch controls whether configured proxy settings are used; it does not edit proxy host, port, username, or password.
 - Partial proxy configuration should be treated as invalid if required proxy host/port values are incomplete.
@@ -1077,7 +1070,6 @@ The initial schema should include a few fields and tables beyond the PRD so the 
 - The backend may keep raw feed-provided episode HTML in storage, but the frontend must not be required to trust or sanitize raw HTML itself.
 - `podcasts.description` stores feed-level podcast description when available.
 - `podcasts.image_url` stores feed artwork URL when available.
-- The frontend must display `frontend/public/podcast_fallback.png` when podcast artwork is missing, still loading, or fails to load.
 - `settings` must persist `daily_refresh_time`.
 - `settings` must persist `proxy_enabled`.
 - Scheduler state persistence must store enough information to expose:
@@ -1099,7 +1091,7 @@ The backend should start with explicit schema management and startup reconciliat
 - The project must use a real migration system from day one.
 - Automatic ORM schema sync must not be used as the production schema mechanism.
 - Schema versioning must be persisted in the database.
-- Migrations should live under `server/migrations/`.
+- Migrations should live under `server/src/db/migrations/`.
 - On startup, the app should reconcile downloaded file state against the filesystem.
 
 ### Startup Reconciliation
