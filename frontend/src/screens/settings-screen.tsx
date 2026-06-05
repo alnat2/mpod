@@ -118,7 +118,7 @@ function SettingsCard({
             {description}
           </p>
         </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
+        {action ? <div className="flex min-w-0 shrink-0">{action}</div> : null}
       </div>
       {children ? <div className="mt-5">{children}</div> : null}
     </Card>
@@ -287,13 +287,13 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
               </ErrorBanner>
             ) : null}
           </ScreenBannerStack>
-          <div className="min-h-0 flex-1 overflow-y-auto py-4 md:py-6">
+          <div className="mpod-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden pt-4 pb-20 md:py-6">
             <div className="flex w-full flex-col gap-4">
               <div className="grid gap-4 md:gap-6 lg:grid-cols-[1fr_420px]">
                 <SettingsCard
                   title="Feed daily refresh"
                   description="Feeds are refreshed once per day at a single global time."
-                  className="min-h-[193px]"
+                  className="md:min-h-[193px]"
                 >
                   <div className="flex w-full items-center gap-2 md:w-[220px]">
                     <Input
