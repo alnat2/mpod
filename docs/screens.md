@@ -175,29 +175,15 @@ Recommended episode actions:
 - mark all listened from the selected podcast episode-list header when relevant
 
 Row and state guidance:
-- `Mark all listened` applies only to the selected podcast episode list, not to all subscriptions
-- in default Subscriptions mode, `Mark all listened` marks the selected podcast's currently shown unlistened episodes as listened
-- in `Show all` mode, `Mark all listened` affects only unlistened episodes for the selected podcast and leaves already listened episodes unchanged
-- hide or disable `Mark all listened` when the selected podcast has no unlistened episodes in the current episode-list scope
-- icon-only episode-row controls should have tooltips that name the current action or state:
-  - `Download`
-  - `Downloaded`
-  - `Add to playlist`
-  - `Remove from playlist`
-  - `Mark as listened`
+- follow the canonical action, tooltip, and state rules in [frontend-decisions.md](frontend-decisions.md#manual-listened-state-actions)
 - downloading and playlist actions should be one tap from the episode list
 - while an episode is downloading, its row-level `Download` button should show a loading icon and should not start a second download request
 - when an episode is already downloaded, its row-level download icon should use muted color treatment
 - do not expose a separate `Delete` or `Delete download` action in the MVP UI
 - downloaded files are cleaned up through playback completion or manual `mark listened`
+- manual `Mark listened` and `Mark all listened` remove affected episodes from playlist after the backend mark-listened action commits
 - mark listened and mark unlistened should be available from the episode row or an episode action menu
 - do not use `Show listened` or `Show unlistened` buttons for episode filtering in the MVP UI
-- marking listened should use undo feedback instead of a blocking confirmation when file deletion is triggered
-- during the 15-second undo window after manual `Mark listened`, keep the downloaded file and show the action as pending
-- if the user clicks `Undo`, the row should return to `Mark listened` and keep its downloaded state
-- `Mark all listened` should use a single bulk undo feedback window; undo restores all affected episode rows to their previous states, including downloaded state
-- if the `Mark all listened` undo window expires, commit the affected mark-listened changes and let backend lifecycle behavior delete downloaded files as appropriate
-- marking unlistened should not imply that a file deleted by an already committed action is restored
 - download failures should show a dismissible notification at the top of the screen for 10 seconds, and the affected episode row should show the normal inline `Download` action again
 - the 10-second download-failure notification timeout is separate from the 15-second destructive-action undo window
 - episodes with no usable audio should be disabled or hidden rather than presented as normal playable items
@@ -304,11 +290,10 @@ Purpose:
 ### Undo Feedback
 
 Purpose:
-- give the user a short recovery path after destructive or high-impact actions without interrupting task flow
+- give the user a short recovery path after podcast unsubscribe without interrupting task flow
 
-Use for actions such as:
-- remove from playlist when the file-deletion implication should be made explicit
-- mark listened when the file-deletion implication should be made explicit
+MVP use:
+- podcast unsubscribe
 
 UX notes:
 - prefer toast, banner, or inline feedback with an `Undo` action instead of blocking confirmation dialogs
@@ -320,7 +305,10 @@ UX notes:
 - manual UI actions that expose undo and delete downloaded files should keep the downloaded file during the undo window
 - if the user clicks `Undo`, cancel the pending action and restore the previous row state, including downloaded state
 - if the undo window expires, commit the action and let the backend apply the approved file lifecycle rule
-- simplest MVP implementation: keep the action pending in frontend state and send the backend mutation only when the undo window expires
+- podcast unsubscribe is the MVP action that exposes the 15-second undo window
+- the podcast unsubscribe pending state is frontend-only until the undo window expires and the frontend sends the backend unsubscribe request
+- manual mark-listened, mark-unlistened, `Mark all listened`, and remove-from-playlist do not expose the undo window in MVP
+- those immediate actions may still have file lifecycle side effects; communicate consequences at the action point where needed and reconcile final state from the backend
 - if a future action cannot be safely undone, communicate the consequence clearly at the action point
 
 ### Unsubscribe Action

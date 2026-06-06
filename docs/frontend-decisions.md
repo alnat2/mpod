@@ -116,7 +116,9 @@ Rules:
 - manual UI actions that expose undo and delete downloaded files should keep the downloaded file during the undo window
 - if the user clicks `Undo`, cancel the pending action and restore the previous row state, including downloaded state
 - if the undo window expires, commit the action and let the backend apply the approved file lifecycle rule
-- simplest MVP implementation: keep the action pending in frontend state and send the backend mutation only when the undo window expires
+- podcast unsubscribe is the MVP action that uses the 15-second destructive-action undo window
+- the podcast unsubscribe pending state is frontend-only until the undo window expires and the frontend sends the backend unsubscribe request
+- manual mark-listened, mark-unlistened, `Mark all listened`, and remove-from-playlist are immediate actions and do not show undo feedback
 - if an action cannot be safely undone, the UI must clearly communicate the consequence at the action point
 - use concise toast, banner, or inline feedback with an `Undo` action where practical
 - avoid modal confirmations by default unless a future product decision explicitly requires one
@@ -150,13 +152,8 @@ Rules:
 - if there are no unlistened episodes in the selected podcast's current episode-list scope, hide or disable `Mark all listened`
 - marking listened should communicate that the downloaded file is deleted by default
 - downloaded files are cleaned up through playback completion or manual `mark listened`, not through a separate delete-download control
-- prefer undo feedback over confirmation when the manual listened action has destructive side effects
-- during the 15-second undo window after manual `Mark listened`, keep the file and show the row as a pending listened action
-- if the user clicks `Undo`, the row should return to `Mark listened` and keep its downloaded state
-- if the undo window expires, commit `Mark listened` and remove the downloaded file through backend lifecycle behavior
-- `Mark all listened` should use one bulk undo feedback window; during that window, keep affected downloaded files and previous backend/file state recoverable
-- if the user clicks `Undo` for `Mark all listened`, cancel the pending action for all affected episodes and restore their previous row states, including downloaded state
-- if the undo window expires, commit the affected mark-listened changes and let backend lifecycle behavior delete downloaded files as appropriate
+- manual `Mark listened` and `Mark all listened` are immediate actions and should not show a 15-second undo banner
+- when manual `Mark listened` or `Mark all listened` commits, backend lifecycle behavior deletes downloaded files as appropriate and removes affected episodes from playlist
 - marking unlistened should not imply that a file deleted by an already committed action will be restored
 
 ### Subscription List Defaults

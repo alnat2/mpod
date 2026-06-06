@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/cross/mpod/server/internal/downloads"
+	"github.com/cross/mpod/server/internal/playlist"
 )
 
 var ErrEpisodeNotFound = errors.New("episode not found")
@@ -14,12 +15,14 @@ var ErrEpisodeNotFound = errors.New("episode not found")
 type Actions struct {
 	db        *sql.DB
 	downloads *downloads.Service
+	playlist  *playlist.Service
 }
 
 func NewActions(db *sql.DB, downloads *downloads.Service) *Actions {
 	return &Actions{
 		db:        db,
 		downloads: downloads,
+		playlist:  playlist.NewService(db),
 	}
 }
 
@@ -45,6 +48,12 @@ func (a *Actions) SetListened(ctx context.Context, episodeID int64, listened boo
 	}
 	if rowsAffected == 0 {
 		return ErrEpisodeNotFound
+	}
+
+	if listened {
+		if err := a.playlist.Remove(ctx, episodeID); err != nil {
+			return fmt.Errorf("remove listened episode from playlist: %w", err)
+		}
 	}
 
 	return nil

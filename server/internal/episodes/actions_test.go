@@ -26,6 +26,7 @@ func TestSetListenedDeletesDownloadedFile(t *testing.T) {
 
 	mustExecActions(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
 	mustExecActions(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path, is_listened) VALUES (1, 1, 'ep-1', 'Episode', 'https://example.com/1.mp3', ?, 0)`, downloadPath)
+	mustExecActions(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
 
 	actions := NewActions(db.SQL, downloads.NewService(db.SQL, nil, downloadDir))
 	if err := actions.SetListened(context.Background(), 1, true); err != nil {
@@ -46,6 +47,9 @@ func TestSetListenedDeletesDownloadedFile(t *testing.T) {
 	if _, err := os.Stat(downloadPath); !os.IsNotExist(err) {
 		t.Fatalf("expected download file to be deleted, stat err=%v", err)
 	}
+	if count := playlistCountForEpisode(t, db, 1); count != 0 {
+		t.Fatalf("expected episode to be removed from playlist, got %d playlist rows", count)
+	}
 }
 
 func TestSetListenedFalseDoesNotDeleteDownload(t *testing.T) {
@@ -63,6 +67,7 @@ func TestSetListenedFalseDoesNotDeleteDownload(t *testing.T) {
 
 	mustExecActions(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
 	mustExecActions(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path, is_listened) VALUES (1, 1, 'ep-1', 'Episode', 'https://example.com/1.mp3', ?, 1)`, downloadPath)
+	mustExecActions(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
 
 	actions := NewActions(db.SQL, downloads.NewService(db.SQL, nil, downloadDir))
 	if err := actions.SetListened(context.Background(), 1, false); err != nil {
@@ -83,6 +88,9 @@ func TestSetListenedFalseDoesNotDeleteDownload(t *testing.T) {
 	if _, err := os.Stat(downloadPath); err != nil {
 		t.Fatalf("expected file to remain, stat err=%v", err)
 	}
+	if count := playlistCountForEpisode(t, db, 1); count != 1 {
+		t.Fatalf("expected episode to remain in playlist, got %d playlist rows", count)
+	}
 }
 
 func TestSetListenedKeepsEpisodeUnlistenedWhenDownloadDeletionFails(t *testing.T) {
@@ -100,6 +108,7 @@ func TestSetListenedKeepsEpisodeUnlistenedWhenDownloadDeletionFails(t *testing.T
 
 	mustExecActions(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
 	mustExecActions(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path, is_listened) VALUES (1, 1, 'ep-1', 'Episode', 'https://example.com/1.mp3', ?, 0)`, downloadPath)
+	mustExecActions(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
 
 	actions := NewActions(db.SQL, downloads.NewService(db.SQL, nil, downloadDir))
 	if err := actions.SetListened(context.Background(), 1, true); err == nil {
@@ -116,6 +125,9 @@ func TestSetListenedKeepsEpisodeUnlistenedWhenDownloadDeletionFails(t *testing.T
 	}
 	if !downloadedPath.Valid || downloadedPath.String != downloadPath {
 		t.Fatalf("expected downloaded_path to remain set, got %+v", downloadedPath)
+	}
+	if count := playlistCountForEpisode(t, db, 1); count != 1 {
+		t.Fatalf("expected episode to remain in playlist, got %d playlist rows", count)
 	}
 }
 
@@ -148,4 +160,14 @@ func mustExecActions(t *testing.T, db *storage.DB, query string, args ...any) {
 	if _, err := db.SQL.Exec(query, args...); err != nil {
 		t.Fatalf("Exec %q failed: %v", query, err)
 	}
+}
+
+func playlistCountForEpisode(t *testing.T, db *storage.DB, episodeID int64) int {
+	t.Helper()
+
+	var count int
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM playlist WHERE episode_id = ?`, episodeID).Scan(&count); err != nil {
+		t.Fatalf("query playlist count: %v", err)
+	}
+	return count
 }
