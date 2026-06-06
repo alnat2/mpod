@@ -29,9 +29,9 @@ export function PlaylistQueue({
         className
       )}
     >
-      <div className="flex h-[50px] w-full items-center gap-3 bg-card px-3 text-xs leading-4 text-muted-foreground">
-        <span className="min-w-0 flex-1 truncate">{summary}</span>
-        {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
+      <div className="flex min-h-[50px] w-full items-center gap-3 bg-card px-3 py-2 text-xs leading-4 text-muted-foreground">
+        <div className="min-w-0 flex-1 truncate">{summary}</div>
+        {headerAction ? <div className="min-w-0 shrink-0">{headerAction}</div> : null}
       </div>
       <div
         ref={bodyRef}
