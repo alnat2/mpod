@@ -7,7 +7,7 @@ export type PendingDelayedAction = {
   message: string;
   expiresAt: number;
   episodeIds: number[];
-  kind: "mark-listened" | "mark-unlistened" | "remove-playlist" | "unsubscribe-podcast";
+  kind: "unsubscribe-podcast";
   podcastId?: number;
 };
 
@@ -54,15 +54,18 @@ export function useDelayedActions({
 
       const timer = window.setTimeout(() => {
         timers.current.delete(id);
-        setPendingActions((current) =>
-          current.filter((item) => item.id !== id)
-        );
 
         void commit()
           .then(() => {
+            setPendingActions((current) =>
+              current.filter((item) => item.id !== id)
+            );
             onCommitted?.();
           })
           .catch((error: unknown) => {
+            setPendingActions((current) =>
+              current.filter((item) => item.id !== id)
+            );
             onError?.(error);
           });
       }, delayMs);

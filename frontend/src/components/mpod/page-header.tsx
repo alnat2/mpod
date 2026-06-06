@@ -54,7 +54,7 @@ export function PageHeader({
       {actions.length > 0 ? (
         <div
           className={cn(
-            "flex h-[34px] shrink-0 items-center gap-2 overflow-hidden",
+            "flex h-[34px] min-w-0 shrink items-center gap-2 overflow-hidden",
             isMobile ? "w-full" : isDesktop ? "w-auto" : "w-full md:w-auto"
           )}
         >
@@ -65,14 +65,14 @@ export function PageHeader({
               disabled={action.disabled}
               variant={action.variant ?? "secondary"}
               className={cn(
-                "h-8 justify-center",
+                "h-8 min-w-0 shrink overflow-hidden justify-center",
                 isMobile ? "flex-1" : isDesktop ? "flex-none" : "flex-1 md:flex-none",
                 action.variant === "default" && "shadow-xs"
               )}
               onClick={action.onClick}
             >
               {action.icon}
-              {action.label}
+              <span className="min-w-0 truncate">{action.label}</span>
             </Button>
           ))}
         </div>

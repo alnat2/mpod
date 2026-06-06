@@ -38,11 +38,11 @@ export function BottomNav({
     <nav
       aria-label="Primary navigation"
       className={cn(
-        "flex w-full min-w-[320px] max-w-[320px] shrink-0 items-center justify-center rounded-t-lg bg-background",
+        "flex w-full max-w-[440px] min-w-0 shrink-0 items-center justify-center rounded-t-lg bg-background px-3 pb-[env(safe-area-inset-bottom)]",
         className
       )}
     >
-      <div className="flex h-[65px] items-center justify-center gap-4">
+      <div className="flex h-[65px] w-full min-w-0 items-center justify-center">
         {defaultItems.map((item) => {
           const isActive = item.label === activeItem;
           const content = (
@@ -59,7 +59,7 @@ export function BottomNav({
               </span>
               <span
                 className={cn(
-                  "text-center text-xs leading-4 font-medium tracking-normal",
+                  "w-full truncate text-center text-xs leading-4 font-medium tracking-normal",
                   isActive ? "text-primary" : "text-muted-foreground"
                 )}
               >
@@ -73,7 +73,7 @@ export function BottomNav({
               <Link
                 key={item.label}
                 to={item.href}
-                className="flex h-14 min-w-[60px] flex-col items-center justify-center gap-[3px] py-[3px]"
+                className="flex h-14 min-w-0 flex-1 flex-col items-center justify-center gap-[3px] py-[3px]"
               >
                 {content}
               </Link>
@@ -84,7 +84,7 @@ export function BottomNav({
             <button
               key={item.label}
               type="button"
-              className="flex h-14 min-w-[60px] flex-col items-center justify-center gap-[3px] py-[3px]"
+              className="flex h-14 min-w-0 flex-1 flex-col items-center justify-center gap-[3px] py-[3px]"
               onClick={item.onClick ?? onAdd}
             >
               {content}

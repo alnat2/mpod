@@ -19,7 +19,9 @@ describe("AppShell", () => {
       .getAllByRole("navigation", { name: "Primary navigation" })
       .find((element) => element.classList.contains("md:hidden"));
 
-    expect(main).toHaveClass("pb-[65px]");
+    expect(main).toHaveClass("pb-[calc(65px+env(safe-area-inset-bottom))]");
     expect(nav).toHaveClass("fixed", "bottom-0", "z-40");
+    expect(nav).toHaveClass("max-w-[440px]");
+    expect(nav).not.toHaveClass("max-w-[320px]");
   });
 });

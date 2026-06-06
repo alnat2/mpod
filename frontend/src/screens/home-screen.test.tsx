@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -245,7 +245,7 @@ describe("HomeScreen", () => {
     expect(seekToMock).toHaveBeenCalledWith(1200);
   });
 
-  it("schedules playlist removal from the row action", async () => {
+  it("removes playlist items immediately from the row action", async () => {
     const user = userEvent.setup();
     const removeSpy = vi.spyOn(api.playlist, "remove").mockResolvedValue({ success: true });
 
@@ -256,18 +256,10 @@ describe("HomeScreen", () => {
     });
     await user.click(removeButtons[0]);
 
-    expect(scheduleActionMock).toHaveBeenCalledTimes(1);
-    expect(scheduleActionMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "remove-playlist",
-        episodeIds: [1],
-        message: 'Removed "First queued episode" from playlist.',
-        commit: expect.any(Function),
-      })
-    );
-
-    const scheduledAction = scheduleActionMock.mock.calls[0]?.[0];
-    await scheduledAction.commit();
-    expect(removeSpy).toHaveBeenCalledWith(1);
+    expect(updateQueueMock).toHaveBeenCalledWith([queue[1]]);
+    await waitFor(() => {
+      expect(removeSpy).toHaveBeenCalledWith(1);
+    });
+    expect(scheduleActionMock).not.toHaveBeenCalled();
   });
 });

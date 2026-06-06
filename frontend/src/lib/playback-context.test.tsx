@@ -254,6 +254,16 @@ describe("PlaybackProvider", () => {
       ...episodes.get(1)!,
       duration: 1800,
     });
+    playback.set(1, {
+      episodeId: 1,
+      positionSeconds: 15,
+      lastUpdated: "2026-05-22T08:00:00Z",
+    });
+    playback.set(2, {
+      episodeId: 2,
+      positionSeconds: 42,
+      lastUpdated: "2026-05-22T08:05:00Z",
+    });
 
     vi.spyOn(api.playlist, "list").mockResolvedValue({ items: playlistItems });
     vi.spyOn(api.podcasts, "list").mockResolvedValue({ podcasts });
@@ -384,6 +394,81 @@ describe("PlaybackProvider", () => {
         didSeek: true,
       })
     );
+  });
+
+  it("saves the current playback position immediately when pausing", async () => {
+    const user = userEvent.setup();
+    const updateSpy = vi.spyOn(api.playback, "update");
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+
+    const audio = FakeAudio.instances[0];
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+    audio.currentTime = 222;
+
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+
+    expect(screen.getByTestId("playing")).toHaveTextContent("no");
+    expect(updateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        episodeId: 1,
+        positionSeconds: 222,
+      })
+    );
+  });
+
+  it("refreshes stale backend playback before resuming a paused episode", async () => {
+    const user = userEvent.setup();
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    playback.set(1, {
+      episodeId: 1,
+      positionSeconds: 333,
+      lastUpdated: "2026-05-22T09:30:00Z",
+    });
+
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+
+    const audio = FakeAudio.instances[0];
+    await waitFor(() => {
+      expect(audio.currentTime).toBe(333);
+    });
+    expect(screen.getByTestId("position")).toHaveTextContent("333");
+  });
+
+  it("refreshes stale backend playback when a paused tab becomes visible", async () => {
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    playback.set(1, {
+      episodeId: 1,
+      positionSeconds: 444,
+      lastUpdated: "2026-05-22T09:45:00Z",
+    });
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("position")).toHaveTextContent("444");
+    });
   });
 
   it("uses audio metadata duration when feed metadata is missing", async () => {
