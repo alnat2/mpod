@@ -115,27 +115,27 @@ For each podcast:
 - last checked time where space allows
 - manual refresh action for that podcast where space allows
 
+Podcast artwork fallback:
+- Use `frontend/public/podcast_fallback.png` when a podcast has no feed artwork URL, while the remote artwork is still loading, or after the remote artwork fails to load.
+- Do not show initials or a broken image placeholder for missing podcast artwork.
+
 Default podcast visibility:
-- show podcasts with unlistened episodes by default
-- by default, the selected podcast episode list should also show only unlistened episodes
-- provide a `Show all` action to remove the default podcast filter and show every subscribed podcast, regardless of whether it currently has unlistened episodes
-- when `Show all` is active, the selected podcast episode list should also show all episodes for that podcast, including listened and unlistened episodes
-- when all podcasts are visible, provide `Show unlistened podcasts` to return both the podcast cards and the selected podcast episode list to the default unlistened-only filtering
-- the `Show all` / `Show unlistened podcasts` state is local to the Subscriptions screen and does not need to persist after leaving that screen
-- while `Show all` is active, selecting a different podcast keeps the selected podcast episode list in all-episodes mode until the user returns to `Show unlistened podcasts`
-- the subscriptions page podcast-card container should show a visible area of two card rows
-- if podcast cards do not fit inside that two-row visible area, keep the same filter controls and enable scrolling inside the podcast-card container instead of expanding the visible area or adding a `Show less` collapse action
+- follow the canonical rules in [frontend-decisions.md](frontend-decisions.md#subscription-list-defaults)
+- summary: show podcasts with unlistened episodes by default, provide `Show all` / `Show unlistened`, keep that state local to Subscriptions, and keep the selected episode list in the same visibility mode as the podcast carousel
+- page header metadata displays the current number of subscribed podcasts
 
 States:
 - empty state when no podcasts exist
+- all-caught-up state when subscriptions exist but no podcasts have unlistened episodes in the default visibility mode
 - normal populated state
 - loading state for refresh
 - failed feed fetch state where relevant
 
 UX notes:
 - this is the operational home of the app
-- when empty, the screen should strongly guide toward add podcast or import OPML
-- when empty, do not show refresh all because there are no podcast subscriptions to refresh
+- when no subscriptions exist, the screen should strongly guide toward add podcast or import OPML
+- when subscriptions exist but none have unlistened episodes, the empty content should explain that the user is caught up and can add/import more podcasts or use `Show all` to browse listened episodes
+- when no subscriptions exist, do not show refresh all because there are no podcast subscriptions to refresh
 
 ### 4. Selected Podcast Episodes Area
 
@@ -148,6 +148,7 @@ Routing note:
 
 Content:
 - selected podcast context from the podcast card
+- total/unlistened episode count summary for the selected podcast, for example `123 / 2 episodes`
 - `Mark all listened` action when the selected podcast has unlistened episodes in the current episode-list scope
 - full podcast description on hover where useful
 - episode list
@@ -253,13 +254,7 @@ Content:
 - play or pause
 - progress display and seek affordance
 - skip backward and forward
-- playback speed control with the approved speed options:
-  - `Speed 0.5x`
-  - `Speed 0.75x`
-  - `Speed 1x`
-  - `Speed 1.3x`
-  - `Speed 1.5x`
-  - `Speed 2x`
+- playback speed control using the canonical options in [frontend-decisions.md](frontend-decisions.md#playback-speed-control)
 - optional entry point to expanded controls if later approved
 
 Behavior:
@@ -344,11 +339,12 @@ A simple route map should be enough:
 
 - `/setup`
 - `/login`
-- `/podcasts`
+- `/subscriptions`
+- `/home`
 - `/settings`
 
-The Home queue, player bar, and dialogs should live inside the authenticated app shell rather than as separate routes.
-The selected podcast episode list should live inside `/podcasts` for now rather than a separate `/podcasts/:podcastId` route.
+Dialogs should live inside the authenticated app shell rather than as separate routes.
+The selected podcast episode list should live inside `/subscriptions` for now rather than a separate `/subscriptions/:podcastId` route.
 
 ## Screen Priorities For Frontend Implementation
 

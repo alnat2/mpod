@@ -1002,9 +1002,15 @@ Optional:
 - Default proxy runtime values are `SOCKS5_HOST=192.168.0.222` and `SOCKS5_PORT=1080`.
 - If proxy variables are provided and proxy usage is enabled in Settings, they are used for:
   - RSS feed fetching
+  - OPML import feed fetching
+  - manual podcast refresh
+  - scheduled podcast refresh
   - episode streaming
   - episode downloads
-- If proxy variables are not provided, or if proxy usage is disabled in Settings, network requests use direct connection.
+  - podcast artwork proxying
+  - proxy runtime identity lookup
+- When proxy usage is enabled, all backend outbound HTTP network operations must use the configured proxy path.
+- If proxy variables are not provided, or if proxy usage is disabled in Settings, all backend outbound HTTP network operations use direct connection.
 - The Settings screen must provide a proxy on/off switch when proxy configuration is available.
 - The proxy switch controls whether configured proxy settings are used; it does not edit proxy host, port, username, or password.
 - Partial proxy configuration should be treated as invalid if required proxy host/port values are incomplete.
@@ -1073,6 +1079,7 @@ The initial schema should include a few fields and tables beyond the PRD so the 
 - The backend may keep raw feed-provided episode HTML in storage, but the frontend must not be required to trust or sanitize raw HTML itself.
 - `podcasts.description` stores feed-level podcast description when available.
 - `podcasts.image_url` stores feed artwork URL when available.
+- The frontend must display `frontend/public/podcast_fallback.png` when podcast artwork is missing, still loading, or fails to load.
 - `settings` must persist `daily_refresh_time`.
 - `settings` must persist `proxy_enabled`.
 - Scheduler state persistence must store enough information to expose:
@@ -1094,7 +1101,7 @@ The backend should start with explicit schema management and startup reconciliat
 - The project must use a real migration system from day one.
 - Automatic ORM schema sync must not be used as the production schema mechanism.
 - Schema versioning must be persisted in the database.
-- Migrations should live under `server/src/db/migrations/`.
+- Migrations should live under `server/migrations/`.
 - On startup, the app should reconcile downloaded file state against the filesystem.
 
 ### Startup Reconciliation
