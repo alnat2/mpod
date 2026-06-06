@@ -421,9 +421,24 @@ describe("PlaybackProvider", () => {
     const audio = FakeAudio.instances[0];
     expect(audio.playbackRate).toBe(1.3);
 
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+
+    audio.currentTime = 120;
+    audio.emit("timeupdate");
+    await waitFor(() => {
+      expect(screen.getByTestId("position")).toHaveTextContent("120");
+    });
+
     await user.click(screen.getByRole("button", { name: "Speed 2x" }));
 
     expect(screen.getByTestId("speed")).toHaveTextContent("Speed 2x");
+    expect(FakeAudio.instances).toHaveLength(1);
+    expect(audio.currentTime).toBe(120);
+    expect(audio.playbackRate).toBe(2);
+    expect(screen.getByTestId("position")).toHaveTextContent("120");
     expect(updateSettingsSpy).toHaveBeenCalledWith({ playbackSpeed: "Speed 2x" });
   });
 

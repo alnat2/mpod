@@ -207,6 +207,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const currentEpisodeRef = useRef<QueueEpisode | null>(null);
   const currentEpisodeDurationRef = useRef(0);
   const pendingPlayEpisodeIdRef = useRef<number | null>(null);
+  const speedLabelRef = useRef<PlaybackSpeedLabel>(speedLabel);
   const currentEpisodeId = currentEpisode?.id;
   const currentAudioDuration =
     audioDuration && audioDuration.episodeId === currentEpisodeId
@@ -283,6 +284,10 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   }, [queue]);
 
   useEffect(() => {
+    speedLabelRef.current = speedLabel;
+  }, [speedLabel]);
+
+  useEffect(() => {
     currentEpisodeRef.current = currentEpisode;
   }, [currentEpisode]);
 
@@ -342,7 +347,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         primeAudioSource(
           audio,
           nextEpisode,
-          speedLabel,
+          speedLabelRef.current,
           nextPosition,
           setPositionSeconds,
           () => {
@@ -395,7 +400,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       audio.src = "";
       sourcePrimedRef.current = false;
     };
-  }, [commitPlayback, loadQueue, speedLabel]);
+  }, [commitPlayback, loadQueue]);
 
   // Initial load
   useEffect(() => {
@@ -474,7 +479,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       primeAudioSource(
         audio,
         currentEpisode,
-        speedLabel,
+        speedLabelRef.current,
         initialPos,
         setPositionSeconds,
         () => {
@@ -489,7 +494,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         setPlaybackError(describeAudioError(error));
       });
     }
-  }, [currentEpisode, playing, speedLabel]);
+  }, [currentEpisode, playing]);
 
   // Sync playing state to audio element
   useEffect(() => {
