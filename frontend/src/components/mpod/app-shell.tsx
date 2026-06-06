@@ -32,7 +32,7 @@ export function AppShell({
   return (
     <div
       className={cn(
-        "flex h-dvh w-full max-w-[100vw] min-w-0 flex-col items-center overflow-hidden overflow-x-hidden bg-background px-5 md:h-full md:px-6 md:pb-8 xl:px-20",
+        "flex h-dvh w-full min-w-0 flex-col items-center overflow-hidden bg-background px-5 md:h-full md:px-6 md:pb-8 xl:px-20",
         className,
       )}
     >
