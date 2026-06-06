@@ -25,11 +25,11 @@ export function PlaylistQueue({
   return (
     <Card
       className={cn(
-        "w-full gap-0 overflow-hidden rounded-2xl py-0 md:rounded-md",
+        "flex flex-col w-full gap-0 overflow-hidden rounded-2xl py-0 md:rounded-md",
         className
       )}
     >
-      <div className="flex min-h-[50px] w-full items-center gap-3 bg-card px-3 py-2 text-xs leading-4 text-muted-foreground">
+      <div className="flex min-h-[50px] shrink-0 w-full items-center gap-3 bg-card px-3 py-2 text-xs leading-4 text-muted-foreground">
         <div className="min-w-0 flex-1 truncate">{summary}</div>
         {headerAction ? <div className="min-w-0 shrink-0">{headerAction}</div> : null}
       </div>
