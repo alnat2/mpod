@@ -1,12 +1,18 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 import { AuthCard } from "./auth-card";
+import {
+  mobileStoryGlobals,
+  mobileStoryParameters,
+} from "./storybook-viewport";
 import { MobileComponentFrame } from "./storybook-mobile";
 
 const meta = {
   title: "mpod/mobile/AuthCard",
   component: AuthCard,
   tags: ["autodocs"],
+  globals: mobileStoryGlobals,
+  parameters: mobileStoryParameters,
   decorators: [
     (Story) => (
       <MobileComponentFrame>

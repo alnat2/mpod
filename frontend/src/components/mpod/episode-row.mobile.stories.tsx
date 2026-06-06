@@ -4,12 +4,18 @@ import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
 
 import { EpisodeRow } from "./episode-row";
 import { featuredEpisode } from "./story-fixtures";
+import {
+  mobileStoryGlobals,
+  mobileStoryParameters,
+} from "./storybook-viewport";
 import { MobileComponentFrame } from "./storybook-mobile";
 
 const meta = {
   title: "mpod/mobile/EpisodeRow",
   component: EpisodeRow,
   tags: ["autodocs"],
+  globals: mobileStoryGlobals,
+  parameters: mobileStoryParameters,
   args: {
     layout: "mobile",
     title: featuredEpisode.title,
