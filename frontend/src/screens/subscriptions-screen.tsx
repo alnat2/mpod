@@ -142,6 +142,7 @@ export function SubscriptionsScreen() {
     DEFAULT_EPISODE_VIEWPORT_HEIGHT
   );
   const episodeListRef = useRef<HTMLDivElement | null>(null);
+  const loadedOnceRef = useRef(false);
   const podcastExitTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(
     new Set()
   );
@@ -154,7 +155,10 @@ export function SubscriptionsScreen() {
     let cancelled = false;
 
     async function loadSubscriptions() {
-      setLoading(true);
+      const showLoadingState = !loadedOnceRef.current;
+      if (showLoadingState) {
+        setLoading(true);
+      }
       setError(null);
 
       try {
@@ -177,6 +181,7 @@ export function SubscriptionsScreen() {
         }));
 
         if (!cancelled) {
+          loadedOnceRef.current = true;
           setPodcasts(nextPodcasts);
           setSelectedPodcastId((current) => current ?? nextPodcasts[0]?.id ?? null);
         }
@@ -185,7 +190,7 @@ export function SubscriptionsScreen() {
           setError(getErrorMessage(caught));
         }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && showLoadingState) {
           setLoading(false);
         }
       }
@@ -515,7 +520,13 @@ export function SubscriptionsScreen() {
       current.map((podcast) => ({
         ...podcast,
         episodes: podcast.episodes.map((episode) =>
-          episodeIds.has(episode.id) ? { ...episode, isListened } : episode
+          episodeIds.has(episode.id)
+            ? {
+                ...episode,
+                isListened,
+                inPlaylist: isListened ? false : episode.inPlaylist,
+              }
+            : episode
         ),
       }))
     );

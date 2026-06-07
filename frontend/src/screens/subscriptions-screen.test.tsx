@@ -330,6 +330,33 @@ describe("SubscriptionsScreen", () => {
     });
   });
 
+  it("keeps the page content visible while reconciling after mark listened", async () => {
+    const user = userEvent.setup();
+    const listSpy = vi.spyOn(api.podcasts, "list");
+    listSpy.mockResolvedValueOnce({ podcasts: [podcast] });
+    listSpy.mockReturnValueOnce(new Promise(() => {}));
+    const setListenedSpy = vi.spyOn(api.episodes, "setListened").mockResolvedValue({
+      episode: {
+        id: baseEpisode.id,
+        isListened: true,
+      },
+    });
+
+    render(<SubscriptionsScreen />);
+
+    await user.click(await screen.findByRole("button", { name: "Mark as listened" }));
+
+    await waitFor(() => {
+      expect(setListenedSpy).toHaveBeenCalledWith(baseEpisode.id, true);
+    });
+    await waitFor(() => {
+      expect(listSpy).toHaveBeenCalledTimes(2);
+    });
+
+    expect(screen.queryByText("Loading subscriptions")).not.toBeInTheDocument();
+    expect(screen.getByText("No unlistened podcasts")).toBeInTheDocument();
+  });
+
   it("shows the no-subscriptions empty state without refresh controls", async () => {
     vi.spyOn(api.podcasts, "list").mockResolvedValue({ podcasts: [] });
     const episodesSpy = vi.spyOn(api.podcasts, "episodes");
