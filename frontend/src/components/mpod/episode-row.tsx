@@ -204,7 +204,7 @@ export function EpisodeRow({
   return (
     <div
       className={cn(
-        "flex w-full shrink-0 items-center border border-border bg-card text-foreground",
+        "flex w-full shrink-0 items-center border-t border-border bg-card text-foreground",
         isMobile
           ? "h-[76px] gap-2 px-2"
           : isDesktop
