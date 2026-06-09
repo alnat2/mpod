@@ -32,6 +32,7 @@ Before implementing from Figma, read:
 - If you have a design or implementation idea but the source is unavailable or ambiguous, stop and ask first: `I want to do X and Y. What do you say?`
 - Never continue from memory, prior screenshots, or inferred design intent unless the user explicitly approves that fallback for the current task.
 - Do not modify source UI library components. In code, shadcn-generated files under `frontend/src/components/ui/` are local project primitives and may be adjusted only to match project configuration, accessibility, or generated-component integration needs.
+- Stay in the frontend domain. If a visible frontend symptom appears to be caused by backend API behavior, backend storage, backend proxying, database state, or file lifecycle behavior, do not patch backend code from this skill. Write the suspected backend issue in chat and wait for a backend task/chat to handle it.
 
 ## Required Workflow
 

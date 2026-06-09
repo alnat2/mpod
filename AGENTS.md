@@ -42,6 +42,7 @@ If this file conflicts with those documents, follow:
 - If required code, docs, assets, or local files cannot be accessed for a coding task, stop and say exactly what access is missing.
 - If you have an implementation or design idea but the source material is unavailable or ambiguous, stop and ask before acting. State the proposed action in plain language, for example: `I want to do X and Y. What do you say?`
 - Do not invent behavior, UI, layout, labels, icons, colors, spacing, or data contracts to fill gaps.
+- Respect domain ownership. A frontend task should change frontend code and frontend-owned docs only. A backend task should change backend code and backend-owned docs only. If investigation finds that the likely bug is outside the current task domain, do not implement the cross-domain fix; report the finding in chat and wait for the appropriate backend or frontend task.
 - When a task is complete, simply state that the task is finished. Describe what was done only if the user specifically asks for that detail.
 
 ## Product Constraints
