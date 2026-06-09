@@ -1312,6 +1312,31 @@ func TestEpisodeAudioForwardsRangeHeaderToRemoteAudio(t *testing.T) {
 	}
 }
 
+func TestEpisodeAudioRejectsNonAudioRemoteResponse(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return routerBinaryResponse("text/html; charset=utf-8", []byte("<html>not audio</html>")), nil
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+	seedEpisode(t, db, 1, 1)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/episodes/1/audio", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadGateway {
+		t.Fatalf("expected 502, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Audio source is not playable") {
+		t.Fatalf("expected playable audio error, got %s", rec.Body.String())
+	}
+}
+
 func TestAPIFlowSubscribeDownloadPlaylistAndCompletePlayback(t *testing.T) {
 	downloadsDir := t.TempDir()
 	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {

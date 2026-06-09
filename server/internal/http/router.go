@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -19,6 +20,7 @@ import (
 	"github.com/cross/mpod/server/internal/config"
 	"github.com/cross/mpod/server/internal/downloads"
 	"github.com/cross/mpod/server/internal/episodes"
+	"github.com/cross/mpod/server/internal/media"
 	"github.com/cross/mpod/server/internal/playback"
 	"github.com/cross/mpod/server/internal/playlist"
 	"github.com/cross/mpod/server/internal/podcasts"
@@ -871,6 +873,19 @@ func (r *Router) handleEpisodeAudio(w nethttp.ResponseWriter, req *nethttp.Reque
 	}
 
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if !media.IsPlayableContentType(contentType) {
+		r.writeAPIError(w, nethttp.StatusBadGateway, "AUDIO_LOAD_FAILED", "Audio source is not playable")
+		return
+	}
+	prefix, err := media.ReadBodyPrefix(resp.Body)
+	if err != nil {
+		r.writeAPIError(w, nethttp.StatusBadGateway, "AUDIO_LOAD_FAILED", "Failed to load audio")
+		return
+	}
+	if media.LooksLikeNonPlayableBody(prefix) {
+		r.writeAPIError(w, nethttp.StatusBadGateway, "AUDIO_LOAD_FAILED", "Audio source is not playable")
+		return
+	}
 	if contentType != "" {
 		w.Header().Set("Content-Type", contentType)
 	}
@@ -888,7 +903,7 @@ func (r *Router) handleEpisodeAudio(w nethttp.ResponseWriter, req *nethttp.Reque
 	}
 	w.Header().Set("Cache-Control", "private, max-age=0")
 	w.WriteHeader(resp.StatusCode)
-	if _, err := io.Copy(w, resp.Body); err != nil {
+	if _, err := io.Copy(w, io.MultiReader(bytes.NewReader(prefix), resp.Body)); err != nil {
 		r.logger.Printf("copy episode audio failed: %v", err)
 	}
 }

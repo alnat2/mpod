@@ -1,6 +1,7 @@
 package downloads
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -13,6 +14,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/cross/mpod/server/internal/media"
 )
 
 var (
@@ -76,6 +79,16 @@ func (s *Service) Download(ctx context.Context, episodeID int64) (EpisodeDownloa
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return EpisodeDownload{}, fmt.Errorf("download audio status: %s", resp.Status)
 	}
+	if !media.IsPlayableContentType(resp.Header.Get("Content-Type")) {
+		return EpisodeDownload{}, fmt.Errorf("download audio content type: %s", resp.Header.Get("Content-Type"))
+	}
+	prefix, err := media.ReadBodyPrefix(resp.Body)
+	if err != nil {
+		return EpisodeDownload{}, fmt.Errorf("read audio prefix: %w", err)
+	}
+	if media.LooksLikeNonPlayableBody(prefix) {
+		return EpisodeDownload{}, fmt.Errorf("download audio body is not playable")
+	}
 
 	targetDir := filepath.Join(s.downloadsDir, fmt.Sprintf("%d", meta.PodcastID))
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
@@ -92,7 +105,7 @@ func (s *Service) Download(ctx context.Context, episodeID int64) (EpisodeDownloa
 
 	copyErr := func() error {
 		defer file.Close()
-		_, err := io.Copy(file, resp.Body)
+		_, err := io.Copy(file, io.MultiReader(bytes.NewReader(prefix), resp.Body))
 		return err
 	}()
 	if copyErr != nil {
@@ -162,10 +175,34 @@ func (s *Service) GetLocalPath(ctx context.Context, episodeID int64) (string, er
 	}
 	if meta.DownloadedPath.Valid && meta.DownloadedPath.String != "" {
 		if _, err := os.Stat(meta.DownloadedPath.String); err == nil {
+			playable, err := localFileLooksPlayable(meta.DownloadedPath.String)
+			if err != nil {
+				return "", fmt.Errorf("check local audio: %w", err)
+			}
+			if !playable {
+				if _, err := s.db.ExecContext(ctx, `UPDATE episodes SET downloaded_path = NULL WHERE id = ?`, episodeID); err != nil {
+					return "", fmt.Errorf("clear non-playable downloaded_path: %w", err)
+				}
+				return "", nil
+			}
 			return meta.DownloadedPath.String, nil
 		}
 	}
 	return "", nil
+}
+
+func localFileLooksPlayable(path string) (bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+
+	prefix, err := media.ReadBodyPrefix(file)
+	if err != nil {
+		return false, err
+	}
+	return !media.LooksLikeNonPlayableBody(prefix), nil
 }
 
 var invalidFilenameChars = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)

@@ -103,6 +103,36 @@ func TestDownloadRejectsServerFailure(t *testing.T) {
 	}
 }
 
+func TestDownloadRejectsNonAudioResponse(t *testing.T) {
+	db := newDownloadTestDB(t)
+	defer db.Close()
+
+	mustExecDownload(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecDownload(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', ?)`, "https://example.com/ep1.mp3")
+
+	service := NewService(db.SQL, newDownloadTestClient(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader("<html>not audio</html>")),
+			Header: http.Header{
+				"Content-Type": []string{"text/html; charset=utf-8"},
+			},
+		}, nil
+	}), t.TempDir())
+	if _, err := service.Download(context.Background(), 1); err == nil {
+		t.Fatalf("expected download failure for non-audio response")
+	}
+
+	var downloadedPath sql.NullString
+	if err := db.SQL.QueryRow(`SELECT downloaded_path FROM episodes WHERE id = 1`).Scan(&downloadedPath); err != nil {
+		t.Fatalf("query downloaded_path: %v", err)
+	}
+	if downloadedPath.Valid {
+		t.Fatalf("expected downloaded_path to remain empty")
+	}
+}
+
 func TestDownloadMissingEpisode(t *testing.T) {
 	db := newDownloadTestDB(t)
 	defer db.Close()
