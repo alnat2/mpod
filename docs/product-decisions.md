@@ -605,6 +605,8 @@ Response:
 {
   "scheduler": {
     "state": "idle",
+    "timezone": "Europe/Moscow",
+    "lastTrigger": "scheduled",
     "lastRunAt": "2026-04-21T03:00:00Z",
     "lastSuccessAt": "2026-04-21T03:00:12Z"
   }
@@ -614,6 +616,9 @@ Response:
 Rules:
 - this status represents the most recent global feed refresh run
 - both the daily scheduled refresh and manual `Refresh all` update the same status
+- `timezone` reflects the application timezone used to interpret `dailyRefreshTime`
+- `lastTrigger` identifies whether the most recent run was `scheduled` or `manual`
+- `lastRunAt`, `lastSuccessAt`, and `lastFailureAt` are returned as UTC timestamps in RFC3339 format
 
 ### Notes
 - The API is intentionally small for MVP
@@ -789,6 +794,7 @@ mpod uses a single built-in scheduler in the backend process to refresh podcast 
 - The scheduler uses the application timezone.
 - The application timezone is taken from the `TZ` environment variable.
 - The user-defined refresh time is interpreted in that timezone.
+- The backend must load and use the configured timezone explicitly for scheduler execution instead of relying on the container's local clock.
 - Stored timestamps may remain in UTC internally, but scheduled execution must follow `TZ`.
 
 ### Daily Run Rules
@@ -829,6 +835,8 @@ Global scheduler/job state:
 - `failed`
 
 Suggested tracked fields:
+- `timezone`
+- `lastTrigger`
 - `lastRunAt`
 - `lastSuccessAt`
 - `lastFailureAt`
@@ -1018,6 +1026,7 @@ Optional:
 ### Timezone Behavior
 - Runtime timezone is controlled by `TZ`.
 - Scheduler interprets `DAILY_REFRESH_TIME` using `TZ`.
+- Scheduler status may expose the configured timezone for UI clarity.
 - Stored timestamps may still use UTC internally.
 
 ### Docker Compose Vision

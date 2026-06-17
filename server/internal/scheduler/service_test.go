@@ -18,9 +18,12 @@ func TestRunOnceSuccessUpdatesStatus(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
+	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
 		return nil
-	})
+	}, "UTC")
+	if err != nil {
+		t.Fatalf("NewService failed: %v", err)
+	}
 
 	if err := service.RunOnce(context.Background()); err != nil {
 		t.Fatalf("RunOnce failed: %v", err)
@@ -36,15 +39,24 @@ func TestRunOnceSuccessUpdatesStatus(t *testing.T) {
 	if status.LastRunAt == nil || status.LastSuccessAt == nil {
 		t.Fatalf("expected lastRunAt and lastSuccessAt to be set")
 	}
+	if status.LastTrigger == nil || *status.LastTrigger != triggerManual {
+		t.Fatalf("expected manual trigger, got %+v", status.LastTrigger)
+	}
+	if status.Timezone != "UTC" {
+		t.Fatalf("expected UTC timezone, got %q", status.Timezone)
+	}
 }
 
 func TestRunOnceFailureUpdatesStatus(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
+	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
 		return errors.New("refresh failed")
-	})
+	}, "UTC")
+	if err != nil {
+		t.Fatalf("NewService failed: %v", err)
+	}
 
 	if err := service.RunOnce(context.Background()); err == nil {
 		t.Fatalf("expected RunOnce to return error")
@@ -68,11 +80,14 @@ func TestRunNowRejectsOverlappingRuns(t *testing.T) {
 
 	started := make(chan struct{}, 1)
 	release := make(chan struct{})
-	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
+	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
 		started <- struct{}{}
 		<-release
 		return nil
-	})
+	}, "UTC")
+	if err != nil {
+		t.Fatalf("NewService failed: %v", err)
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -121,10 +136,13 @@ func TestMaybeRunSkipsOutsideConfiguredWindow(t *testing.T) {
 	}
 
 	var called atomic.Int32
-	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
+	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
 		called.Add(1)
 		return nil
-	})
+	}, "UTC")
+	if err != nil {
+		t.Fatalf("NewService failed: %v", err)
+	}
 	service.maybeRun(context.Background())
 
 	if called.Load() != 0 {
@@ -136,20 +154,22 @@ func TestMaybeRunStartsOnlyOncePerDay(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	now := time.Now().Format("15:04")
-	if _, err := db.SQL.Exec(`UPDATE settings SET value = ? WHERE key = 'daily_refresh_time'`, now); err != nil {
-		t.Fatalf("update settings: %v", err)
-	}
-
 	started := make(chan struct{}, 1)
 	release := make(chan struct{})
 	var called atomic.Int32
-	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
+	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
 		called.Add(1)
 		started <- struct{}{}
 		<-release
 		return nil
-	})
+	}, "UTC")
+	if err != nil {
+		t.Fatalf("NewService failed: %v", err)
+	}
+	now := service.now().In(service.location).Format("15:04")
+	if _, err := db.SQL.Exec(`UPDATE settings SET value = ? WHERE key = 'daily_refresh_time'`, now); err != nil {
+		t.Fatalf("update settings: %v", err)
+	}
 
 	service.maybeRun(context.Background())
 	select {
@@ -171,16 +191,18 @@ func TestMaybeRunDoesNotRunAgainAfterSuccessfulRunSameDay(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	now := time.Now().Format("15:04")
+	var called atomic.Int32
+	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
+		called.Add(1)
+		return nil
+	}, "UTC")
+	if err != nil {
+		t.Fatalf("NewService failed: %v", err)
+	}
+	now := service.now().In(service.location).Format("15:04")
 	if _, err := db.SQL.Exec(`UPDATE settings SET value = ? WHERE key = 'daily_refresh_time'`, now); err != nil {
 		t.Fatalf("update settings: %v", err)
 	}
-
-	var called atomic.Int32
-	service := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
-		called.Add(1)
-		return nil
-	})
 
 	service.maybeRun(context.Background())
 	waitForSchedulerIdle(t, service)
@@ -190,6 +212,45 @@ func TestMaybeRunDoesNotRunAgainAfterSuccessfulRunSameDay(t *testing.T) {
 
 	if called.Load() != 1 {
 		t.Fatalf("expected successful scheduled run to happen once per day, got %d", called.Load())
+	}
+}
+
+func TestMaybeRunUsesConfiguredTimezone(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	if _, err := db.SQL.Exec(`UPDATE settings SET value = '04:00' WHERE key = 'daily_refresh_time'`); err != nil {
+		t.Fatalf("update settings: %v", err)
+	}
+
+	var called atomic.Int32
+	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
+		called.Add(1)
+		return nil
+	}, "Europe/Moscow")
+	if err != nil {
+		t.Fatalf("NewService failed: %v", err)
+	}
+	service.now = func() time.Time {
+		return time.Date(2026, time.June, 17, 1, 0, 0, 0, time.UTC)
+	}
+
+	service.maybeRun(context.Background())
+	waitForSchedulerIdle(t, service)
+
+	if called.Load() != 1 {
+		t.Fatalf("expected scheduled run in configured timezone, got %d", called.Load())
+	}
+
+	status, err := service.GetStatus(context.Background())
+	if err != nil {
+		t.Fatalf("GetStatus failed: %v", err)
+	}
+	if status.LastTrigger == nil || *status.LastTrigger != triggerScheduled {
+		t.Fatalf("expected scheduled trigger, got %+v", status.LastTrigger)
+	}
+	if status.Timezone != "Europe/Moscow" {
+		t.Fatalf("expected Europe/Moscow timezone, got %q", status.Timezone)
 	}
 }
 

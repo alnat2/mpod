@@ -736,6 +736,9 @@ func TestPodcastsRefreshAllRefreshesSubscribedPodcasts(t *testing.T) {
 	if !strings.Contains(jobsRec.Body.String(), `"lastRunAt"`) {
 		t.Fatalf("expected refresh-all to record lastRunAt, got %s", jobsRec.Body.String())
 	}
+	if !strings.Contains(jobsRec.Body.String(), `"lastTrigger":"manual"`) {
+		t.Fatalf("expected refresh-all to record manual trigger, got %s", jobsRec.Body.String())
+	}
 }
 
 func TestPodcastRefreshRejectsConcurrentRefresh(t *testing.T) {
@@ -1682,6 +1685,9 @@ func TestSettingsAndJobsEndpoints(t *testing.T) {
 	if !strings.Contains(jobsRec.Body.String(), `"state":"idle"`) {
 		t.Fatalf("expected idle scheduler state, got %s", jobsRec.Body.String())
 	}
+	if !strings.Contains(jobsRec.Body.String(), `"timezone":"UTC"`) {
+		t.Fatalf("expected UTC timezone in scheduler payload, got %s", jobsRec.Body.String())
+	}
 }
 
 func TestProxyStatusEndpointReturnsOffWhenDisabled(t *testing.T) {
@@ -2152,12 +2158,16 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 	downloadsService := downloads.NewService(appDB.SQL, client, cfg.DownloadsDir)
 	playlistActions := playlist.NewActions(appDB.SQL, downloadsService)
 	podcastsService := podcasts.NewService(appDB.SQL, client)
-	schedulerService := scheduler.NewService(
+	schedulerService, err := scheduler.NewService(
 		appDB.SQL,
 		log.New(io.Discard, "", 0),
 		settingsService,
 		podcastsService.RefreshAll,
+		cfg.TZ,
 	)
+	if err != nil {
+		t.Fatalf("scheduler.NewService failed: %v", err)
+	}
 
 	r := &Router{
 		logger:          log.New(io.Discard, "", 0),

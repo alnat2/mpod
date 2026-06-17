@@ -9,11 +9,17 @@ import (
 	"strings"
 	"sync"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/cross/mpod/server/internal/settings"
 )
 
 const jobName = "daily_refresh"
+
+const (
+	triggerManual    = "manual"
+	triggerScheduled = "scheduled"
+)
 
 var ErrAlreadyRunning = errors.New("scheduler already running")
 
@@ -24,6 +30,9 @@ type Service struct {
 	logger     *log.Logger
 	settings   *settings.Service
 	refreshAll RefreshAllFunc
+	location   *time.Location
+	timezone   string
+	now        func() time.Time
 	mu         sync.Mutex
 	running    bool
 	lastDayKey string
@@ -31,14 +40,28 @@ type Service struct {
 
 type Status struct {
 	State         string     `json:"state"`
+	Timezone      string     `json:"timezone"`
+	LastTrigger   *string    `json:"lastTrigger,omitempty"`
 	LastRunAt     *time.Time `json:"lastRunAt"`
 	LastSuccessAt *time.Time `json:"lastSuccessAt"`
 	LastFailureAt *time.Time `json:"lastFailureAt,omitempty"`
 	LastError     *string    `json:"lastError,omitempty"`
 }
 
-func NewService(db *sql.DB, logger *log.Logger, settings *settings.Service, refreshAll RefreshAllFunc) *Service {
-	return &Service{db: db, logger: logger, settings: settings, refreshAll: refreshAll}
+func NewService(db *sql.DB, logger *log.Logger, settings *settings.Service, refreshAll RefreshAllFunc, timezone string) (*Service, error) {
+	location, canonicalTimezone, err := loadLocation(timezone)
+	if err != nil {
+		return nil, err
+	}
+	return &Service{
+		db:         db,
+		logger:     logger,
+		settings:   settings,
+		refreshAll: refreshAll,
+		location:   location,
+		timezone:   canonicalTimezone,
+		now:        time.Now,
+	}, nil
 }
 
 func (s *Service) Start(ctx context.Context) {
@@ -57,20 +80,24 @@ func (s *Service) Start(ctx context.Context) {
 }
 
 func (s *Service) RunOnce(ctx context.Context) error {
-	startedAt := time.Now().UTC()
-	if err := s.setState(ctx, "running", &startedAt, nil, nil, nil); err != nil {
+	return s.runOnceWithTrigger(ctx, triggerManual)
+}
+
+func (s *Service) runOnceWithTrigger(ctx context.Context, trigger string) error {
+	startedAt := s.now().UTC()
+	if err := s.setState(ctx, "running", trigger, &startedAt, nil, nil, nil); err != nil {
 		return err
 	}
 	if err := s.refreshAll(ctx); err != nil {
-		failedAt := time.Now().UTC()
+		failedAt := s.now().UTC()
 		message := err.Error()
-		if updateErr := s.setState(ctx, "failed", &startedAt, nil, &failedAt, &message); updateErr != nil {
+		if updateErr := s.setState(ctx, "failed", trigger, &startedAt, nil, &failedAt, &message); updateErr != nil {
 			return updateErr
 		}
 		return err
 	}
-	succeededAt := time.Now().UTC()
-	return s.setState(ctx, "completed", &startedAt, &succeededAt, nil, nil)
+	succeededAt := s.now().UTC()
+	return s.setState(ctx, "completed", trigger, &startedAt, &succeededAt, nil, nil)
 }
 
 func (s *Service) RunNow(ctx context.Context) error {
@@ -92,24 +119,30 @@ func (s *Service) RunNow(ctx context.Context) error {
 }
 
 func (s *Service) GetStatus(ctx context.Context) (Status, error) {
-	var status Status
+	status := Status{Timezone: s.timezone}
 	var lastRun sql.NullTime
 	var lastSuccess sql.NullTime
 	var lastFailure sql.NullTime
 	var lastError sql.NullString
+	var lastTrigger sql.NullString
 
 	err := s.db.QueryRowContext(ctx, `
-		SELECT state, last_run_at, last_success_at, last_failure_at, last_error
+		SELECT state, last_trigger, last_run_at, last_success_at, last_failure_at, last_error
 		FROM scheduler_state
 		WHERE job_name = ?
-	`, jobName).Scan(&status.State, &lastRun, &lastSuccess, &lastFailure, &lastError)
+	`, jobName).Scan(&status.State, &lastTrigger, &lastRun, &lastSuccess, &lastFailure, &lastError)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return Status{State: "idle"}, nil
+			status.State = "idle"
+			return status, nil
 		}
 		return Status{}, fmt.Errorf("load scheduler status: %w", err)
 	}
 
+	if lastTrigger.Valid && strings.TrimSpace(lastTrigger.String) != "" {
+		value := lastTrigger.String
+		status.LastTrigger = &value
+	}
 	if lastRun.Valid {
 		t := lastRun.Time.UTC()
 		status.LastRunAt = &t
@@ -136,7 +169,7 @@ func (s *Service) maybeRun(ctx context.Context) {
 		return
 	}
 
-	now := time.Now()
+	now := s.now().In(s.location)
 	hour, minute, err := parseClock(values.DailyRefreshTime)
 	if err != nil {
 		s.logger.Printf("scheduler invalid refresh time %q: %v", values.DailyRefreshTime, err)
@@ -162,27 +195,40 @@ func (s *Service) maybeRun(ctx context.Context) {
 			s.running = false
 			s.mu.Unlock()
 		}()
-		if err := s.RunOnce(context.Background()); err != nil {
+		if err := s.runOnceWithTrigger(context.Background(), triggerScheduled); err != nil {
 			s.logger.Printf("scheduler run failed: %v", err)
 		}
 	}()
 }
 
-func (s *Service) setState(ctx context.Context, state string, lastRunAt, lastSuccessAt, lastFailureAt *time.Time, lastError *string) error {
+func (s *Service) setState(ctx context.Context, state, trigger string, lastRunAt, lastSuccessAt, lastFailureAt *time.Time, lastError *string) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO scheduler_state (job_name, state, last_run_at, last_success_at, last_failure_at, last_error)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO scheduler_state (job_name, state, last_trigger, last_run_at, last_success_at, last_failure_at, last_error)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (job_name) DO UPDATE SET
 			state = excluded.state,
+			last_trigger = excluded.last_trigger,
 			last_run_at = excluded.last_run_at,
 			last_success_at = COALESCE(excluded.last_success_at, scheduler_state.last_success_at),
 			last_failure_at = excluded.last_failure_at,
 			last_error = excluded.last_error
-	`, jobName, state, lastRunAt, lastSuccessAt, lastFailureAt, lastError)
+	`, jobName, state, trigger, lastRunAt, lastSuccessAt, lastFailureAt, lastError)
 	if err != nil {
 		return fmt.Errorf("save scheduler state: %w", err)
 	}
 	return nil
+}
+
+func loadLocation(timezone string) (*time.Location, string, error) {
+	trimmed := strings.TrimSpace(timezone)
+	if trimmed == "" {
+		return time.UTC, "UTC", nil
+	}
+	location, err := time.LoadLocation(trimmed)
+	if err != nil {
+		return nil, "", fmt.Errorf("load scheduler timezone %q: %w", trimmed, err)
+	}
+	return location, location.String(), nil
 }
 
 func parseClock(value string) (int, int, error) {

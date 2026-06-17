@@ -57,7 +57,11 @@ func New(logger *log.Logger) (*App, error) {
 		return nil, err
 	}
 	podcastService := podcasts.NewService(db.SQL, client)
-	schedulerService := scheduler.NewService(db.SQL, logger, settingsService, podcastService.RefreshAll)
+	schedulerService, err := scheduler.NewService(db.SQL, logger, settingsService, podcastService.RefreshAll, cfg.TZ)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	schedulerService.Start(runCtx)
 
