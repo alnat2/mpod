@@ -105,6 +105,7 @@ export function HomeScreen() {
       Math.round((positionSeconds / displayDurationSeconds) * 100)
     );
   }, [displayDurationSeconds, positionSeconds]);
+  const remainingSeconds = Math.max(0, displayDurationSeconds - positionSeconds);
 
   useEffect(() => {
     if (draggedEpisodeId === null) {
@@ -257,7 +258,7 @@ export function HomeScreen() {
                 artworkUrl={currentEpisode.podcastImageUrl ?? undefined}
                 artworkAlt={`${currentEpisode.podcastTitle} artwork`}
                 elapsedLabel={formatClock(positionSeconds)}
-                durationLabel={formatClock(displayDurationSeconds)}
+                durationLabel={formatClock(remainingSeconds)}
                 playing={playing}
                 progressValue={progressValue}
                 speedLabel={speedLabel}
