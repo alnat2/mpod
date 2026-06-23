@@ -166,6 +166,59 @@ describe("SettingsScreen", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the backend proxy error when proxy lookup fails", async () => {
+    vi.spyOn(api.settings, "get").mockResolvedValue({
+      settings: {
+        dailyRefreshTime: "03:00",
+        playbackSpeed: "Speed 1.3x",
+        proxyEnabled: true,
+        proxyConfigured: true,
+      },
+    });
+    vi.spyOn(api.settings, "proxyStatus").mockResolvedValue({
+      proxy: {
+        proxyEnabled: true,
+        proxyConfigured: true,
+        status: "error",
+        externalIp: null,
+        country: null,
+        error: "request proxy status: lookup failed",
+      },
+    });
+
+    renderScreen();
+
+    expect(
+      await screen.findByText("request proxy status: lookup failed")
+    ).toBeInTheDocument();
+  });
+
+  it("keeps proxy controls enabled when runtime status confirms configuration", async () => {
+    vi.spyOn(api.settings, "get").mockResolvedValue({
+      settings: {
+        dailyRefreshTime: "03:00",
+        playbackSpeed: "Speed 1.3x",
+        proxyEnabled: false,
+        proxyConfigured: false,
+      },
+    });
+    vi.spyOn(api.settings, "proxyStatus").mockResolvedValue({
+      proxy: {
+        proxyEnabled: false,
+        proxyConfigured: true,
+        status: "off",
+        externalIp: null,
+        country: null,
+        error: null,
+      },
+    });
+
+    renderScreen();
+
+    expect(await screen.findByText("Proxy is off")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Use SOCKS5 proxy" })).toBeEnabled();
+  });
+
   it("logs out and redirects to login", async () => {
     const user = userEvent.setup();
     const onSessionChange = vi.fn();

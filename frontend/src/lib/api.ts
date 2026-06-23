@@ -139,6 +139,11 @@ async function apiRequest<T>(path: string, options: RequestOptions = {}) {
   const response = await fetch(path, {
     ...options,
     body,
+    cache:
+      options.cache ??
+      (options.method === undefined || options.method === "GET"
+        ? "no-store"
+        : undefined),
     credentials: "same-origin",
     headers,
   });

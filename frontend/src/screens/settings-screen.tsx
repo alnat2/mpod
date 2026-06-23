@@ -56,14 +56,15 @@ function formatSchedulerRefresh(status: SchedulerStatus | null) {
 }
 
 function formatProxyDescription(
+  proxyConfigured: boolean,
   settings: SettingsValues | null,
   proxyStatus: ProxyRuntimeStatus | null
 ) {
-  if (!settings?.proxyConfigured) {
+  if (!proxyConfigured) {
     return "Proxy runtime configuration is not available.";
   }
 
-  if (!settings.proxyEnabled || proxyStatus?.status === "off") {
+  if (!settings?.proxyEnabled || proxyStatus?.status === "off") {
     return "Proxy is off";
   }
 
@@ -84,7 +85,7 @@ function formatProxyDescription(
   }
 
   if (proxyStatus?.status === "error" && proxyStatus.error) {
-    return "Proxy status unavailable";
+    return proxyStatus.error;
   }
 
   return "Checking proxy status...";
@@ -138,6 +139,7 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const proxyConfigured = settings?.proxyConfigured || proxyStatus?.proxyConfigured || false;
 
   useEffect(() => {
     let cancelled = false;
@@ -225,7 +227,7 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
   }
 
   async function handleProxyEnabledChange(proxyEnabled: boolean) {
-    if (!settings?.proxyConfigured) {
+    if (!proxyConfigured) {
       return;
     }
 
@@ -320,13 +322,17 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                 <div className="flex flex-col gap-4">
                   <SettingsCard
                     title="Use SOCKS5 proxy"
-                    description={formatProxyDescription(settings, proxyStatus)}
+                    description={formatProxyDescription(
+                      proxyConfigured,
+                      settings,
+                      proxyStatus
+                    )}
                     action={
                       <Switch
                         aria-label="Use SOCKS5 proxy"
                         size="lg"
                         checked={settings?.proxyEnabled ?? false}
-                        disabled={!settings?.proxyConfigured}
+                        disabled={!proxyConfigured}
                         onCheckedChange={(checked) =>
                           void handleProxyEnabledChange(checked)
                         }

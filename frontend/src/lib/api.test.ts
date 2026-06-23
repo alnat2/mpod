@@ -33,6 +33,35 @@ describe("api client", () => {
     expect(headers.get("Content-Type")).toBe("application/json");
   });
 
+  it("disables browser caching for GET requests", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          settings: {
+            dailyRefreshTime: "03:00",
+            proxyEnabled: true,
+            proxyConfigured: true,
+          },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.settings.get();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/settings",
+      expect.objectContaining({
+        cache: "no-store",
+        credentials: "same-origin",
+      })
+    );
+  });
+
   it("throws ApiError details from JSON error responses", async () => {
     vi.stubGlobal(
       "fetch",

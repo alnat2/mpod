@@ -43,6 +43,7 @@ If this file conflicts with those documents, follow:
 - If you have an implementation or design idea but the source material is unavailable or ambiguous, stop and ask before acting. State the proposed action in plain language, for example: `I want to do X and Y. What do you say?`
 - Do not invent behavior, UI, layout, labels, icons, colors, spacing, or data contracts to fill gaps.
 - Respect domain ownership. A frontend task should change frontend code and frontend-owned docs only. A backend task should change backend code and backend-owned docs only. If investigation finds that the likely bug is outside the current task domain, do not implement the cross-domain fix; report the finding in chat and wait for the appropriate backend or frontend task.
+- Do not create new documentation files unless the information clearly needs a durable standalone document. Prefer updating an existing doc or adding brief comments in the relevant script/code when that is enough.
 - When a task is complete, simply state that the task is finished. Describe what was done only if the user specifically asks for that detail.
 
 ## Product Constraints
