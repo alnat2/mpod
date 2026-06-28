@@ -32,12 +32,12 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        "flex w-full items-start",
+        "flex w-full items-center",
         isMobile
-          ? "flex-col gap-3"
+          ? "gap-3"
           : isDesktop
-            ? "flex-row items-center gap-6"
-            : "flex-col gap-3 md:flex-row md:items-center md:gap-6",
+            ? "gap-6"
+            : "gap-3 md:gap-6",
         className
       )}
     >
@@ -52,27 +52,37 @@ export function PageHeader({
         ) : null}
       </div>
       {actions.length > 0 ? (
-        <div
-          className={cn(
-            "flex h-[34px] min-w-0 shrink items-center gap-2 overflow-hidden",
-            isMobile ? "w-full" : isDesktop ? "w-auto" : "w-full md:w-auto"
-          )}
-        >
+        <div className="flex shrink-0 items-center gap-2">
           {actions.map((action) => (
             <Button
               key={action.label}
               type="button"
+              title={action.label}
+              aria-label={action.label}
               disabled={action.disabled}
               variant={action.variant ?? "secondary"}
               className={cn(
-                "h-8 min-w-0 shrink overflow-hidden justify-center",
-                isMobile ? "flex-1" : isDesktop ? "flex-none" : "flex-1 md:flex-none",
+                "shrink-0 justify-center",
+                isMobile 
+                  ? "size-10 !p-0" 
+                  : isDesktop 
+                    ? "h-8 px-2.5" 
+                    : "size-10 max-md:!p-0 md:h-8 md:w-auto md:px-2.5",
                 action.variant === "default" && "shadow-xs"
               )}
               onClick={action.onClick}
             >
               {action.icon}
-              <span className="min-w-0 truncate">{action.label}</span>
+              <span className={cn(
+                "min-w-0 truncate",
+                isMobile 
+                  ? "sr-only" 
+                  : isDesktop 
+                    ? "" 
+                    : "sr-only md:not-sr-only"
+              )}>
+                {action.label}
+              </span>
             </Button>
           ))}
         </div>

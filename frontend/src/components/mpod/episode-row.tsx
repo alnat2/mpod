@@ -204,12 +204,12 @@ export function EpisodeRow({
   return (
     <div
       className={cn(
-        "flex w-full shrink-0 items-center border-t border-border bg-card text-foreground",
+        "flex w-full shrink-0 items-center rounded shadow-xs bg-card text-foreground",
         isMobile
-          ? "h-[76px] gap-2 px-2"
+          ? "min-h-[76px] gap-2 px-2 py-2"
           : isDesktop
             ? "h-[70px] gap-3 px-3"
-            : "h-[76px] gap-2 px-2 md:h-[70px] md:gap-3 md:px-3",
+            : "min-h-[76px] gap-2 px-2 py-2 md:h-[70px] md:gap-3 md:px-3 md:py-0 md:min-h-0",
         draggable && "cursor-grab",
         dragging && "opacity-60",
         current && "bg-accent",
