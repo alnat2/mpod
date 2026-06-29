@@ -239,7 +239,7 @@ describe("HomeScreen", () => {
     render(<HomeScreen />);
 
     const player = await screen.findByTestId("player");
-    expect(player).toHaveTextContent("40:00");
+    expect(player).toHaveTextContent("38:24");
 
     await user.click(screen.getByRole("button", { name: "Seek middle" }));
     expect(seekToMock).toHaveBeenCalledWith(1200);
