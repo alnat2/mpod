@@ -838,13 +838,13 @@ export function SubscriptionsScreen() {
               <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col gap-4 md:gap-6">
                 {isMobile ? (
                   <Carousel
-                    className="h-full w-full max-w-full overflow-hidden [&_[data-slot=carousel-content]]:h-full"
+                    className="-mx-5 h-full w-[calc(100%+40px)] max-w-none overflow-hidden [&_[data-slot=carousel-content]]:h-full"
                     opts={{
                       align: "start",
                       containScroll: "trimSnaps",
                     }}
                   >
-                    <CarouselContent className="ml-0 gap-5 h-full">
+                    <CarouselContent className="ml-0 gap-5 h-full px-5">
                       {visiblePodcasts.map((podcast) => {
                         const episodes = podcast.episodes.filter(
                           (episode) => showAll || !episode.isListened
