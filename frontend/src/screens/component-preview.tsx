@@ -78,8 +78,7 @@ export function ComponentPreview() {
       <PreviewSection title="Library">
         <PodcastCard
           title="Decoder Ring"
-          description="Culture stories behind everyday design"
-          episodeCountLabel="2 unlistened episodes"
+          description="A culture podcast about things that might seem small or insignificant, but that actually reveal a lot about how we live. We crack the cultural mysteries you didn't even know were mysteries."
           artworkUrl={featuredEpisode.artworkUrl}
           artworkAlt={featuredEpisode.artworkAlt}
         />

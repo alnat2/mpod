@@ -16,7 +16,6 @@ const meta = {
   args: {
     title: "Decoder Ring",
     description: "Culture stories behind everyday design",
-    episodeCountLabel: "2 unlistened episodes",
     artworkUrl: undefined,
     artworkAlt: "Podcast artwork",
   },

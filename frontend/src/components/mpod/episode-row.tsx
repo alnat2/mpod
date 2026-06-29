@@ -269,7 +269,7 @@ export function EpisodeRow({
               isMobile
                 ? "min-w-0 truncate text-xs leading-4 text-muted-foreground"
                 : "truncate text-xs leading-4 text-muted-foreground",
-              current && "text-chart-5"
+              (current || resolvedSubtitle.toLowerCase().includes("playlist")) && "text-chart-5"
             )}
           >
             {resolvedSubtitle}

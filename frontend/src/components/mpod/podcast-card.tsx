@@ -11,7 +11,6 @@ type PodcastCardProps = {
   selected?: boolean;
   title: string;
   description: string;
-  episodeCountLabel: string;
   artworkUrl?: string;
   artworkAlt?: string;
   onSelect?: () => void;
@@ -25,7 +24,6 @@ export function PodcastCard({
   selected,
   title,
   description,
-  episodeCountLabel,
   artworkUrl,
   artworkAlt = "",
   onSelect,
@@ -49,20 +47,20 @@ export function PodcastCard({
         }
       }}
       className={cn(
-        "flex w-full max-w-[320px] flex-col items-center gap-4 rounded-lg border border-border bg-card px-4 py-6 text-center text-card-foreground md:h-[420px] md:max-w-none md:w-[285px] md:gap-5 md:px-3 md:py-5",
+        "flex w-full flex-col items-center gap-4 rounded-2xl border border-border bg-card p-3 text-card-foreground md:h-[420px] md:max-w-none md:w-[285px] md:gap-5 md:rounded-lg md:px-3 md:py-5 md:text-center",
         onSelect && "cursor-pointer outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-        selected && "border-4 border-ring bg-accent",
+        selected && "bg-accent",
         className
       )}
     >
-      <Artwork
-        className="size-[200px] rounded-lg"
-        src={artworkUrl}
-        alt={artworkAlt}
-        title={title}
-      />
-      <div className="flex w-full flex-col items-center justify-center gap-3">
-        <div className="flex w-full flex-col items-center gap-1 text-center">
+      <div className="flex w-full flex-row items-center gap-3 md:flex-col md:justify-center md:gap-3">
+        <Artwork
+          className="size-[88px] shrink-0 rounded-lg md:size-[200px]"
+          src={artworkUrl}
+          alt={artworkAlt}
+          title={title}
+        />
+        <div className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left md:w-full md:items-center md:text-center">
           <h3 className="w-full truncate text-xl leading-7 font-semibold text-card-foreground">
             {title}
           </h3>
@@ -70,11 +68,8 @@ export function PodcastCard({
             {description}
           </p>
         </div>
-        <p className="w-full text-center text-xs leading-4 font-normal text-muted-foreground">
-          {episodeCountLabel}
-        </p>
       </div>
-      <div className="flex w-full items-center justify-center gap-3 px-3">
+      <div className="flex w-full items-center justify-center gap-2 md:gap-3 md:px-3">
         <Button
           variant="outline"
           className="h-8 flex-1 gap-1.5 rounded-lg px-3 shadow-xs"
