@@ -773,10 +773,11 @@ export function SubscriptionsScreen() {
         pageSubtitle={pageSubtitle}
         pageActions={[]}
         pageHeaderVisible={false}
+        className="px-0 md:px-6 xl:px-20"
       >
         <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5">
           {isMobile ? (
-            <div className="pt-4">
+            <div className="pt-4 px-5">
               <PageHeader
                 layout="mobile"
                 title={pageTitle}
@@ -813,32 +814,36 @@ export function SubscriptionsScreen() {
               ) : null}
             </div>
           )}
-          <ScreenBannerStack>
-            {error ? (
-              <ErrorBanner onClose={() => setError(null)}>{error}</ErrorBanner>
-            ) : null}
-            {actionError ? (
-              <ErrorBanner onClose={() => setActionError(null)}>
-                {actionError}
-              </ErrorBanner>
-            ) : null}
-            {pendingActions.map((action) => (
-              <UndoBanner
-                key={action.id}
-                expiresAt={action.expiresAt}
-                message={action.message}
-                onUndo={() => undoAction(action.id)}
-              />
-            ))}
-          </ScreenBannerStack>
+          <div className="px-5 md:px-0">
+            <ScreenBannerStack>
+              {error ? (
+                <ErrorBanner onClose={() => setError(null)}>{error}</ErrorBanner>
+              ) : null}
+              {actionError ? (
+                <ErrorBanner onClose={() => setActionError(null)}>
+                  {actionError}
+                </ErrorBanner>
+              ) : null}
+              {pendingActions.map((action) => (
+                <UndoBanner
+                  key={action.id}
+                  expiresAt={action.expiresAt}
+                  message={action.message}
+                  onUndo={() => undoAction(action.id)}
+                />
+              ))}
+            </ScreenBannerStack>
+          </div>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-4 md:py-6">
             {loading ? (
-              <ListLoadingState label="Loading subscriptions" />
+              <div className="px-5 md:px-0">
+                <ListLoadingState label="Loading subscriptions" />
+              </div>
             ) : visiblePodcasts.length > 0 ? (
               <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col gap-4 md:gap-6">
                 {isMobile ? (
                   <Carousel
-                    className="-mx-5 h-full w-[calc(100%+40px)] max-w-none overflow-hidden [&_[data-slot=carousel-content]]:h-full [&_[data-slot=carousel-content]]:px-5"
+                    className="h-full w-full overflow-hidden [&_[data-slot=carousel-content]]:h-full [&_[data-slot=carousel-content]]:px-5 [&_[data-slot=carousel-content]]:overflow-visible"
                     opts={{
                       align: "start",
                       containScroll: "trimSnaps",
@@ -1048,20 +1053,22 @@ export function SubscriptionsScreen() {
                 )}
               </div>
             ) : (
-              <SubscriptionsEmptyState
-                title={
-                  hasSubscriptions
-                    ? "All caught up"
-                    : "No podcasts yet"
-                }
-                description={
-                  hasSubscriptions
-                    ? "There are no unlistened episodes right now. Add another feed, import OPML, or use Show all to browse listened episodes."
-                    : "Add one RSS feed or bring subscriptions from another podcast app with OPML."
-                }
-                onAddRss={() => setModal("rss")}
-                onImportOpml={() => setModal("opml")}
-              />
+              <div className="px-5 md:px-0 h-full flex flex-col">
+                <SubscriptionsEmptyState
+                  title={
+                    hasSubscriptions
+                      ? "All caught up"
+                      : "No podcasts yet"
+                  }
+                  description={
+                    hasSubscriptions
+                      ? "There are no unlistened episodes right now. Add another feed, import OPML, or use Show all to browse listened episodes."
+                      : "Add one RSS feed or bring subscriptions from another podcast app with OPML."
+                  }
+                  onAddRss={() => setModal("rss")}
+                  onImportOpml={() => setModal("opml")}
+                />
+              </div>
             )}
           </div>
         </div>
