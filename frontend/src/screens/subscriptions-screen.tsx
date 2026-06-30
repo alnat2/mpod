@@ -512,7 +512,7 @@ export function SubscriptionsScreen() {
           },
           {
             label: showAll ? "Show unlistened" : "Show all",
-            icon: <HugeiconsIcon icon={ViewIcon} data-icon="inline-start" />,
+            icon: <HugeiconsIcon icon={showAll ? ViewOffIcon : ViewIcon} data-icon="inline-start" />,
             variant: "default" as const,
             onClick: () => {
               setEpisodeScrollTop(0);
