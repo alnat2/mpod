@@ -852,7 +852,7 @@ export function SubscriptionsScreen() {
                         return (
                           <CarouselItem
                             key={podcast.id}
-                            className="pl-0 basis-[calc(100%-60px)] max-w-[340px] h-full"
+                            className="pl-0 basis-[calc(100%-52px)] max-w-[340px] h-full"
                           >
                             <MobilePodcastColumn
                               podcast={podcast}
