@@ -844,7 +844,7 @@ export function SubscriptionsScreen() {
                       containScroll: "trimSnaps",
                     }}
                   >
-                    <CarouselContent className="ml-0 gap-5 h-full px-5">
+                    <CarouselContent className="ml-0 gap-4 h-full px-5">
                       {visiblePodcasts.map((podcast) => {
                         const episodes = podcast.episodes.filter(
                           (episode) => showAll || !episode.isListened
@@ -852,7 +852,7 @@ export function SubscriptionsScreen() {
                         return (
                           <CarouselItem
                             key={podcast.id}
-                            className="pl-0 basis-[calc(100%-56px)] max-w-[340px] h-full"
+                            className="pl-0 basis-[calc(100%-60px)] max-w-[340px] h-full"
                           >
                             <MobilePodcastColumn
                               podcast={podcast}
