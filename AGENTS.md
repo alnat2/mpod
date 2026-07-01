@@ -37,6 +37,7 @@ If this file conflicts with those documents, follow:
 - Do not introduce cloud or distributed infrastructure.
 - Keep the MVP aligned with the approved docs.
 - Avoid speculative features unless explicitly requested.
+- If the user asks a question, answer the question only. Do not inspect, edit, run tests, or otherwise act on the codebase unless the user explicitly asks for an action or the question cannot be answered without a minimal read-only check.
 - Do not make assumptions when requirements, design intent, API behavior, file access, or Figma access are unclear. This applies to both design and coding work.
 - If a required Figma file, page, frame, component, or section cannot be accessed, stop and say exactly: `I do not have access to the file/frame needed for this task.`
 - If required code, docs, assets, or local files cannot be accessed for a coding task, stop and say exactly what access is missing.

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
+import { ThemeProvider } from "next-themes";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,6 +34,8 @@ describe("SettingsScreen", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     navigateMock.mockReset();
+    window.localStorage.clear();
+    document.documentElement.className = "";
 
     vi.spyOn(api.settings, "get").mockResolvedValue({
       settings: {
@@ -63,10 +66,19 @@ describe("SettingsScreen", () => {
 
   function renderScreen(onSessionChange?: () => void | Promise<void>) {
     return render(
-      <MemoryRouter>
-        <SettingsScreen onSessionChange={onSessionChange} />
-      </MemoryRouter>
+      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <MemoryRouter>
+          <SettingsScreen onSessionChange={onSessionChange} />
+        </MemoryRouter>
+      </ThemeProvider>
     );
+  }
+
+  async function expectProxyIdentityToUseThemeTokens() {
+    expect(await screen.findByText("43.32.112.45")).toHaveClass("text-foreground");
+    expect(screen.getByText("UK")).toHaveClass("text-foreground");
+    expect(screen.getByText("Current IP:")).toHaveClass("text-muted-foreground");
+    expect(screen.getByText("Geo:")).toHaveClass("text-muted-foreground");
   }
 
   it("loads settings and scheduler status", async () => {
@@ -134,9 +146,30 @@ describe("SettingsScreen", () => {
     await waitFor(() => {
       expect(updateSpy).toHaveBeenCalledWith({ proxyEnabled: true });
     });
+    await expectProxyIdentityToUseThemeTokens();
+  });
+
+  it("toggles dark theme locally without saving backend settings", async () => {
+    const user = userEvent.setup();
+    const updateSpy = vi.spyOn(api.settings, "update");
+
+    renderScreen();
+
+    await screen.findByRole("heading", { name: "Settings" });
+    const themeSwitch = screen.getByRole("switch", {
+      name: "Use dark theme",
+    });
     expect(
-      await screen.findByText("Current IP: 43.32.112.45 • Geo: UK")
+      screen.getByText("Use this option if it feels more comfortable for you.")
     ).toBeInTheDocument();
+
+    await user.click(themeSwitch);
+
+    await waitFor(() => {
+      expect(document.documentElement).toHaveClass("dark");
+      expect(window.localStorage.getItem("theme")).toBe("dark");
+    });
+    expect(updateSpy).not.toHaveBeenCalled();
   });
 
   it("shows current proxy identity when proxy is enabled", async () => {
@@ -161,9 +194,7 @@ describe("SettingsScreen", () => {
 
     renderScreen();
 
-    expect(
-      await screen.findByText("Current IP: 43.32.112.45 • Geo: UK")
-    ).toBeInTheDocument();
+    await expectProxyIdentityToUseThemeTokens();
   });
 
   it("shows the backend proxy error when proxy lookup fails", async () => {

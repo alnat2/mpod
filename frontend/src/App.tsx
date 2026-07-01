@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { ThemeProvider } from "next-themes";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { BrowserRouter, useLocation } from "react-router-dom";
 
@@ -204,12 +205,14 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <TooltipProvider>
-      <BrowserRouter>
-        <PlaybackProvider>
-          <AppRoutes />
-        </PlaybackProvider>
-      </BrowserRouter>
-    </TooltipProvider>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <TooltipProvider>
+        <BrowserRouter>
+          <PlaybackProvider>
+            <AppRoutes />
+          </PlaybackProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </ThemeProvider>
   );
 }

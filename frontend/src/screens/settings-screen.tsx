@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 
+import { useTheme } from "next-themes";
 import { useNavigate } from "react-router-dom";
 
 import { AppShell, PageHeader } from "@/components/mpod";
@@ -59,7 +60,7 @@ function formatProxyDescription(
   proxyConfigured: boolean,
   settings: SettingsValues | null,
   proxyStatus: ProxyRuntimeStatus | null
-) {
+): ReactNode {
   if (!proxyConfigured) {
     return "Proxy runtime configuration is not available.";
   }
@@ -69,18 +70,28 @@ function formatProxyDescription(
   }
 
   if (proxyStatus?.status === "ok") {
-    const parts: string[] = [];
-
-    if (proxyStatus.externalIp) {
-      parts.push(`Current IP: ${proxyStatus.externalIp}`);
-    }
-
-    if (proxyStatus.country) {
-      parts.push(`Geo: ${proxyStatus.country}`);
-    }
-
-    if (parts.length > 0) {
-      return parts.join(" • ");
+    if (proxyStatus.externalIp || proxyStatus.country) {
+      return (
+        <>
+          {proxyStatus.externalIp ? (
+            <>
+              <span className="font-semibold text-muted-foreground">
+                Current IP:
+              </span>{" "}
+              <span className="text-foreground">{proxyStatus.externalIp}</span>
+            </>
+          ) : null}
+          {proxyStatus.externalIp && proxyStatus.country ? (
+            <span className="text-foreground"> • </span>
+          ) : null}
+          {proxyStatus.country ? (
+            <>
+              <span className="font-semibold text-muted-foreground">Geo:</span>{" "}
+              <span className="text-foreground">{proxyStatus.country}</span>
+            </>
+          ) : null}
+        </>
+      );
     }
   }
 
@@ -93,7 +104,7 @@ function formatProxyDescription(
 
 type SettingsCardProps = {
   title: string;
-  description: string;
+  description: ReactNode;
   action?: ReactNode;
   children?: ReactNode;
   className?: string;
@@ -129,6 +140,7 @@ function SettingsCard({
 export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
   const isMobile = useIsMobileViewport();
   const navigate = useNavigate();
+  const { resolvedTheme, setTheme } = useTheme();
   const [modal, setModal] = useState<AddPodcastModalMode>(null);
   const [settings, setSettings] = useState<SettingsValues | null>(null);
   const [proxyStatus, setProxyStatus] = useState<ProxyRuntimeStatus | null>(null);
@@ -335,6 +347,21 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                         disabled={!proxyConfigured}
                         onCheckedChange={(checked) =>
                           void handleProxyEnabledChange(checked)
+                        }
+                      />
+                    }
+                  />
+
+                  <SettingsCard
+                    title="Use dark theme"
+                    description="Use this option if it feels more comfortable for you."
+                    action={
+                      <Switch
+                        aria-label="Use dark theme"
+                        size="lg"
+                        checked={resolvedTheme === "dark"}
+                        onCheckedChange={(checked) =>
+                          setTheme(checked ? "dark" : "light")
                         }
                       />
                     }
