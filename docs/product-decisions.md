@@ -491,7 +491,8 @@ Response:
     "dailyRefreshTime": "03:00",
     "playbackSpeed": "Speed 1.3x",
     "proxyEnabled": true,
-    "proxyConfigured": true
+    "proxyConfigured": true,
+    "appBuild": "dev"
   }
 }
 ```
@@ -514,7 +515,8 @@ Response:
     "dailyRefreshTime": "03:00",
     "playbackSpeed": "Speed 2x",
     "proxyEnabled": true,
-    "proxyConfigured": true
+    "proxyConfigured": true,
+    "appBuild": "dev"
   }
 }
 ```
@@ -534,6 +536,7 @@ Rules:
 - `proxyEnabled` is user-editable and persisted in database-backed settings.
 - If proxy configuration is incomplete or unavailable, `proxyConfigured` is `false` and the UI should not allow enabling proxy usage.
 - Host, port, username, and password remain environment configuration and must not be edited from the UI for MVP.
+- `appBuild` is an optional read-only identifier for the current build (e.g. git hash), sourced from the `APP_BUILD` environment variable. If not provided, it defaults to `dev`.
 
 #### `GET /api/proxy/status`
 
