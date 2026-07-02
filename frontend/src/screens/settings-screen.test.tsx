@@ -43,6 +43,7 @@ describe("SettingsScreen", () => {
         playbackSpeed: "Speed 1.3x",
         proxyEnabled: false,
         proxyConfigured: true,
+        appBuild: "test-build",
       },
     });
     vi.spyOn(api.settings, "proxyStatus").mockResolvedValue({
@@ -100,6 +101,7 @@ describe("SettingsScreen", () => {
         playbackSpeed: "Speed 1.3x",
         proxyEnabled: false,
         proxyConfigured: true,
+        appBuild: "test-build",
       },
     });
 
@@ -123,6 +125,7 @@ describe("SettingsScreen", () => {
         playbackSpeed: "Speed 1.3x",
         proxyEnabled: true,
         proxyConfigured: true,
+        appBuild: "test-build",
       },
     });
     vi.spyOn(api.settings, "proxyStatus").mockResolvedValue({
@@ -179,6 +182,7 @@ describe("SettingsScreen", () => {
         playbackSpeed: "Speed 1.3x",
         proxyEnabled: true,
         proxyConfigured: true,
+        appBuild: "test-build",
       },
     });
     vi.spyOn(api.settings, "proxyStatus").mockResolvedValue({
@@ -204,6 +208,7 @@ describe("SettingsScreen", () => {
         playbackSpeed: "Speed 1.3x",
         proxyEnabled: true,
         proxyConfigured: true,
+        appBuild: "test-build",
       },
     });
     vi.spyOn(api.settings, "proxyStatus").mockResolvedValue({
@@ -231,6 +236,7 @@ describe("SettingsScreen", () => {
         playbackSpeed: "Speed 1.3x",
         proxyEnabled: false,
         proxyConfigured: false,
+        appBuild: "test-build",
       },
     });
     vi.spyOn(api.settings, "proxyStatus").mockResolvedValue({

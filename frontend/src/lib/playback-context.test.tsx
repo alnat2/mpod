@@ -286,6 +286,7 @@ describe("PlaybackProvider", () => {
         playbackSpeed: "Speed 1.3x",
         proxyEnabled: false,
         proxyConfigured: false,
+        appBuild: "test-build",
       },
     });
     vi.spyOn(api.settings, "update").mockImplementation(async (payload) => ({
@@ -294,6 +295,7 @@ describe("PlaybackProvider", () => {
         playbackSpeed: payload.playbackSpeed ?? "Speed 1.3x",
         proxyEnabled: false,
         proxyConfigured: false,
+        appBuild: "test-build",
       },
     }));
   });
@@ -534,6 +536,7 @@ describe("PlaybackProvider", () => {
         playbackSpeed: "Speed 2x",
         proxyEnabled: false,
         proxyConfigured: false,
+        appBuild: "test-build",
       },
     });
 

@@ -997,10 +997,17 @@ Required:
 
 Optional:
 - `DAILY_REFRESH_TIME=03:00`
+- `APP_BUILD=abc1234`
 - `SOCKS5_HOST`
 - `SOCKS5_PORT`
 - `SOCKS5_USERNAME`
 - `SOCKS5_PASSWORD`
+
+Deployment note:
+- `APP_BUILD` should be injected from the deploy environment, typically as the current short git commit hash.
+- `.git` is excluded from the Docker build context, so the container cannot derive the commit hash on its own.
+- Recommended deploy pattern:
+  `APP_BUILD=$(git rev-parse --short HEAD) docker compose up -d --build`
 
 ### Session Defaults
 - Authentication uses secure server-side sessions.
@@ -1048,6 +1055,7 @@ services:
     ports:
       - "5050:5050"
     environment:
+      APP_BUILD: abc1234
       PORT: 5050
       TZ: UTC
       SESSION_SECRET: change-me

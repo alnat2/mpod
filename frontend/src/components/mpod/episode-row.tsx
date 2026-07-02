@@ -206,10 +206,10 @@ export function EpisodeRow({
       className={cn(
         "flex w-full shrink-0 items-center rounded shadow-xs bg-card text-foreground",
         isMobile
-          ? "min-h-[76px] gap-2 px-2 py-2"
+          ? "h-[76px] gap-2 overflow-hidden px-2 py-2"
           : isDesktop
             ? "h-[70px] gap-3 px-3"
-            : "min-h-[76px] gap-2 px-2 py-2 md:h-[70px] md:gap-3 md:px-3 md:py-0 md:min-h-0",
+            : "h-[76px] gap-2 overflow-hidden px-2 py-2 md:h-[70px] md:gap-3 md:px-3 md:py-0",
         draggable && "cursor-grab",
         dragging && "opacity-60",
         current && "bg-accent",

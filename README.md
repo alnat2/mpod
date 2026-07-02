@@ -85,6 +85,12 @@ Expected runtime configuration:
 - `SOCKS5_USERNAME`
 - `SOCKS5_PASSWORD`
 
+Deployment note:
+- `APP_BUILD` should be set during deploy to the current short git commit hash so the Settings screen shows the real build identifier instead of `dev`.
+- `.git` is excluded from the Docker build context, so the container cannot discover the commit hash by itself.
+- Recommended deploy pattern:
+  `APP_BUILD=$(git rev-parse --short HEAD) docker compose up -d --build`
+
 Proxy host, port, username, and password remain runtime configuration. Default proxy runtime values are `SOCKS5_HOST=192.168.0.222` and `SOCKS5_PORT=1080`. When proxy configuration is available, the user can turn proxy usage on or off from Settings. When proxy usage is enabled, backend outbound network operations use the configured proxy path. When proxy usage is off, backend outbound network operations use direct network access.
 
 ## Repository Status

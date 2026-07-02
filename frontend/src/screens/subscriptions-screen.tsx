@@ -58,14 +58,11 @@ type PodcastWithEpisodes = Podcast & {
 
 const EPISODE_ROW_HEIGHT = 70;
 const MOBILE_EPISODE_ROW_HEIGHT = 76;
+const EPISODE_ROW_GAP = 4;
 const EPISODE_OVERSCAN_ROWS = 4;
 const DEFAULT_EPISODE_VIEWPORT_HEIGHT = 350;
 const MOBILE_EPISODE_VIEWPORT_HEIGHT = 152;
 const PODCAST_EXIT_ANIMATION_MS = 220;
-
-function episodeCountLabel(count: number) {
-  return `${count} ${count === 1 ? "unlistened episode" : "unlistened episodes"}`;
-}
 
 function podcastCountLabel(count: number) {
   return `${count} ${count === 1 ? "podcast" : "podcasts"}`;
@@ -131,22 +128,23 @@ function MobilePodcastColumn({
     const observer = new ResizeObserver(syncMetrics);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [showAll, visibleEpisodes.length]);
+  }, [isVisible, showAll, visibleEpisodes.length]);
 
   const episodeRowHeight = MOBILE_EPISODE_ROW_HEIGHT;
+  const episodeRowPitch = episodeRowHeight + EPISODE_ROW_GAP;
 
   const virtualEpisodeWindow = useMemo(() => {
-    const startIndex = Math.max(0, Math.floor(episodeScrollTop / episodeRowHeight) - EPISODE_OVERSCAN_ROWS);
-    const visibleRowCount = Math.ceil(episodeViewportHeight / episodeRowHeight) + EPISODE_OVERSCAN_ROWS * 2;
+    const startIndex = Math.max(0, Math.floor(episodeScrollTop / episodeRowPitch) - EPISODE_OVERSCAN_ROWS);
+    const visibleRowCount = Math.ceil(episodeViewportHeight / episodeRowPitch) + EPISODE_OVERSCAN_ROWS * 2;
     const endIndex = Math.min(visibleEpisodes.length, startIndex + visibleRowCount);
     return {
       startIndex,
       endIndex,
       items: visibleEpisodes.slice(startIndex, endIndex),
-      topSpacerHeight: startIndex * episodeRowHeight,
-      bottomSpacerHeight: (visibleEpisodes.length - endIndex) * episodeRowHeight,
+      topSpacerHeight: startIndex * episodeRowPitch,
+      bottomSpacerHeight: (visibleEpisodes.length - endIndex) * episodeRowPitch,
     };
-  }, [episodeRowHeight, episodeScrollTop, episodeViewportHeight, visibleEpisodes]);
+  }, [episodeRowPitch, episodeScrollTop, episodeViewportHeight, visibleEpisodes]);
 
   const durationForEpisode = useAudioMetadataDurations(virtualEpisodeWindow.items);
 
@@ -159,7 +157,7 @@ function MobilePodcastColumn({
       {isVisible ? (
         <PlaylistQueue
           className="min-h-0 w-full flex-1"
-          bodyClassName="mpod-scroll min-h-0 flex-1 overflow-y-auto pb-20"
+          bodyClassName="mpod-scroll block min-h-0 flex-1 overflow-y-auto pb-20"
           bodyRef={episodeListRef}
         bodyOnScroll={(event) => setEpisodeScrollTop(event.currentTarget.scrollTop)}
         summary={episodeSummaryLabel(podcastTotalEpisodeCount, podcastUnlistenedEpisodeCount)}
@@ -179,7 +177,11 @@ function MobilePodcastColumn({
         }
       >
         {virtualEpisodeWindow.topSpacerHeight > 0 ? (
-          <div aria-hidden="true" style={{ height: virtualEpisodeWindow.topSpacerHeight }} />
+          <div
+            aria-hidden="true"
+            className="shrink-0"
+            style={{ height: virtualEpisodeWindow.topSpacerHeight }}
+          />
         ) : null}
         {virtualEpisodeWindow.items.map((episode) => {
           const duration = formatDuration(durationForEpisode(episode));
@@ -194,45 +196,54 @@ function MobilePodcastColumn({
               : undefined;
 
           return (
-            <EpisodeRow
+            <div
               key={episode.id}
-              layout="mobile"
-              showDragHandle
-              title={episode.title}
-              subtitle={subtitle}
-              dateLabel={publishedAt || undefined}
-              durationLabel={duration || undefined}
-              thumbnailUrl={podcast.imageUrl ? api.podcasts.imagePath(podcast.id) : undefined}
-              thumbnailAlt={`${podcast.title} artwork`}
-              actions={[
-                {
-                  label: downloading ? "Downloading" : episode.downloaded ? "Downloaded" : "Download",
-                  icon: downloading ? Loading02Icon : episode.downloaded ? DownloadSquare02Icon : DownloadSquare01Icon,
-                  iconClassName: downloading ? "animate-spin" : episode.downloaded ? "text-muted-foreground" : undefined,
-                  disabled: downloading,
-                  onClick: episode.downloaded || downloading ? undefined : () => onDownload(episode.id),
-                },
-                {
-                  label: episode.inPlaylist ? "Remove from playlist" : "Add to playlist",
-                  icon: episode.inPlaylist ? PlayListRemoveIcon : PlayListAddIcon,
-                  onClick: () => (episode.inPlaylist ? onRemoveFromPlaylist(episode) : onAddToPlaylist(episode.id)),
-                },
-                {
-                  label: "Show notes",
-                  icon: NoteIcon,
-                  onClick: () => onShowNotes(episode.id),
-                },
-                {
-                  label: episode.isListened ? "Mark as unlistened" : "Mark as listened",
-                  icon: episode.isListened ? ViewOffIcon : ViewIcon,
-                  onClick: () => onMarkListened([episode], !episode.isListened),
-                },
-              ]}
-            />
+              className="shrink-0"
+              style={{ height: episodeRowPitch }}
+            >
+              <EpisodeRow
+                layout="mobile"
+                showDragHandle
+                title={episode.title}
+                subtitle={subtitle}
+                dateLabel={publishedAt || undefined}
+                durationLabel={duration || undefined}
+                thumbnailUrl={podcast.imageUrl ? api.podcasts.imagePath(podcast.id) : undefined}
+                thumbnailAlt={`${podcast.title} artwork`}
+                actions={[
+                  {
+                    label: downloading ? "Downloading" : episode.downloaded ? "Downloaded" : "Download",
+                    icon: downloading ? Loading02Icon : episode.downloaded ? DownloadSquare02Icon : DownloadSquare01Icon,
+                    iconClassName: downloading ? "animate-spin" : episode.downloaded ? "text-muted-foreground" : undefined,
+                    disabled: downloading,
+                    onClick: episode.downloaded || downloading ? undefined : () => onDownload(episode.id),
+                  },
+                  {
+                    label: episode.inPlaylist ? "Remove from playlist" : "Add to playlist",
+                    icon: episode.inPlaylist ? PlayListRemoveIcon : PlayListAddIcon,
+                    onClick: () => (episode.inPlaylist ? onRemoveFromPlaylist(episode) : onAddToPlaylist(episode.id)),
+                  },
+                  {
+                    label: "Show notes",
+                    icon: NoteIcon,
+                    onClick: () => onShowNotes(episode.id),
+                  },
+                  {
+                    label: episode.isListened ? "Mark as unlistened" : "Mark as listened",
+                    icon: episode.isListened ? ViewOffIcon : ViewIcon,
+                    onClick: () => onMarkListened([episode], !episode.isListened),
+                  },
+                ]}
+              />
+            </div>
           );
         })}
         {virtualEpisodeWindow.bottomSpacerHeight > 0 ? (
-          <div aria-hidden="true" style={{ height: virtualEpisodeWindow.bottomSpacerHeight }} />
+          <div
+            aria-hidden="true"
+            className="shrink-0"
+            style={{ height: virtualEpisodeWindow.bottomSpacerHeight }}
+          />
         ) : null}
       </PlaylistQueue>
       ) : (
@@ -457,14 +468,15 @@ export function SubscriptionsScreen() {
   }, [isMobile, selectedPodcast?.id, showAll, visibleEpisodes.length]);
 
   const episodeRowHeight = isMobile ? MOBILE_EPISODE_ROW_HEIGHT : EPISODE_ROW_HEIGHT;
+  const episodeRowPitch = episodeRowHeight + EPISODE_ROW_GAP;
 
   const virtualEpisodeWindow = useMemo(() => {
     const startIndex = Math.max(
       0,
-      Math.floor(episodeScrollTop / episodeRowHeight) - EPISODE_OVERSCAN_ROWS
+      Math.floor(episodeScrollTop / episodeRowPitch) - EPISODE_OVERSCAN_ROWS
     );
     const visibleRowCount =
-      Math.ceil(episodeViewportHeight / episodeRowHeight) +
+      Math.ceil(episodeViewportHeight / episodeRowPitch) +
       EPISODE_OVERSCAN_ROWS * 2;
     const endIndex = Math.min(
       visibleEpisodes.length,
@@ -475,11 +487,11 @@ export function SubscriptionsScreen() {
       startIndex,
       endIndex,
       items: visibleEpisodes.slice(startIndex, endIndex),
-      topSpacerHeight: startIndex * episodeRowHeight,
+      topSpacerHeight: startIndex * episodeRowPitch,
       bottomSpacerHeight:
-        (visibleEpisodes.length - endIndex) * episodeRowHeight,
+        (visibleEpisodes.length - endIndex) * episodeRowPitch,
     };
-  }, [episodeRowHeight, episodeScrollTop, episodeViewportHeight, visibleEpisodes]);
+  }, [episodeRowPitch, episodeScrollTop, episodeViewportHeight, visibleEpisodes]);
   const durationForEpisode = useAudioMetadataDurations(virtualEpisodeWindow.items);
   const hasSubscriptions = podcastsWithPending.length > 0;
   const noVisibleUnlistenedPodcasts = hasSubscriptions && visiblePodcasts.length === 0;
@@ -735,10 +747,6 @@ export function SubscriptionsScreen() {
   }
 
   function renderPodcastCard(podcast: PodcastWithEpisodes) {
-    const unlistenedCount = podcast.episodes.filter(
-      (episode) => !episode.isListened
-    ).length;
-
     return (
       <PodcastCard
         selected={podcast.id === selectedPodcast?.id}
@@ -924,7 +932,7 @@ export function SubscriptionsScreen() {
                     <PlaylistQueue
                       key={`${selectedPodcast.id}-${showAll ? "all" : "unlistened"}`}
                       className="min-h-0 w-full flex-1"
-                      bodyClassName="mpod-scroll min-h-0 flex-1 overflow-y-auto pb-20 md:max-h-none md:pb-0"
+                      bodyClassName="mpod-scroll block min-h-0 flex-1 overflow-y-auto pb-20 md:max-h-none md:pb-0"
                       bodyRef={episodeListRef}
                       bodyOnScroll={(event) =>
                         setEpisodeScrollTop(event.currentTarget.scrollTop)
@@ -956,6 +964,7 @@ export function SubscriptionsScreen() {
                       {virtualEpisodeWindow.topSpacerHeight > 0 ? (
                         <div
                           aria-hidden="true"
+                          className="shrink-0"
                           style={{ height: virtualEpisodeWindow.topSpacerHeight }}
                         />
                       ) : null}
@@ -972,79 +981,85 @@ export function SubscriptionsScreen() {
                             : undefined;
 
                         return (
-                          <EpisodeRow
+                          <div
                             key={episode.id}
-                            layout={isMobile ? "mobile" : "desktop"}
-                            showDragHandle
-                            title={episode.title}
-                            subtitle={subtitle}
-                            dateLabel={publishedAt || undefined}
-                            durationLabel={duration || undefined}
-                            thumbnailUrl={
-                              selectedPodcast.imageUrl
-                                ? api.podcasts.imagePath(selectedPodcast.id)
-                                : undefined
-                            }
-                            thumbnailAlt={`${selectedPodcast.title} artwork`}
-                            actions={[
-                              {
-                                label: downloading
-                                  ? "Downloading"
-                                  : episode.downloaded
-                                    ? "Downloaded"
-                                    : "Download",
-                                icon: downloading
-                                  ? Loading02Icon
-                                  : episode.downloaded
-                                    ? DownloadSquare02Icon
-                                    : DownloadSquare01Icon,
-                                iconClassName: downloading
-                                  ? "animate-spin"
-                                  : episode.downloaded
-                                    ? "text-muted-foreground"
-                                    : undefined,
-                                disabled: downloading,
-                                onClick: episode.downloaded || downloading
-                                  ? undefined
-                                  : () => void downloadFromSubscription(episode.id),
-                              },
-                              {
-                                label: episode.inPlaylist
-                                  ? "Remove from playlist"
-                                  : "Add to playlist",
-                                icon: episode.inPlaylist
-                                  ? PlayListRemoveIcon
-                                  : PlayListAddIcon,
-                                onClick: () =>
-                                  episode.inPlaylist
-                                    ? void removeFromPlaylist(episode)
-                                    : void runAction(() => api.playlist.add(episode.id)),
-                              },
-                              {
-                                label: "Show notes",
-                                icon: NoteIcon,
-                                onClick: () => {
-                                  setShowNotesEpisodeId(episode.id);
-                                  setModal("show-notes");
+                            className="shrink-0"
+                            style={{ height: episodeRowPitch }}
+                          >
+                            <EpisodeRow
+                              layout={isMobile ? "mobile" : "desktop"}
+                              showDragHandle
+                              title={episode.title}
+                              subtitle={subtitle}
+                              dateLabel={publishedAt || undefined}
+                              durationLabel={duration || undefined}
+                              thumbnailUrl={
+                                selectedPodcast.imageUrl
+                                  ? api.podcasts.imagePath(selectedPodcast.id)
+                                  : undefined
+                              }
+                              thumbnailAlt={`${selectedPodcast.title} artwork`}
+                              actions={[
+                                {
+                                  label: downloading
+                                    ? "Downloading"
+                                    : episode.downloaded
+                                      ? "Downloaded"
+                                      : "Download",
+                                  icon: downloading
+                                    ? Loading02Icon
+                                    : episode.downloaded
+                                      ? DownloadSquare02Icon
+                                      : DownloadSquare01Icon,
+                                  iconClassName: downloading
+                                    ? "animate-spin"
+                                    : episode.downloaded
+                                      ? "text-muted-foreground"
+                                      : undefined,
+                                  disabled: downloading,
+                                  onClick: episode.downloaded || downloading
+                                    ? undefined
+                                    : () => void downloadFromSubscription(episode.id),
                                 },
-                              },
-                              {
-                                label: episode.isListened
-                                  ? "Mark as unlistened"
-                                  : "Mark as listened",
-                                icon: episode.isListened ? ViewOffIcon : ViewIcon,
-                                onClick: () =>
-                                  episode.isListened
-                                    ? void markListened([episode], false)
-                                    : void markListened([episode], true),
-                              },
-                            ]}
-                          />
+                                {
+                                  label: episode.inPlaylist
+                                    ? "Remove from playlist"
+                                    : "Add to playlist",
+                                  icon: episode.inPlaylist
+                                    ? PlayListRemoveIcon
+                                    : PlayListAddIcon,
+                                  onClick: () =>
+                                    episode.inPlaylist
+                                      ? void removeFromPlaylist(episode)
+                                      : void runAction(() => api.playlist.add(episode.id)),
+                                },
+                                {
+                                  label: "Show notes",
+                                  icon: NoteIcon,
+                                  onClick: () => {
+                                    setShowNotesEpisodeId(episode.id);
+                                    setModal("show-notes");
+                                  },
+                                },
+                                {
+                                  label: episode.isListened
+                                    ? "Mark as unlistened"
+                                    : "Mark as listened",
+                                  icon: episode.isListened ? ViewOffIcon : ViewIcon,
+                                  onClick: () =>
+                                    episode.isListened
+                                      ? void markListened([episode], false)
+                                      : void markListened([episode], true),
+                                },
+                              ]}
+                            />
+                          </div>
                         );
                       })}
                       {virtualEpisodeWindow.bottomSpacerHeight > 0 ? (
                         <div
                           aria-hidden="true"
+                          className="shrink-0"
                           style={{ height: virtualEpisodeWindow.bottomSpacerHeight }}
                         />
                       ) : null}
