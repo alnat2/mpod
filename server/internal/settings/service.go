@@ -31,6 +31,7 @@ type Service struct {
 	db              *sql.DB
 	proxyConfigured bool
 	proxyLookup     ProxyStatusLookup
+	appBuild        string
 }
 
 type Values struct {
@@ -38,6 +39,7 @@ type Values struct {
 	PlaybackSpeed    string `json:"playbackSpeed"`
 	ProxyEnabled     bool   `json:"proxyEnabled"`
 	ProxyConfigured  bool   `json:"proxyConfigured"`
+	AppBuild         string `json:"appBuild"`
 }
 
 type ProxyStatus struct {
@@ -69,15 +71,16 @@ type UpdateInput struct {
 	ProxyEnabled     *bool   `json:"proxyEnabled"`
 }
 
-func NewService(db *sql.DB, proxyConfigured bool) *Service {
-	return NewServiceWithProxyStatusLookup(db, proxyConfigured, nil)
+func NewService(db *sql.DB, proxyConfigured bool, appBuild string) *Service {
+	return NewServiceWithProxyStatusLookup(db, proxyConfigured, appBuild, nil)
 }
 
-func NewServiceWithProxyStatusLookup(db *sql.DB, proxyConfigured bool, proxyLookup ProxyStatusLookup) *Service {
+func NewServiceWithProxyStatusLookup(db *sql.DB, proxyConfigured bool, appBuild string, proxyLookup ProxyStatusLookup) *Service {
 	return &Service{
 		db:              db,
 		proxyConfigured: proxyConfigured,
 		proxyLookup:     proxyLookup,
+		appBuild:        appBuild,
 	}
 }
 
@@ -101,6 +104,7 @@ func (s *Service) Get(ctx context.Context) (Values, error) {
 	values.PlaybackSpeed = playbackSpeed
 	values.ProxyEnabled = enabled
 	values.ProxyConfigured = s.proxyConfigured
+	values.AppBuild = s.appBuild
 	return values, nil
 }
 

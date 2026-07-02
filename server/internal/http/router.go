@@ -61,7 +61,7 @@ type errorResponse struct {
 }
 
 func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerService *scheduler.Service) nethttp.Handler {
-	settingsService := settings.NewService(db, cfg.SOCKS5Host != "")
+	settingsService := settings.NewService(db, cfg.SOCKS5Host != "", cfg.AppBuild)
 	client, err := remote.NewHTTPClientWithProxyDecider(cfg, func(ctx context.Context) bool {
 		enabled, err := settingsService.ProxyEnabled(ctx)
 		return err == nil && enabled
@@ -69,7 +69,7 @@ func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerServi
 	if err != nil {
 		panic(err)
 	}
-	settingsService = settings.NewServiceWithProxyStatusLookup(db, cfg.SOCKS5Host != "", func(ctx context.Context) (settings.ProxyLookupResult, error) {
+	settingsService = settings.NewServiceWithProxyStatusLookup(db, cfg.SOCKS5Host != "", cfg.AppBuild, func(ctx context.Context) (settings.ProxyLookupResult, error) {
 		return fetchObservedProxyStatus(ctx, client)
 	})
 

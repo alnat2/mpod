@@ -393,6 +393,11 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                   />
                 </div>
               </div>
+              {settings?.appBuild ? (
+                <div className="mt-8 text-sm font-medium text-secondary-foreground">
+                  Current app build: {settings.appBuild}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

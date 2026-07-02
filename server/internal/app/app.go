@@ -47,7 +47,7 @@ func New(logger *log.Logger) (*App, error) {
 		return nil, err
 	}
 
-	settingsService := settings.NewService(db.SQL, cfg.SOCKS5Host != "")
+	settingsService := settings.NewService(db.SQL, cfg.SOCKS5Host != "", cfg.AppBuild)
 	client, err := remote.NewHTTPClientWithProxyDecider(cfg, func(ctx context.Context) bool {
 		enabled, err := settingsService.ProxyEnabled(ctx)
 		return err == nil && enabled

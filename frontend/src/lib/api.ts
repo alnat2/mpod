@@ -74,6 +74,7 @@ export type SettingsValues = {
   playbackSpeed: string;
   proxyEnabled: boolean;
   proxyConfigured: boolean;
+  appBuild: string;
 };
 
 export type ProxyRuntimeStatus = {

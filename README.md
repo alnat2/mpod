@@ -78,6 +78,8 @@ Expected runtime configuration:
 - `DB_PATH`
 - `DOWNLOADS_DIR`
 - `DAILY_REFRESH_TIME`
+- `APP_ENV`
+- `APP_BUILD`
 - `SOCKS5_HOST`
 - `SOCKS5_PORT`
 - `SOCKS5_USERNAME`

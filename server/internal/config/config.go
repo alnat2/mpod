@@ -19,6 +19,7 @@ type Config struct {
 	SOCKS5Username   string
 	SOCKS5Password   string
 	Environment      string
+	AppBuild         string
 }
 
 func Load() (Config, error) {
@@ -35,6 +36,7 @@ func Load() (Config, error) {
 		SOCKS5Username:   os.Getenv("SOCKS5_USERNAME"),
 		SOCKS5Password:   os.Getenv("SOCKS5_PASSWORD"),
 		Environment:      envOrDefault("APP_ENV", "development"),
+		AppBuild:         envOrDefault("APP_BUILD", "dev"),
 	}
 
 	if cfg.SessionSecret == "" {
