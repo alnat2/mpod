@@ -426,8 +426,12 @@ export function SubscriptionsScreen() {
     visiblePodcasts.find((podcast) => podcast.id === selectedPodcastId) ??
     visiblePodcasts[0];
 
+  const showNotesPodcast =
+    visiblePodcasts.find((podcast) =>
+      podcast.episodes.some((episode) => episode.id === showNotesEpisodeId)
+    ) ?? null;
   const showNotesEpisode =
-    selectedPodcast?.episodes.find((episode) => episode.id === showNotesEpisodeId) ??
+    showNotesPodcast?.episodes.find((episode) => episode.id === showNotesEpisodeId) ??
     null;
 
   const visibleEpisodes = useMemo(
@@ -1088,7 +1092,7 @@ export function SubscriptionsScreen() {
           </div>
         </div>
       </AppShell>
-      {modal === "show-notes" && showNotesEpisode && selectedPodcast ? (
+      {modal === "show-notes" && showNotesEpisode && showNotesPodcast ? (
         <ModalScreen
           onClose={() => {
             setModal(null);
@@ -1096,7 +1100,7 @@ export function SubscriptionsScreen() {
           }}
         >
           <ShowNotes
-            podcastTitle={selectedPodcast.title}
+            podcastTitle={showNotesPodcast.title}
             episodeTitle={showNotesEpisode.title}
             onClose={() => {
               setModal(null);

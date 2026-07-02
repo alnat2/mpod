@@ -1,5 +1,5 @@
 import type { ReactNode, Ref, UIEventHandler } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +8,59 @@ import { api, type Episode, type Podcast } from "@/lib/api";
 import { SubscriptionsScreen } from "./subscriptions-screen";
 
 const reloadQueueMock = vi.fn();
+
+const defaultIntersectionObserver = globalThis.IntersectionObserver;
+
+function setViewportMatch(matches: boolean) {
+  globalThis.matchMedia = ((query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })) as typeof globalThis.matchMedia;
+}
+
+function makeIntersectingObserver() {
+  return class IntersectingObserver {
+    root = null;
+    rootMargin = "";
+    scrollMargin = "";
+    thresholds = [];
+
+    constructor(
+      private readonly callback: IntersectionObserverCallback
+    ) {}
+
+    disconnect() {}
+
+    observe(target: Element) {
+      this.callback(
+        [
+          {
+            boundingClientRect: target.getBoundingClientRect(),
+            intersectionRatio: 1,
+            intersectionRect: target.getBoundingClientRect(),
+            isIntersecting: true,
+            rootBounds: null,
+            target,
+            time: 0,
+          },
+        ],
+        this as unknown as IntersectionObserver
+      );
+    }
+
+    takeRecords() {
+      return [];
+    }
+
+    unobserve() {}
+  };
+}
 
 vi.mock("@/lib/playback-context", () => ({
   usePlaybackDispatch: () => ({
@@ -118,6 +171,7 @@ vi.mock("@/components/mpod", () => ({
   ModalScreen: ({ children }: { children: ReactNode }) => (
     <div data-testid="modal">{children}</div>
   ),
+  PageHeader: ({ title }: { title: string }) => <div>{title}</div>,
   ShowNotes: ({
     podcastTitle,
     episodeTitle,
@@ -169,6 +223,8 @@ describe("SubscriptionsScreen", () => {
     reloadQueueMock.mockReset();
     scheduleActionMock.mockReset();
     undoActionMock.mockReset();
+    setViewportMatch(false);
+    globalThis.IntersectionObserver = defaultIntersectionObserver;
 
     vi.spyOn(api.podcasts, "list").mockResolvedValue({ podcasts: [podcast] });
     vi.spyOn(api.podcasts, "episodes").mockResolvedValue({
@@ -283,6 +339,47 @@ describe("SubscriptionsScreen", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Sanitized episode notes")).toBeInTheDocument();
     expect(screen.queryByText("Episode notes")).not.toBeInTheDocument();
+  });
+
+  it("opens show notes from a mobile carousel podcast that is not selected", async () => {
+    const user = userEvent.setup();
+    const secondPodcast: Podcast = {
+      ...podcast,
+      id: 2,
+      title: "Second Show",
+      rssUrl: "https://example.com/second.xml",
+    };
+    const secondEpisode: Episode = {
+      ...baseEpisode,
+      id: 201,
+      podcastId: 2,
+      title: "Second episode",
+      description: "Second episode notes",
+      showNotes: "Second sanitized notes",
+    };
+
+    setViewportMatch(true);
+    globalThis.IntersectionObserver =
+      makeIntersectingObserver() as unknown as typeof IntersectionObserver;
+    vi.spyOn(api.podcasts, "list").mockResolvedValue({
+      podcasts: [podcast, secondPodcast],
+    });
+    vi.spyOn(api.podcasts, "episodes").mockImplementation((podcastId) =>
+      Promise.resolve({
+        episodes: podcastId === secondPodcast.id ? [secondEpisode] : [baseEpisode],
+      })
+    );
+
+    render(<SubscriptionsScreen />);
+
+    const secondRow = await screen.findByTestId("episode-row-Second episode");
+    await user.click(
+      within(secondRow).getByRole("button", { name: "Show notes" })
+    );
+
+    expect(await screen.findByTestId("modal")).toBeInTheDocument();
+    expect(screen.getByText("Second Show - Second episode")).toBeInTheDocument();
+    expect(screen.getByText("Second sanitized notes")).toBeInTheDocument();
   });
 
   it("virtualizes long episode lists and renders more rows after scrolling", async () => {
