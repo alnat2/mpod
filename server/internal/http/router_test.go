@@ -2560,6 +2560,63 @@ func TestImportOPMLImportsFeeds(t *testing.T) {
 	assertTableCount(t, db, `SELECT COUNT(*) FROM episodes`, 2)
 }
 
+func TestImportOPMLIsIdempotentForAlreadySubscribedFeeds(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return routerXMLResponse(testRouterRSSFeed("Podcast One", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	makeImportReq := func() *httptest.ResponseRecorder {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		fileWriter, err := writer.CreateFormFile("file", "subscriptions.opml")
+		if err != nil {
+			t.Fatalf("CreateFormFile failed: %v", err)
+		}
+		if _, err := io.WriteString(fileWriter, `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <body>
+    <outline text="Podcast One" xmlUrl="https://example.com/feed-one.xml"/>
+  </body>
+</opml>`); err != nil {
+			t.Fatalf("write opml failed: %v", err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatalf("Close multipart writer failed: %v", err)
+		}
+
+		req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/import-opml", &body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	firstRec := makeImportReq()
+	if firstRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected first import to succeed, got %d body=%s", firstRec.Code, firstRec.Body.String())
+	}
+	if !strings.Contains(firstRec.Body.String(), `"imported":1`) || !strings.Contains(firstRec.Body.String(), `"skipped":0`) {
+		t.Fatalf("unexpected first import payload: %s", firstRec.Body.String())
+	}
+
+	secondRec := makeImportReq()
+	if secondRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected second import to succeed, got %d body=%s", secondRec.Code, secondRec.Body.String())
+	}
+	if !strings.Contains(secondRec.Body.String(), `"imported":0`) || !strings.Contains(secondRec.Body.String(), `"skipped":1`) {
+		t.Fatalf("unexpected second import payload: %s", secondRec.Body.String())
+	}
+
+	assertTableCount(t, db, `SELECT COUNT(*) FROM podcasts`, 1)
+	assertTableCount(t, db, `SELECT COUNT(*) FROM episodes`, 1)
+}
+
 func TestImportOPMLReturnsStableInternalErrorContractOnUnexpectedFailure(t *testing.T) {
 	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
 		return routerXMLResponse(testRouterRSSFeed("Podcast One", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
