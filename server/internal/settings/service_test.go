@@ -13,7 +13,7 @@ func TestGetReturnsStoredValues(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewService(db.SQL, false)
+	service := NewService(db.SQL, false, "test-build")
 	values, err := service.Get(context.Background())
 	if err != nil {
 		t.Fatalf("Get failed: %v", err)
@@ -27,7 +27,7 @@ func TestUpdatePersistsValidatedTime(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewService(db.SQL, false)
+	service := NewService(db.SQL, false, "test-build")
 	refreshTime := "08:45"
 	values, err := service.Update(context.Background(), UpdateInput{DailyRefreshTime: &refreshTime})
 	if err != nil {
@@ -50,7 +50,7 @@ func TestUpdateRejectsInvalidTime(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewService(db.SQL, false)
+	service := NewService(db.SQL, false, "test-build")
 	refreshTime := "25:99"
 	if _, err := service.Update(context.Background(), UpdateInput{DailyRefreshTime: &refreshTime}); err == nil {
 		t.Fatalf("expected invalid time error")
@@ -61,7 +61,7 @@ func TestUpdatePersistsPlaybackSpeed(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewService(db.SQL, false)
+	service := NewService(db.SQL, false, "test-build")
 	speed := "Speed 2x"
 	values, err := service.Update(context.Background(), UpdateInput{PlaybackSpeed: &speed})
 	if err != nil {
@@ -84,7 +84,7 @@ func TestUpdateRejectsInvalidPlaybackSpeed(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewService(db.SQL, false)
+	service := NewService(db.SQL, false, "test-build")
 	speed := "Speed 9x"
 	if _, err := service.Update(context.Background(), UpdateInput{PlaybackSpeed: &speed}); err != ErrInvalidPlaybackSpeed {
 		t.Fatalf("expected ErrInvalidPlaybackSpeed, got %v", err)
@@ -95,7 +95,7 @@ func TestUpdatePersistsProxyEnabledWhenConfigured(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewService(db.SQL, true)
+	service := NewService(db.SQL, true, "test-build")
 	enabled := true
 	values, err := service.Update(context.Background(), UpdateInput{ProxyEnabled: &enabled})
 	if err != nil {
@@ -110,7 +110,7 @@ func TestUpdateRejectsEnablingProxyWhenUnavailable(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewService(db.SQL, false)
+	service := NewService(db.SQL, false, "test-build")
 	enabled := true
 	if _, err := service.Update(context.Background(), UpdateInput{ProxyEnabled: &enabled}); err != ErrProxyNotConfigured {
 		t.Fatalf("expected ErrProxyNotConfigured, got %v", err)
@@ -121,7 +121,7 @@ func TestGetProxyStatusReturnsOffWhenDisabled(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewServiceWithProxyStatusLookup(db.SQL, true, func(context.Context) (ProxyLookupResult, error) {
+	service := NewServiceWithProxyStatusLookup(db.SQL, true, "test-build", func(context.Context) (ProxyLookupResult, error) {
 		t.Fatalf("proxy lookup should not run when proxy is disabled")
 		return ProxyLookupResult{}, nil
 	})
@@ -142,7 +142,7 @@ func TestGetProxyStatusReturnsObservedIdentityWhenEnabled(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewServiceWithProxyStatusLookup(db.SQL, true, func(context.Context) (ProxyLookupResult, error) {
+	service := NewServiceWithProxyStatusLookup(db.SQL, true, "test-build", func(context.Context) (ProxyLookupResult, error) {
 		return ProxyLookupResult{
 			ExternalIP: "198.51.100.10",
 			Country:    "Germany",
@@ -175,7 +175,7 @@ func TestGetProxyStatusReturnsUnknownWhenLookupUnavailable(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewService(db.SQL, true)
+	service := NewService(db.SQL, true, "test-build")
 	enabled := true
 	if _, err := service.Update(context.Background(), UpdateInput{ProxyEnabled: &enabled}); err != nil {
 		t.Fatalf("Update failed: %v", err)
@@ -197,7 +197,7 @@ func TestGetProxyStatusReturnsUnknownWhenLookupHasNoIdentity(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewServiceWithProxyStatusLookup(db.SQL, true, func(context.Context) (ProxyLookupResult, error) {
+	service := NewServiceWithProxyStatusLookup(db.SQL, true, "test-build", func(context.Context) (ProxyLookupResult, error) {
 		return ProxyLookupResult{}, nil
 	})
 	enabled := true
@@ -221,7 +221,7 @@ func TestGetProxyStatusReturnsErrorStateWhenLookupFails(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service := NewServiceWithProxyStatusLookup(db.SQL, true, func(context.Context) (ProxyLookupResult, error) {
+	service := NewServiceWithProxyStatusLookup(db.SQL, true, "test-build", func(context.Context) (ProxyLookupResult, error) {
 		return ProxyLookupResult{}, errors.New("lookup failed")
 	})
 	enabled := true

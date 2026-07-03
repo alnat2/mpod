@@ -32,6 +32,57 @@ func TestAddIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestAddMarksListenedEpisodeUnlistened(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, is_listened) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3', 1)`)
+
+	service := NewService(db.SQL)
+	if err := service.Add(context.Background(), 1); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+
+	var listened bool
+	if err := db.SQL.QueryRow(`SELECT is_listened FROM episodes WHERE id = 1`).Scan(&listened); err != nil {
+		t.Fatalf("query listened state: %v", err)
+	}
+	if listened {
+		t.Fatalf("expected playlist add to mark episode unlistened")
+	}
+}
+
+func TestDuplicateAddMarksExistingPlaylistEpisodeUnlistened(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, is_listened) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3', 1)`)
+	mustExec(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+
+	service := NewService(db.SQL)
+	if err := service.Add(context.Background(), 1); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+
+	var listened bool
+	if err := db.SQL.QueryRow(`SELECT is_listened FROM episodes WHERE id = 1`).Scan(&listened); err != nil {
+		t.Fatalf("query listened state: %v", err)
+	}
+	if listened {
+		t.Fatalf("expected duplicate playlist add to mark episode unlistened")
+	}
+
+	var count int
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM playlist WHERE episode_id = 1`).Scan(&count); err != nil {
+		t.Fatalf("count playlist rows: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected duplicate add to keep one playlist row, got %d", count)
+	}
+}
+
 func TestRemoveNormalizesPositions(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()

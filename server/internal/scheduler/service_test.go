@@ -18,7 +18,7 @@ func TestRunOnceSuccessUpdatesStatus(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
+	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false, "test-build"), func(context.Context) error {
 		return nil
 	}, "UTC")
 	if err != nil {
@@ -51,7 +51,7 @@ func TestRunOnceFailureUpdatesStatus(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
-	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
+	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false, "test-build"), func(context.Context) error {
 		return errors.New("refresh failed")
 	}, "UTC")
 	if err != nil {
@@ -80,7 +80,7 @@ func TestRunNowRejectsOverlappingRuns(t *testing.T) {
 
 	started := make(chan struct{}, 1)
 	release := make(chan struct{})
-	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
+	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false, "test-build"), func(context.Context) error {
 		started <- struct{}{}
 		<-release
 		return nil
@@ -136,7 +136,7 @@ func TestMaybeRunSkipsOutsideConfiguredWindow(t *testing.T) {
 	}
 
 	var called atomic.Int32
-	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
+	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false, "test-build"), func(context.Context) error {
 		called.Add(1)
 		return nil
 	}, "UTC")
@@ -157,7 +157,7 @@ func TestMaybeRunStartsOnlyOncePerDay(t *testing.T) {
 	started := make(chan struct{}, 1)
 	release := make(chan struct{})
 	var called atomic.Int32
-	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
+	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false, "test-build"), func(context.Context) error {
 		called.Add(1)
 		started <- struct{}{}
 		<-release
@@ -192,7 +192,7 @@ func TestMaybeRunDoesNotRunAgainAfterSuccessfulRunSameDay(t *testing.T) {
 	defer db.Close()
 
 	var called atomic.Int32
-	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
+	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false, "test-build"), func(context.Context) error {
 		called.Add(1)
 		return nil
 	}, "UTC")
@@ -224,7 +224,7 @@ func TestMaybeRunUsesConfiguredTimezone(t *testing.T) {
 	}
 
 	var called atomic.Int32
-	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false), func(context.Context) error {
+	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false, "test-build"), func(context.Context) error {
 		called.Add(1)
 		return nil
 	}, "Europe/Moscow")

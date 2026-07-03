@@ -414,6 +414,7 @@ Success response:
 
 Rules:
 - If the episode is already in playlist, server should not add a duplicate entry
+- Adding an episode to playlist marks it unlistened if it was listened
 - Removing from playlist may trigger file deletion according to file lifecycle rules
 
 #### `PATCH /api/playlist/reorder`
@@ -762,6 +763,7 @@ Podcast unsubscribe keeps a 15-second undo window. During that window, the app k
 
 ### Playlist Behavior
 - Adding an episode to playlist does not download it automatically.
+- Adding an episode to playlist marks it unlistened if it was listened.
 - Removing an episode from playlist deletes its local file by default.
 - Manual remove-from-playlist is immediate and does not show a 15-second undo banner.
 - Removing an episode from playlist does not delete the episode database record.

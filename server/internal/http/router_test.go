@@ -846,6 +846,7 @@ func TestPlaylistEndpoints(t *testing.T) {
 	handler, db := newTestRouter(t)
 	cookie := register(t, handler, "admin", "secret")
 	seedEpisode(t, db, 1, 1)
+	mustExecHTTP(t, db, `UPDATE episodes SET is_listened = 1 WHERE id = 1`)
 
 	addReq := httptest.NewRequest(nethttp.MethodPost, "/api/playlist", bytes.NewReader([]byte(`{"episodeId":1}`)))
 	addReq.AddCookie(cookie)
@@ -865,6 +866,9 @@ func TestPlaylistEndpoints(t *testing.T) {
 	var listPayload struct {
 		Items []struct {
 			EpisodeID int64 `json:"episodeId"`
+			Episode   struct {
+				IsListened bool `json:"isListened"`
+			} `json:"episode"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(listRec.Body.Bytes(), &listPayload); err != nil {
@@ -872,6 +876,9 @@ func TestPlaylistEndpoints(t *testing.T) {
 	}
 	if len(listPayload.Items) != 1 || listPayload.Items[0].EpisodeID != 1 {
 		t.Fatalf("unexpected playlist payload: %+v", listPayload)
+	}
+	if listPayload.Items[0].Episode.IsListened {
+		t.Fatalf("expected playlist add to mark episode unlistened")
 	}
 
 	reorderReq := httptest.NewRequest(nethttp.MethodPatch, "/api/playlist/reorder", bytes.NewReader([]byte(`{"episodeIds":[1]}`)))
@@ -2151,7 +2158,7 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 		client = newRouterDefaultClient(t, cfg, appDB)
 	}
 
-	settingsService := settings.NewServiceWithProxyStatusLookup(appDB.SQL, cfg.SOCKS5Host != "", func(ctx context.Context) (settings.ProxyLookupResult, error) {
+	settingsService := settings.NewServiceWithProxyStatusLookup(appDB.SQL, cfg.SOCKS5Host != "", cfg.AppBuild, func(ctx context.Context) (settings.ProxyLookupResult, error) {
 		return fetchObservedProxyStatus(ctx, client)
 	})
 	playlistService := playlist.NewService(appDB.SQL)
@@ -2223,7 +2230,7 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 func newRouterDefaultClient(t *testing.T, cfg config.Config, appDB *storage.DB) *nethttp.Client {
 	t.Helper()
 
-	settingsService := settings.NewService(appDB.SQL, cfg.SOCKS5Host != "")
+	settingsService := settings.NewService(appDB.SQL, cfg.SOCKS5Host != "", cfg.AppBuild)
 	client, err := remote.NewHTTPClientWithProxyDecider(cfg, func(ctx context.Context) bool {
 		enabled, err := settingsService.ProxyEnabled(ctx)
 		return err == nil && enabled

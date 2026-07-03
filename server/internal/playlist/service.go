@@ -84,12 +84,16 @@ func (s *Service) Add(ctx context.Context, episodeID int64) error {
 		return ErrEpisodeNotFound
 	}
 
+	if _, err := tx.ExecContext(ctx, `UPDATE episodes SET is_listened = 0 WHERE id = ?`, episodeID); err != nil {
+		return fmt.Errorf("mark playlist episode unlistened: %w", err)
+	}
+
 	var existing int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE episode_id = ?`, episodeID).Scan(&existing); err != nil {
 		return fmt.Errorf("check playlist item exists: %w", err)
 	}
 	if existing > 0 {
-		return nil
+		return tx.Commit()
 	}
 
 	var nextPosition int64 = 1
