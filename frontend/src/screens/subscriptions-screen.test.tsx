@@ -120,12 +120,14 @@ vi.mock("@/components/mpod", () => ({
     children,
     summary,
     headerAction,
+    bodyClassName,
     bodyRef,
     bodyOnScroll,
   }: {
     children: ReactNode;
     summary?: string;
     headerAction?: ReactNode;
+    bodyClassName?: string;
     bodyRef?: Ref<HTMLDivElement>;
     bodyOnScroll?: UIEventHandler<HTMLDivElement>;
   }) => (
@@ -134,6 +136,7 @@ vi.mock("@/components/mpod", () => ({
       {headerAction}
       <div
         data-testid="playlist-queue-body"
+        className={bodyClassName}
         ref={bodyRef}
         onScroll={bodyOnScroll}
       >
@@ -475,6 +478,15 @@ describe("SubscriptionsScreen", () => {
     await waitFor(() => {
       expect(screen.getByTestId("episode-row-Episode 20")).toBeInTheDocument();
     });
+  });
+
+  it("keeps the mobile episode list vertically scrollable above the bottom nav", async () => {
+    render(<SubscriptionsScreen />);
+
+    const body = await screen.findByTestId("playlist-queue-body");
+
+    expect(body).toHaveClass("overflow-y-auto", "pb-20", "md:pb-0");
+    expect(body).not.toHaveClass("overflow-hidden");
   });
 
   it("adds an episode to the playlist from the row action", async () => {
