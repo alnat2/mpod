@@ -278,6 +278,203 @@ func TestSettingsPatchUpdatesProxyEnabledWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestOutboundRequestsUseDirectTransportWhenProxyDisabled(t *testing.T) {
+	cfg := config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+		SOCKS5Host:   "127.0.0.1",
+		SOCKS5Port:   "1080",
+	}
+	handler, db, recorder := newProxyAwareRouterHarness(t, cfg)
+	cookie := register(t, handler, "admin", "secret")
+
+	createReq := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts", bytes.NewReader([]byte(`{"rssUrl":"https://example.com/feed-one.xml"}`)))
+	createReq.AddCookie(cookie)
+	createRec := httptest.NewRecorder()
+	handler.ServeHTTP(createRec, createReq)
+	if createRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from podcast create, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	recorder.assertOnlyDirect(t, "https://example.com/feed-one.xml")
+	recorder.reset()
+
+	refreshReq := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/1/refresh", nil)
+	refreshReq.SetPathValue("id", "1")
+	refreshReq.AddCookie(cookie)
+	refreshRec := httptest.NewRecorder()
+	handler.ServeHTTP(refreshRec, refreshReq)
+	if refreshRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from podcast refresh, got %d body=%s", refreshRec.Code, refreshRec.Body.String())
+	}
+	recorder.assertOnlyDirect(t, "https://example.com/feed-one.xml")
+	recorder.reset()
+
+	var opmlBody bytes.Buffer
+	opmlWriter := multipart.NewWriter(&opmlBody)
+	opmlPart, err := opmlWriter.CreateFormFile("file", "subscriptions.opml")
+	if err != nil {
+		t.Fatalf("CreateFormFile failed: %v", err)
+	}
+	if _, err := io.WriteString(opmlPart, `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <body>
+    <outline text="Podcast Two" xmlUrl="https://example.com/feed-two.xml"/>
+  </body>
+</opml>`); err != nil {
+		t.Fatalf("write opml failed: %v", err)
+	}
+	if err := opmlWriter.Close(); err != nil {
+		t.Fatalf("multipart close failed: %v", err)
+	}
+
+	importReq := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/import-opml", &opmlBody)
+	importReq.Header.Set("Content-Type", opmlWriter.FormDataContentType())
+	importReq.AddCookie(cookie)
+	importRec := httptest.NewRecorder()
+	handler.ServeHTTP(importRec, importReq)
+	if importRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from opml import, got %d body=%s", importRec.Code, importRec.Body.String())
+	}
+	recorder.assertOnlyDirect(t, "https://example.com/feed-two.xml")
+	recorder.reset()
+
+	seedEpisodeWithAudioURL(t, db, 10, 10, "https://cdn.example.com/download.mp3")
+	downloadReq := httptest.NewRequest(nethttp.MethodPost, "/api/episodes/10/download", nil)
+	downloadReq.SetPathValue("id", "10")
+	downloadReq.AddCookie(cookie)
+	downloadRec := httptest.NewRecorder()
+	handler.ServeHTTP(downloadRec, downloadReq)
+	if downloadRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from download, got %d body=%s", downloadRec.Code, downloadRec.Body.String())
+	}
+	recorder.assertOnlyDirect(t, "https://cdn.example.com/download.mp3")
+	recorder.reset()
+
+	seedEpisodeWithAudioURL(t, db, 11, 11, "https://cdn.example.com/audio.mp3")
+	audioReq := httptest.NewRequest(nethttp.MethodGet, "/api/episodes/11/audio", nil)
+	audioReq.SetPathValue("id", "11")
+	audioReq.AddCookie(cookie)
+	audioRec := httptest.NewRecorder()
+	handler.ServeHTTP(audioRec, audioReq)
+	if audioRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from audio proxy, got %d body=%s", audioRec.Code, audioRec.Body.String())
+	}
+	recorder.assertOnlyDirect(t, "https://cdn.example.com/audio.mp3")
+	recorder.reset()
+
+	proxyStatusReq := httptest.NewRequest(nethttp.MethodGet, "/api/proxy/status", nil)
+	proxyStatusReq.AddCookie(cookie)
+	proxyStatusRec := httptest.NewRecorder()
+	handler.ServeHTTP(proxyStatusRec, proxyStatusReq)
+	if proxyStatusRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from proxy status, got %d body=%s", proxyStatusRec.Code, proxyStatusRec.Body.String())
+	}
+	if !strings.Contains(proxyStatusRec.Body.String(), `"status":"off"`) {
+		t.Fatalf("expected off proxy status when disabled, got %s", proxyStatusRec.Body.String())
+	}
+	if len(recorder.direct) != 0 || len(recorder.proxy) != 0 {
+		t.Fatalf("expected proxy status to avoid outbound lookup when disabled, got direct=%v proxy=%v", recorder.direct, recorder.proxy)
+	}
+}
+
+func TestOutboundRequestsUseProxyTransportWhenProxyEnabled(t *testing.T) {
+	cfg := config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+		SOCKS5Host:   "127.0.0.1",
+		SOCKS5Port:   "1080",
+	}
+	handler, db, recorder := newProxyAwareRouterHarness(t, cfg)
+	cookie := register(t, handler, "admin", "secret")
+	enableProxyForTest(t, handler, cookie)
+
+	createReq := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts", bytes.NewReader([]byte(`{"rssUrl":"https://example.com/feed-one.xml"}`)))
+	createReq.AddCookie(cookie)
+	createRec := httptest.NewRecorder()
+	handler.ServeHTTP(createRec, createReq)
+	if createRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from podcast create, got %d body=%s", createRec.Code, createRec.Body.String())
+	}
+	recorder.assertOnlyProxy(t, "https://example.com/feed-one.xml")
+	recorder.reset()
+
+	refreshReq := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/1/refresh", nil)
+	refreshReq.SetPathValue("id", "1")
+	refreshReq.AddCookie(cookie)
+	refreshRec := httptest.NewRecorder()
+	handler.ServeHTTP(refreshRec, refreshReq)
+	if refreshRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from podcast refresh, got %d body=%s", refreshRec.Code, refreshRec.Body.String())
+	}
+	recorder.assertOnlyProxy(t, "https://example.com/feed-one.xml")
+	recorder.reset()
+
+	var opmlBody bytes.Buffer
+	opmlWriter := multipart.NewWriter(&opmlBody)
+	opmlPart, err := opmlWriter.CreateFormFile("file", "subscriptions.opml")
+	if err != nil {
+		t.Fatalf("CreateFormFile failed: %v", err)
+	}
+	if _, err := io.WriteString(opmlPart, `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <body>
+    <outline text="Podcast Two" xmlUrl="https://example.com/feed-two.xml"/>
+  </body>
+</opml>`); err != nil {
+		t.Fatalf("write opml failed: %v", err)
+	}
+	if err := opmlWriter.Close(); err != nil {
+		t.Fatalf("multipart close failed: %v", err)
+	}
+
+	importReq := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/import-opml", &opmlBody)
+	importReq.Header.Set("Content-Type", opmlWriter.FormDataContentType())
+	importReq.AddCookie(cookie)
+	importRec := httptest.NewRecorder()
+	handler.ServeHTTP(importRec, importReq)
+	if importRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from opml import, got %d body=%s", importRec.Code, importRec.Body.String())
+	}
+	recorder.assertOnlyProxy(t, "https://example.com/feed-two.xml")
+	recorder.reset()
+
+	seedEpisodeWithAudioURL(t, db, 10, 10, "https://cdn.example.com/download.mp3")
+	downloadReq := httptest.NewRequest(nethttp.MethodPost, "/api/episodes/10/download", nil)
+	downloadReq.SetPathValue("id", "10")
+	downloadReq.AddCookie(cookie)
+	downloadRec := httptest.NewRecorder()
+	handler.ServeHTTP(downloadRec, downloadReq)
+	if downloadRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from download, got %d body=%s", downloadRec.Code, downloadRec.Body.String())
+	}
+	recorder.assertOnlyProxy(t, "https://cdn.example.com/download.mp3")
+	recorder.reset()
+
+	seedEpisodeWithAudioURL(t, db, 11, 11, "https://cdn.example.com/audio.mp3")
+	audioReq := httptest.NewRequest(nethttp.MethodGet, "/api/episodes/11/audio", nil)
+	audioReq.SetPathValue("id", "11")
+	audioReq.AddCookie(cookie)
+	audioRec := httptest.NewRecorder()
+	handler.ServeHTTP(audioRec, audioReq)
+	if audioRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from audio proxy, got %d body=%s", audioRec.Code, audioRec.Body.String())
+	}
+	recorder.assertOnlyProxy(t, "https://cdn.example.com/audio.mp3")
+	recorder.reset()
+
+	proxyStatusReq := httptest.NewRequest(nethttp.MethodGet, "/api/proxy/status", nil)
+	proxyStatusReq.AddCookie(cookie)
+	proxyStatusRec := httptest.NewRecorder()
+	handler.ServeHTTP(proxyStatusRec, proxyStatusReq)
+	if proxyStatusRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from proxy status, got %d body=%s", proxyStatusRec.Code, proxyStatusRec.Body.String())
+	}
+	if !strings.Contains(proxyStatusRec.Body.String(), `"status":"ok"`) {
+		t.Fatalf("expected ok proxy status when enabled, got %s", proxyStatusRec.Body.String())
+	}
+	recorder.assertOnlyProxy(t, "https://ipwho.is/")
+}
+
 func TestLoginInvalidCredentials(t *testing.T) {
 	handler, _ := newTestRouter(t)
 	register(t, handler, "admin", "secret")
@@ -2287,11 +2484,38 @@ func register(t *testing.T, handler nethttp.Handler, username, password string) 
 	return cookies[0]
 }
 
+func enableProxyForTest(t *testing.T, handler nethttp.Handler, cookie *nethttp.Cookie) {
+	t.Helper()
+
+	req := httptest.NewRequest(nethttp.MethodPatch, "/api/settings", bytes.NewReader([]byte(`{"proxyEnabled":true}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from proxy enable patch, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func seedEpisode(t *testing.T, db *storage.DB, episodeID, podcastID int64) {
 	t.Helper()
-	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (?, 'Podcast', 'https://example.com/feed.xml') ON CONFLICT(id) DO NOTHING`, podcastID)
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING`,
+		podcastID,
+		"Podcast "+strconv.FormatInt(podcastID, 10),
+		"https://example.com/seed-"+strconv.FormatInt(podcastID, 10)+".xml",
+	)
 	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (?, ?, ?, ?, ?)`,
 		episodeID, podcastID, "ep-seed-"+strconv.FormatInt(episodeID, 10), "Episode", "https://cdn.example.com/audio.mp3")
+}
+
+func seedEpisodeWithAudioURL(t *testing.T, db *storage.DB, episodeID, podcastID int64, audioURL string) {
+	t.Helper()
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING`,
+		podcastID,
+		"Podcast "+strconv.FormatInt(podcastID, 10),
+		"https://example.com/seed-"+strconv.FormatInt(podcastID, 10)+".xml",
+	)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (?, ?, ?, ?, ?)`,
+		episodeID, podcastID, "ep-seed-"+strconv.FormatInt(episodeID, 10), "Episode", audioURL)
 }
 
 func mustExecHTTP(t *testing.T, db *storage.DB, query string, args ...any) {
@@ -2360,6 +2584,78 @@ func testRouterRSSFeedWithTwoEpisodes(title, firstTitle, firstGUID, firstAudioUR
   </channel>
 </rss>`)
 	return builder.String()
+}
+
+type proxySelectionRecorder struct {
+	direct []string
+	proxy  []string
+}
+
+func (r *proxySelectionRecorder) reset() {
+	r.direct = nil
+	r.proxy = nil
+}
+
+func (r *proxySelectionRecorder) assertOnlyDirect(t *testing.T, wantURL string) {
+	t.Helper()
+	if len(r.proxy) != 0 {
+		t.Fatalf("expected no proxy requests, got %v", r.proxy)
+	}
+	if len(r.direct) != 1 || r.direct[0] != wantURL {
+		t.Fatalf("expected one direct request to %q, got %v", wantURL, r.direct)
+	}
+}
+
+func (r *proxySelectionRecorder) assertOnlyProxy(t *testing.T, wantURL string) {
+	t.Helper()
+	if len(r.direct) != 0 {
+		t.Fatalf("expected no direct requests, got %v", r.direct)
+	}
+	if len(r.proxy) != 1 || r.proxy[0] != wantURL {
+		t.Fatalf("expected one proxy request to %q, got %v", wantURL, r.proxy)
+	}
+}
+
+func newProxyAwareRouterHarness(t *testing.T, cfg config.Config) (nethttp.Handler, *storage.DB, *proxySelectionRecorder) {
+	t.Helper()
+
+	db := newTestDB(t)
+	recorder := &proxySelectionRecorder{}
+	settingsService := settings.NewService(db.SQL, cfg.SOCKS5Host != "", cfg.AppBuild)
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		enabled, err := settingsService.ProxyEnabled(req.Context())
+		if err != nil {
+			t.Fatalf("ProxyEnabled failed: %v", err)
+		}
+		if enabled {
+			recorder.proxy = append(recorder.proxy, req.URL.String())
+		} else {
+			recorder.direct = append(recorder.direct, req.URL.String())
+		}
+		return proxyAwareRouterResponse(t, req.URL.String()), nil
+	})
+
+	return newSplitRouterWithClient(t, cfg, db, db, client), db, recorder
+}
+
+func proxyAwareRouterResponse(t *testing.T, rawURL string) *nethttp.Response {
+	t.Helper()
+
+	switch rawURL {
+	case "https://example.com/feed-one.xml":
+		return routerXMLResponse(testRouterRSSFeed("Podcast One", "Episode One", "guid-1", "https://cdn.example.com/one.mp3"))
+	case "https://example.com/feed-two.xml":
+		return routerXMLResponse(testRouterRSSFeed("Podcast Two", "Episode Two", "guid-2", "https://cdn.example.com/two.mp3"))
+	case "https://cdn.example.com/download.mp3":
+		return routerBinaryResponse("audio/mpeg", []byte("download-audio"))
+	case "https://cdn.example.com/audio.mp3":
+		return routerBinaryResponse("audio/mpeg", []byte("stream-audio"))
+	case "https://ipwho.is/":
+		return routerJSONResponse(`{"success":true,"ip":"198.51.100.10","country":"Germany"}`)
+	default:
+		t.Fatalf("unexpected outbound request URL: %s", rawURL)
+		return nil
+	}
 }
 
 func newRouterTestClient(fn func(*nethttp.Request) (*nethttp.Response, error)) *nethttp.Client {
