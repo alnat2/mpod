@@ -1315,6 +1315,46 @@ func TestPlaylistListReturnsServerErrorWhenLoadFails(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "PLAYLIST_LIST_FAILED")
 }
 
+func TestPlaylistAddReturnsStableInternalErrorContractOnUnexpectedFailure(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/playlist", bytes.NewReader([]byte(`{"episodeId":1}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "PLAYLIST_ADD_FAILED")
+}
+
+func TestPlaylistReorderReturnsStableInternalErrorContractOnUnexpectedFailure(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodPatch, "/api/playlist/reorder", bytes.NewReader([]byte(`{"episodeIds":[1]}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "PLAYLIST_REORDER_FAILED")
+}
+
 func TestPlaylistReorderRejectsInvalidOrder(t *testing.T) {
 	handler, db := newTestRouter(t)
 	cookie := register(t, handler, "admin", "secret")
@@ -1916,6 +1956,27 @@ func TestEpisodeGetIncludesDescription(t *testing.T) {
 	}
 }
 
+func TestEpisodeGetReturnsStableInternalErrorContractOnUnexpectedFailure(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/episodes/1", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "EPISODE_GET_FAILED")
+}
+
 func TestPodcastEpisodesListIncludesSanitizedShowNotes(t *testing.T) {
 	handler, db := newTestRouter(t)
 	cookie := register(t, handler, "admin", "secret")
@@ -2442,6 +2503,26 @@ func TestPodcastEpisodesListAndExportOPML(t *testing.T) {
 	if got := exportRec.Header().Get("Content-Disposition"); !strings.Contains(got, `attachment; filename="mpod-subscriptions.opml"`) {
 		t.Fatalf("expected attachment disposition, got %q", got)
 	}
+}
+
+func TestExportOPMLReturnsStableInternalErrorContractOnUnexpectedFailure(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/export-opml", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "OPML_EXPORT_FAILED")
 }
 
 func TestPodcastEpisodesListReturnsEmptyArrayWhenNoEpisodes(t *testing.T) {
