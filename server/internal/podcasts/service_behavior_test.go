@@ -111,6 +111,54 @@ func TestCreateFromFeedRejectsHTMLLandingPageFixture(t *testing.T) {
 	}
 }
 
+func TestCreateFromFeedParsesRealTransistorFixtureWithoutContentType(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	fixture := firstCompleteTransistorFixture(t)
+	service := NewService(db.SQL, newPodcastTestClient(func(r *http.Request) (*http.Response, error) {
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader(fixture)),
+			Header:     make(http.Header),
+		}
+		return resp, nil
+	}))
+
+	podcast, err := service.CreateFromFeed(context.Background(), "https://feeds.transistor.fm/build-your-saas")
+	if err != nil {
+		t.Fatalf("CreateFromFeed failed without content type: %v", err)
+	}
+	if podcast.Title != "Build Your SaaS" {
+		t.Fatalf("expected fixture title to be imported, got %q", podcast.Title)
+	}
+}
+
+func TestCreateFromFeedRejectsHTMLLandingPageFixtureWithoutContentType(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	fixture := readPodcastFixture(t, "simplecast_that_creative_life.html")
+	service := NewService(db.SQL, newPodcastTestClient(func(r *http.Request) (*http.Response, error) {
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader(fixture)),
+			Header:     make(http.Header),
+		}
+		return resp, nil
+	}))
+
+	_, err := service.CreateFromFeed(context.Background(), "https://thatcreativelife.simplecast.com")
+	if !errors.Is(err, ErrFeedParseFailed) {
+		t.Fatalf("expected ErrFeedParseFailed, got %v", err)
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "<!doctype html>") {
+		t.Fatalf("expected html preview to be preserved without content-type, got %v", err)
+	}
+}
+
 func TestDeleteRemovesCascadeDataAndFiles(t *testing.T) {
 	db := newBehaviorTestDB(t)
 	defer db.Close()
@@ -524,6 +572,48 @@ func TestImportOPMLSkipsWrappedFeedFetchFailures(t *testing.T) {
 	if result.Imported != 0 || result.Skipped != 1 {
 		t.Fatalf("unexpected import result: %+v", result)
 	}
+}
+
+func TestImportOPMLWithRealFixturesImportsPlayableAndSkipsHTMLLandingPages(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	transistorFixture := firstCompleteTransistorFixture(t)
+	simplecastFixture := readPodcastFixture(t, "simplecast_that_creative_life.html")
+	service := NewService(db.SQL, newPodcastTestClient(func(r *http.Request) (*http.Response, error) {
+		switch r.URL.String() {
+		case "https://feeds.transistor.fm/build-your-saas":
+			return xmlResponse(transistorFixture), nil
+		case "https://thatcreativelife.simplecast.com":
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Status:     "200 OK",
+				Body:       io.NopCloser(strings.NewReader(simplecastFixture)),
+				Header:     make(http.Header),
+			}
+			return resp, nil
+		default:
+			t.Fatalf("unexpected feed url %q", r.URL.String())
+			return nil, nil
+		}
+	}))
+
+	result, err := service.ImportOPML(context.Background(), strings.NewReader(`<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <body>
+    <outline text="Build Your SaaS" xmlUrl="https://feeds.transistor.fm/build-your-saas"/>
+    <outline text="That Creative Life" xmlUrl="https://thatcreativelife.simplecast.com"/>
+  </body>
+</opml>`))
+	if err != nil {
+		t.Fatalf("ImportOPML failed: %v", err)
+	}
+	if result.Imported != 1 || result.Skipped != 1 {
+		t.Fatalf("unexpected import result: %+v", result)
+	}
+
+	assertCount(t, db.SQL, `SELECT COUNT(*) FROM podcasts`, 1)
+	assertCount(t, db.SQL, `SELECT COUNT(*) FROM episodes`, 1)
 }
 
 func newBehaviorTestDB(t *testing.T) *storage.DB {
