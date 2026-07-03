@@ -72,6 +72,7 @@ describe("AddPodcastModal", () => {
   it("imports an OPML file", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
+    const onComplete = vi.fn();
     const importSpy = vi.spyOn(api.podcasts, "importOPML").mockResolvedValue({
       success: true,
       imported: 2,
@@ -82,6 +83,7 @@ describe("AddPodcastModal", () => {
       <AddPodcastModal
         mode="opml"
         onClose={onClose}
+        onComplete={onComplete}
         onModeChange={vi.fn()}
       />
     );
@@ -99,6 +101,32 @@ describe("AddPodcastModal", () => {
       expect(importSpy).toHaveBeenCalledWith(file);
     });
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps OPML import disabled until a file is selected", async () => {
+    const user = userEvent.setup();
+
+    const { container } = render(
+      <AddPodcastModal
+        mode="opml"
+        onClose={vi.fn()}
+        onModeChange={vi.fn()}
+      />
+    );
+
+    const importButton = screen.getByRole("button", { name: "Import file" });
+    expect(importButton).toBeDisabled();
+
+    const input = container.querySelector('input[type="file"]');
+    const file = new File(["<opml />"], "feeds.opml", {
+      type: "application/xml",
+    });
+
+    expect(input).not.toBeNull();
+    await user.upload(input as HTMLInputElement, file);
+
+    expect(importButton).toBeEnabled();
   });
 
   it("shows a loading state while an OPML import is pending", async () => {
