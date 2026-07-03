@@ -250,6 +250,12 @@ describe("PlaybackProvider", () => {
     FakeAudio.instances = [];
     dispatchHarnessProfilerCommits = 0;
     vi.stubGlobal("Audio", FakeAudio);
+    vi.stubGlobal("MediaError", {
+      MEDIA_ERR_ABORTED: 1,
+      MEDIA_ERR_NETWORK: 2,
+      MEDIA_ERR_DECODE: 3,
+      MEDIA_ERR_SRC_NOT_SUPPORTED: 4,
+    });
     episodes.set(1, {
       ...episodes.get(1)!,
       duration: 1800,
@@ -367,6 +373,43 @@ describe("PlaybackProvider", () => {
 
     await user.click(screen.getByRole("button", { name: "Clear error" }));
     expect(screen.getByTestId("playback-error")).toHaveTextContent("none");
+  });
+
+  it("ignores passive media element errors before the user starts playback", async () => {
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    const audio = FakeAudio.instances[0];
+    audio.error = { code: 4 };
+    audio.emit("error");
+
+    expect(screen.getByTestId("playback-error")).toHaveTextContent("none");
+    expect(screen.getByTestId("playing")).toHaveTextContent("no");
+  });
+
+  it("surfaces media element errors after the user starts playback", async () => {
+    const user = userEvent.setup();
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    const audio = FakeAudio.instances[0];
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+
+    audio.error = { code: 4 };
+    audio.emit("error");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playback-error")).toHaveTextContent(
+        "Audio source is not supported."
+      );
+    });
+    expect(screen.getByTestId("playing")).toHaveTextContent("no");
   });
 
   it("updates playback position and sends seek syncs to the backend", async () => {
