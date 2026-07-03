@@ -43,6 +43,26 @@ func TestProtectedRouteRequiresAuth(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "UNAUTHORIZED")
 }
 
+func TestProtectedRouteReturnsStableInternalErrorContractOnAuthFailure(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := authDB.Close(); err != nil {
+		t.Fatalf("authDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "AUTH_CHECK_FAILED")
+}
+
 func TestRegisterCreatesSessionAndSessionEndpointReflectsAuth(t *testing.T) {
 	handler, _ := newTestRouter(t)
 
@@ -193,6 +213,81 @@ func TestRegisterRejectsInvalidJSON(t *testing.T) {
 		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	assertErrorCode(t, rec.Body.Bytes(), "INVALID_JSON")
+}
+
+func TestSessionEndpointReturnsStableInternalErrorContractOnAuthFailure(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	if err := authDB.Close(); err != nil {
+		t.Fatalf("authDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/auth/session", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "SESSION_CHECK_FAILED")
+}
+
+func TestRegisterReturnsStableInternalErrorContractOnAuthFailure(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	if err := authDB.Close(); err != nil {
+		t.Fatalf("authDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/auth/register", bytes.NewReader([]byte(`{"username":"admin","password":"secret"}`)))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "REGISTER_FAILED")
+}
+
+func TestLoginReturnsStableInternalErrorContractOnAuthFailure(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	register(t, handler, "admin", "secret")
+	if err := authDB.Close(); err != nil {
+		t.Fatalf("authDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/auth/login", bytes.NewReader([]byte(`{"username":"admin","password":"secret"}`)))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "LOGIN_FAILED")
+}
+
+func TestLogoutReturnsStableInternalErrorContractOnAuthFailure(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := authDB.Close(); err != nil {
+		t.Fatalf("authDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/auth/logout", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "LOGOUT_FAILED")
 }
 
 func TestPodcastGetRejectsInvalidPathParameter(t *testing.T) {
@@ -662,6 +757,27 @@ func TestPodcastGetReturnsPodcast(t *testing.T) {
 	}
 }
 
+func TestPodcastGetReturnsStableInternalErrorContractOnUnexpectedFailure(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/1", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "PODCAST_GET_FAILED")
+}
+
 func TestPodcastsCreateImportsFeed(t *testing.T) {
 	feedBody := testRouterRSSFeed("Test Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")
 	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
@@ -807,6 +923,29 @@ func TestPodcastsCreateRejectsNoPlayableEpisodes(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "NO_PLAYABLE_EPISODES")
 }
 
+func TestPodcastsCreateReturnsStableInternalErrorContractOnUnexpectedFailure(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return routerXMLResponse(testRouterRSSFeed("Broken Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
+	})
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, client)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts", bytes.NewReader([]byte(`{"rssUrl":"https://example.com/feed.xml"}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "PODCAST_CREATE_FAILED")
+}
+
 func TestPodcastRefreshReturnsNewEpisodes(t *testing.T) {
 	feedBody := testRouterRSSFeed("Test Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")
 	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
@@ -938,6 +1077,26 @@ func TestPodcastsRefreshAllRefreshesSubscribedPodcasts(t *testing.T) {
 	}
 }
 
+func TestPodcastsRefreshAllReturnsStableInternalErrorContractOnUnexpectedFailure(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/refresh-all", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "PODCASTS_REFRESH_ALL_FAILED")
+}
+
 func TestPodcastRefreshRejectsConcurrentRefresh(t *testing.T) {
 	requestStarted := make(chan struct{})
 	releaseRequest := make(chan struct{})
@@ -1037,6 +1196,27 @@ func TestPodcastDeleteNotFound(t *testing.T) {
 		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	assertErrorCode(t, rec.Body.Bytes(), "PODCAST_NOT_FOUND")
+}
+
+func TestPodcastDeleteReturnsStableInternalErrorContractOnUnexpectedFailure(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodDelete, "/api/podcasts/1", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "PODCAST_DELETE_FAILED")
 }
 
 func TestPlaylistEndpoints(t *testing.T) {
@@ -1338,6 +1518,26 @@ func TestPlaybackGetReturnsServerErrorWhenLoadFails(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "PLAYBACK_LOAD_FAILED")
 }
 
+func TestPlaybackPostReturnsStableInternalErrorContractOnUnexpectedFailure(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/playback", bytes.NewReader([]byte(`{"episodeId":1,"positionSeconds":1}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "PLAYBACK_UPDATE_FAILED")
+}
+
 func TestEpisodeEndpoints(t *testing.T) {
 	handler, db := newTestRouter(t)
 	cookie := register(t, handler, "admin", "secret")
@@ -1539,6 +1739,7 @@ func TestEpisodeAudioRejectsNonAudioRemoteResponse(t *testing.T) {
 	if rec.Code != nethttp.StatusBadGateway {
 		t.Fatalf("expected 502, got %d body=%s", rec.Code, rec.Body.String())
 	}
+	assertErrorCode(t, rec.Body.Bytes(), "AUDIO_LOAD_FAILED")
 	if !strings.Contains(rec.Body.String(), "Audio source is not playable") {
 		t.Fatalf("expected playable audio error, got %s", rec.Body.String())
 	}
@@ -1988,6 +2189,26 @@ func TestProxyStatusEndpointReturnsErrorStateWhenLookupFails(t *testing.T) {
 	}
 }
 
+func TestProxyStatusEndpointReturnsStableInternalErrorContractWhenLoadFails(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/proxy/status", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "PROXY_STATUS_FAILED")
+}
+
 func TestSettingsGetReturnsServerErrorWhenLoadFails(t *testing.T) {
 	authDB := newTestDB(t)
 	appDB := newTestDB(t)
@@ -2124,6 +2345,26 @@ func TestSettingsPatchRejectsInvalidJSON(t *testing.T) {
 		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	assertErrorCode(t, rec.Body.Bytes(), "INVALID_JSON")
+}
+
+func TestSettingsPatchReturnsStableInternalErrorContractOnUnexpectedFailure(t *testing.T) {
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, nil)
+	cookie := register(t, handler, "admin", "secret")
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodPatch, "/api/settings", bytes.NewReader([]byte(`{"playbackSpeed":"Speed 2x"}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "SETTINGS_UPDATE_FAILED")
 }
 
 func TestPodcastEpisodesListAndExportOPML(t *testing.T) {
@@ -2319,6 +2560,49 @@ func TestImportOPMLImportsFeeds(t *testing.T) {
 	assertTableCount(t, db, `SELECT COUNT(*) FROM episodes`, 2)
 }
 
+func TestImportOPMLReturnsStableInternalErrorContractOnUnexpectedFailure(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return routerXMLResponse(testRouterRSSFeed("Podcast One", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
+	})
+	authDB := newTestDB(t)
+	appDB := newTestDB(t)
+	handler := newSplitRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, authDB, appDB, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	fileWriter, err := writer.CreateFormFile("file", "subscriptions.opml")
+	if err != nil {
+		t.Fatalf("CreateFormFile failed: %v", err)
+	}
+	if _, err := io.WriteString(fileWriter, `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <body>
+    <outline text="Podcast One" xmlUrl="https://example.com/feed-one.xml"/>
+  </body>
+</opml>`); err != nil {
+		t.Fatalf("write opml failed: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close multipart writer failed: %v", err)
+	}
+
+	if err := appDB.Close(); err != nil {
+		t.Fatalf("appDB.Close failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/import-opml", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusInternalServerError, "OPML_IMPORT_FAILED")
+}
+
 func newAuthedRouter(t *testing.T) (nethttp.Handler, *nethttp.Cookie) {
 	t.Helper()
 
@@ -2466,6 +2750,14 @@ func assertErrorCode(t *testing.T, body []byte, want string) {
 	if payload.Error.Code != want {
 		t.Fatalf("expected error code %q, got %q body=%s", want, payload.Error.Code, string(body))
 	}
+}
+
+func assertAPIError(t *testing.T, rec *httptest.ResponseRecorder, wantStatus int, wantCode string) {
+	t.Helper()
+	if rec.Code != wantStatus {
+		t.Fatalf("expected %d, got %d body=%s", wantStatus, rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), wantCode)
 }
 
 func register(t *testing.T, handler nethttp.Handler, username, password string) *nethttp.Cookie {
