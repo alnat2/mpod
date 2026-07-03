@@ -1642,6 +1642,52 @@ func TestEpisodeAudioServesDownloadedFile(t *testing.T) {
 	}
 }
 
+func TestEpisodeAudioFallsBackToRemoteWhenLocalFileIsNonPlayable(t *testing.T) {
+	downloadsDir := t.TempDir()
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		if req.URL.String() != "https://cdn.example.com/episode.mp3" {
+			t.Fatalf("unexpected audio request URL: %s", req.URL.String())
+		}
+		return routerBinaryResponse("audio/mpeg", []byte("remote-audio")), nil
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: downloadsDir,
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	downloadPath := filepath.Join(downloadsDir, "1", "episode.mp3")
+	if err := os.MkdirAll(filepath.Dir(downloadPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	if err := os.WriteFile(downloadPath, []byte("<html>not audio</html>"), 0o644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path) VALUES (1, 1, 'ep-1', 'Episode', 'https://cdn.example.com/episode.mp3', ?)`, downloadPath)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/episodes/1/audio", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != "remote-audio" {
+		t.Fatalf("expected remote audio fallback body, got %q", rec.Body.String())
+	}
+
+	var downloadedPathAfter sql.NullString
+	if err := db.SQL.QueryRow(`SELECT downloaded_path FROM episodes WHERE id = 1`).Scan(&downloadedPathAfter); err != nil {
+		t.Fatalf("query downloaded_path: %v", err)
+	}
+	if downloadedPathAfter.Valid {
+		t.Fatalf("expected downloaded_path to be cleared after bad local file, got %q", downloadedPathAfter.String)
+	}
+}
+
 func TestEpisodeAudioProxiesRemoteAudioWhenNotDownloaded(t *testing.T) {
 	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
 		if req.URL.String() != "https://cdn.example.com/audio.mp3" {

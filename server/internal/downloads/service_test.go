@@ -66,6 +66,41 @@ func TestGetLocalPathReturnsEmptyWhenDownloadedFileIsMissing(t *testing.T) {
 	}
 }
 
+func TestGetLocalPathClearsNonPlayableDownloadedFile(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	downloadPath := filepath.Join(downloadDir, "1", "episode.mp3")
+	if err := os.MkdirAll(filepath.Dir(downloadPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(downloadPath, []byte("<html>not audio</html>"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	mustExec(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3', ?)`, downloadPath)
+
+	service := NewService(db.SQL, nil, downloadDir)
+
+	path, err := service.GetLocalPath(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("GetLocalPath failed: %v", err)
+	}
+	if path != "" {
+		t.Fatalf("expected empty path for non-playable local file, got %q", path)
+	}
+
+	var downloadedPathAfter sql.NullString
+	if err := db.SQL.QueryRow(`SELECT downloaded_path FROM episodes WHERE id = 1`).Scan(&downloadedPathAfter); err != nil {
+		t.Fatalf("query downloaded_path: %v", err)
+	}
+	if downloadedPathAfter.Valid {
+		t.Fatalf("expected downloaded_path to be cleared, got %q", downloadedPathAfter.String)
+	}
+}
+
 func TestDeleteClearsDownloadedPathAndRemovesFile(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
