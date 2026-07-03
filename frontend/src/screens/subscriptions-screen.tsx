@@ -723,6 +723,9 @@ export function SubscriptionsScreen() {
       for (const episode of actionableEpisodes) {
         await api.episodes.setListened(episode.id, isListened);
       }
+      if (isListened) {
+        await reloadQueue();
+      }
       setReloadKey((current) => current + 1);
     } catch (caught) {
       setPodcasts(previousPodcasts);

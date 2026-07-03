@@ -490,6 +490,63 @@ describe("SubscriptionsScreen", () => {
     });
   });
 
+  it("clears playlist state and reloads the playback queue after marking a playlist episode listened", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api.podcasts, "episodes")
+      .mockResolvedValueOnce({ episodes: [baseEpisode] })
+      .mockResolvedValue({ episodes: [{ ...baseEpisode, isListened: true }] });
+    vi.spyOn(api.playlist, "list")
+      .mockResolvedValueOnce({
+        items: [
+          {
+            episodeId: baseEpisode.id,
+            position: 1,
+            episode: {
+              id: baseEpisode.id,
+              title: baseEpisode.title,
+              podcastId: baseEpisode.podcastId,
+              isListened: false,
+              downloaded: false,
+            },
+          },
+        ],
+      })
+      .mockResolvedValue({ items: [] });
+    const setListenedSpy = vi.spyOn(api.episodes, "setListened").mockResolvedValue({
+      episode: {
+        id: baseEpisode.id,
+        isListened: true,
+      },
+    });
+
+    render(<SubscriptionsScreen />);
+
+    await user.click(await screen.findByRole("button", { name: "Show all" }));
+    const row = await screen.findByTestId("episode-row-QA reorder third");
+    expect(
+      within(row).getByRole("button", { name: "Remove from playlist" })
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(row).getByRole("button", { name: "Mark as listened" })
+    );
+
+    await waitFor(() => {
+      expect(setListenedSpy).toHaveBeenCalledWith(baseEpisode.id, true);
+    });
+    await waitFor(() => {
+      expect(reloadQueueMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(
+        within(row).getByRole("button", { name: "Add to playlist" })
+      ).toBeInTheDocument();
+    });
+    expect(
+      within(row).getByRole("button", { name: "Mark as unlistened" })
+    ).toBeInTheDocument();
+  });
+
   it("keeps the page content visible while reconciling after mark listened", async () => {
     const user = userEvent.setup();
     const listSpy = vi.spyOn(api.podcasts, "list");
