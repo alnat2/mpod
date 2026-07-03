@@ -72,6 +72,10 @@ function episodeSummaryLabel(totalCount: number, unlistenedCount: number) {
   return `${totalCount} / ${unlistenedCount} episodes`;
 }
 
+function isVisibleByDefault(episode: { inPlaylist: boolean; isListened: boolean }) {
+  return episode.inPlaylist || !episode.isListened;
+}
+
 type MobilePodcastColumnProps = {
   podcast: PodcastWithEpisodes;
   visibleEpisodes: Array<Episode & { inPlaylist: boolean }>;
@@ -416,7 +420,7 @@ export function SubscriptionsScreen() {
           exitingPodcastIds.has(podcast.id) ||
           showAll ||
           podcast.episodes.some(
-            (episode) => !episode.isListened
+            isVisibleByDefault
           )
       ),
     [exitingPodcastIds, podcastsWithPending, showAll]
@@ -438,7 +442,7 @@ export function SubscriptionsScreen() {
     () =>
       selectedPodcast?.episodes.filter(
         (episode) =>
-          (showAll || !episode.isListened)
+          (showAll || isVisibleByDefault(episode))
       ) ?? [],
     [selectedPodcast?.episodes, showAll]
   );
@@ -864,7 +868,7 @@ export function SubscriptionsScreen() {
                     <CarouselContent className="ml-0 gap-1 h-full">
                       {visiblePodcasts.map((podcast) => {
                         const episodes = podcast.episodes.filter(
-                          (episode) => showAll || !episode.isListened
+                          (episode) => showAll || isVisibleByDefault(episode)
                         );
                         return (
                           <CarouselItem

@@ -37,17 +37,7 @@ test("logs in and lands on subscriptions", async ({ page }) => {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        podcasts: [
-          {
-            id: 1,
-            title: "Decoder Ring",
-            rssUrl: "https://example.com/feed.xml",
-            description: null,
-            imageUrl: null,
-            lastChecked: null,
-            updateTime: null,
-          },
-        ],
+        podcasts: [],
       }),
     });
   });
@@ -71,10 +61,10 @@ test("logs in and lands on subscriptions", async ({ page }) => {
   await page.goto("/login");
 
   await page.getByLabel("Username").fill("qa");
-  await page.getByLabel("Password").fill("password123");
+  await page.getByRole("textbox", { name: "Password" }).fill("password123");
   await page.getByRole("button", { name: "Log in" }).click();
 
   await expect(page).toHaveURL(/\/subscriptions$/);
-  await expect(page.getByRole("heading", { name: "Subscriptions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No podcasts" })).toBeVisible();
   await expect(page.getByText("No podcasts yet")).toBeVisible();
 });

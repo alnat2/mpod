@@ -166,3 +166,137 @@ test("mobile subscriptions can scroll to the last shown episode", async ({
 
   await expect(page.getByText("Episode 40", { exact: true })).toBeVisible();
 });
+
+test("default subscriptions view includes podcasts with playlist episodes", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  await page.route("**/api/auth/session", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        authenticated: true,
+        user: { id: 1, username: "qa" },
+        setupRequired: false,
+      }),
+    });
+  });
+
+  await page.route("**/api/podcasts", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        podcasts: [
+          {
+            id: 1,
+            title: "Previously Listened Show",
+            rssUrl: "https://example.com/listened.xml",
+            description: "Already listened but queued",
+            imageUrl: null,
+            lastChecked: "2026-05-22T08:00:00Z",
+            updateTime: null,
+          },
+          {
+            id: 2,
+            title: "Fresh Queue Show",
+            rssUrl: "https://example.com/fresh.xml",
+            description: "Fresh queued episode",
+            imageUrl: null,
+            lastChecked: "2026-05-22T08:00:00Z",
+            updateTime: null,
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.route("**/api/playlist", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [
+          {
+            episodeId: 101,
+            position: 1,
+            episode: {
+              id: 101,
+              title: "Listened queued episode",
+              podcastId: 1,
+              isListened: true,
+              downloaded: false,
+            },
+          },
+          {
+            episodeId: 201,
+            position: 2,
+            episode: {
+              id: 201,
+              title: "Fresh queued episode",
+              podcastId: 2,
+              isListened: false,
+              downloaded: false,
+            },
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.route("**/api/podcasts/1/episodes", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        episodes: [
+          {
+            id: 101,
+            podcastId: 1,
+            title: "Listened queued episode",
+            description: "Queued from older data",
+            audioUrl: "https://example.com/listened.mp3",
+            duration: 1200,
+            downloaded: false,
+            isListened: true,
+            publishedAt: "2026-05-20T10:00:00Z",
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.route("**/api/podcasts/2/episodes", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        episodes: [
+          {
+            id: 201,
+            podcastId: 2,
+            title: "Fresh queued episode",
+            description: "Still unlistened",
+            audioUrl: "https://example.com/fresh.mp3",
+            duration: 900,
+            downloaded: false,
+            isListened: false,
+            publishedAt: "2026-05-21T10:00:00Z",
+          },
+        ],
+      }),
+    });
+  });
+
+  await page.goto("/subscriptions");
+
+  await expect(page.getByRole("heading", { name: "Subscriptions" })).toBeVisible();
+  await expect(page.getByText("2 podcasts")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show all" })).toBeVisible();
+  await expect(page.getByText("Previously Listened Show")).toBeVisible();
+  await expect(page.getByText("Fresh Queue Show")).toBeVisible();
+  await expect(page.getByText("Listened queued episode")).toBeVisible();
+  await expect(page.getByText("In playlist")).toBeVisible();
+});

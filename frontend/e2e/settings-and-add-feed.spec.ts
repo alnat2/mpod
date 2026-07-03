@@ -78,6 +78,23 @@ test("saves settings and adds a feed from the empty subscriptions state", async 
     });
   });
 
+  await page.route("**/api/proxy/status", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        proxy: {
+          proxyEnabled: false,
+          proxyConfigured: true,
+          status: "off",
+          externalIp: null,
+          country: null,
+          error: null,
+        },
+      }),
+    });
+  });
+
   await page.route("**/api/podcasts", async (route) => {
     if (route.request().method() === "POST") {
       const payload = route.request().postDataJSON() as { rssUrl: string };
@@ -164,5 +181,5 @@ test("saves settings and adds a feed from the empty subscriptions state", async 
   await expect(
     page.getByRole("button", { name: /New Feed/ })
   ).toBeVisible();
-  await expect(page.getByText("1 unlistened episode")).toBeVisible();
+  await expect(page.getByText("1 / 1 episodes")).toBeVisible();
 });

@@ -154,6 +154,8 @@ When scaffolding or implementing the project, the likely early priorities are:
 A task is not complete unless:
 - behavior matches the approved docs
 - edge cases relevant to the change are handled
+- bug fixes include a focused regression test that would fail before the fix
+- if a regression test is not practical, the reason must be stated clearly in chat
 - local configuration assumptions are explicit
 - new files and modules fit the architecture direction
 - obvious regressions or contradictions are avoided

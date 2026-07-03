@@ -3,6 +3,8 @@ import { expect, test } from "@playwright/test";
 test("keeps playlist order stable when playing and persists drag reorder", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+
   let queueOrder = [101, 102];
   let reorderPayload: number[] | null = null;
 

@@ -283,6 +283,69 @@ describe("SubscriptionsScreen", () => {
     expect(screen.queryByText("Build Your SaaS episodes")).not.toBeInTheDocument();
   });
 
+  it("keeps podcasts with playlist episodes visible in the default filtered view", async () => {
+    const secondPodcast: Podcast = {
+      ...podcast,
+      id: 2,
+      title: "Second Show",
+      rssUrl: "https://example.com/second.xml",
+    };
+    const listenedPlaylistEpisode: Episode = {
+      ...baseEpisode,
+      isListened: true,
+    };
+    const secondEpisode: Episode = {
+      ...baseEpisode,
+      id: 201,
+      podcastId: 2,
+      title: "Second episode",
+    };
+
+    vi.spyOn(api.podcasts, "list").mockResolvedValue({
+      podcasts: [podcast, secondPodcast],
+    });
+    vi.spyOn(api.podcasts, "episodes").mockImplementation((podcastId) =>
+      Promise.resolve({
+        episodes:
+          podcastId === podcast.id ? [listenedPlaylistEpisode] : [secondEpisode],
+      })
+    );
+    vi.spyOn(api.playlist, "list").mockResolvedValue({
+      items: [
+        {
+          episodeId: listenedPlaylistEpisode.id,
+          position: 1,
+          episode: {
+            id: listenedPlaylistEpisode.id,
+            title: listenedPlaylistEpisode.title,
+            podcastId: listenedPlaylistEpisode.podcastId,
+            isListened: true,
+            downloaded: false,
+          },
+        },
+        {
+          episodeId: secondEpisode.id,
+          position: 2,
+          episode: {
+            id: secondEpisode.id,
+            title: secondEpisode.title,
+            podcastId: secondEpisode.podcastId,
+            isListened: false,
+            downloaded: false,
+          },
+        },
+      ],
+    });
+
+    render(<SubscriptionsScreen />);
+
+    expect(await screen.findByText("Build Your SaaS")).toBeInTheDocument();
+    expect(screen.getByText("Second Show")).toBeInTheDocument();
+    expect(screen.getByTestId("episode-row-QA reorder third")).toHaveTextContent(
+      "In playlist"
+    );
+  });
+
   it("renders the state-based action variants", async () => {
     vi.spyOn(api.podcasts, "episodes").mockResolvedValue({
       episodes: [
