@@ -1097,6 +1097,44 @@ func TestPodcastsRefreshAllReturnsStableInternalErrorContractOnUnexpectedFailure
 	assertAPIError(t, rec, nethttp.StatusInternalServerError, "PODCASTS_REFRESH_ALL_FAILED")
 }
 
+func TestPodcastsRefreshAllRejectsConcurrentRun(t *testing.T) {
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		close(requestStarted)
+		<-releaseRequest
+		return routerXMLResponse(testRouterRSSFeed("Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+
+	firstDone := make(chan int, 1)
+	go func() {
+		req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/refresh-all", nil)
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		firstDone <- rec.Code
+	}()
+
+	<-requestStarted
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/refresh-all", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusConflict, "REFRESH_ALREADY_RUNNING")
+
+	close(releaseRequest)
+	if code := <-firstDone; code != nethttp.StatusOK {
+		t.Fatalf("expected first refresh-all to finish with 200, got %d", code)
+	}
+}
+
 func TestPodcastRefreshRejectsConcurrentRefresh(t *testing.T) {
 	requestStarted := make(chan struct{})
 	releaseRequest := make(chan struct{})
@@ -1913,6 +1951,107 @@ func TestAPIFlowSubscribeDownloadPlaylistAndCompletePlayback(t *testing.T) {
 	if downloadedPath.Valid && downloadedPath.String != "" {
 		t.Fatalf("expected downloaded_path to be cleared, got %q", downloadedPath.String)
 	}
+}
+
+func TestAPIFlowRegisterLogoutLoginSettingsAndOPMLImport(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return routerXMLResponse(testRouterRSSFeed("Imported Podcast", "Imported Episode", "guid-1", "https://cdn.example.com/1.mp3")), nil
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+		SOCKS5Host:   "127.0.0.1",
+		SOCKS5Port:   "1080",
+	}, client)
+
+	registerReq := httptest.NewRequest(nethttp.MethodPost, "/api/auth/register", bytes.NewReader([]byte(`{"username":"admin","password":"secret"}`)))
+	registerRec := httptest.NewRecorder()
+	handler.ServeHTTP(registerRec, registerReq)
+	if registerRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from register, got %d body=%s", registerRec.Code, registerRec.Body.String())
+	}
+	cookies := registerRec.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatalf("expected register to set session cookie")
+	}
+	cookie := cookies[0]
+
+	logoutReq := httptest.NewRequest(nethttp.MethodPost, "/api/auth/logout", nil)
+	logoutReq.AddCookie(cookie)
+	logoutRec := httptest.NewRecorder()
+	handler.ServeHTTP(logoutRec, logoutReq)
+	if logoutRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from logout, got %d body=%s", logoutRec.Code, logoutRec.Body.String())
+	}
+
+	loginReq := httptest.NewRequest(nethttp.MethodPost, "/api/auth/login", bytes.NewReader([]byte(`{"username":"admin","password":"secret"}`)))
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	if loginRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from login, got %d body=%s", loginRec.Code, loginRec.Body.String())
+	}
+	loginCookies := loginRec.Result().Cookies()
+	if len(loginCookies) == 0 {
+		t.Fatalf("expected login to set session cookie")
+	}
+	cookie = loginCookies[0]
+
+	settingsReq := httptest.NewRequest(nethttp.MethodPatch, "/api/settings", bytes.NewReader([]byte(`{"dailyRefreshTime":"08:45","playbackSpeed":"Speed 2x","proxyEnabled":true}`)))
+	settingsReq.AddCookie(cookie)
+	settingsRec := httptest.NewRecorder()
+	handler.ServeHTTP(settingsRec, settingsReq)
+	if settingsRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from settings patch, got %d body=%s", settingsRec.Code, settingsRec.Body.String())
+	}
+	if !strings.Contains(settingsRec.Body.String(), `"dailyRefreshTime":"08:45"`) ||
+		!strings.Contains(settingsRec.Body.String(), `"playbackSpeed":"Speed 2x"`) ||
+		!strings.Contains(settingsRec.Body.String(), `"proxyEnabled":true`) {
+		t.Fatalf("unexpected settings payload: %s", settingsRec.Body.String())
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	fileWriter, err := writer.CreateFormFile("file", "subscriptions.opml")
+	if err != nil {
+		t.Fatalf("CreateFormFile failed: %v", err)
+	}
+	if _, err := io.WriteString(fileWriter, `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <body>
+    <outline text="Imported Podcast" xmlUrl="https://example.com/feed.xml"/>
+  </body>
+</opml>`); err != nil {
+		t.Fatalf("write opml failed: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close multipart writer failed: %v", err)
+	}
+
+	importReq := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/import-opml", &body)
+	importReq.Header.Set("Content-Type", writer.FormDataContentType())
+	importReq.AddCookie(cookie)
+	importRec := httptest.NewRecorder()
+	handler.ServeHTTP(importRec, importReq)
+	if importRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from import, got %d body=%s", importRec.Code, importRec.Body.String())
+	}
+	if !strings.Contains(importRec.Body.String(), `"imported":1`) {
+		t.Fatalf("unexpected import payload: %s", importRec.Body.String())
+	}
+
+	listReq := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts", nil)
+	listReq.AddCookie(cookie)
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, listReq)
+	if listRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from podcasts list, got %d body=%s", listRec.Code, listRec.Body.String())
+	}
+	if !strings.Contains(listRec.Body.String(), `"title":"Imported Podcast"`) {
+		t.Fatalf("expected imported podcast in list, got %s", listRec.Body.String())
+	}
+
+	assertTableCount(t, db, `SELECT COUNT(*) FROM podcasts`, 1)
+	assertTableCount(t, db, `SELECT COUNT(*) FROM episodes`, 1)
 }
 
 func TestEpisodeGetNotFound(t *testing.T) {
