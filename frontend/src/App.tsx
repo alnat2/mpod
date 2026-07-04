@@ -83,6 +83,23 @@ function ProtectedRoute({
   return children;
 }
 
+function RouteTransition({
+  children,
+  routeKey,
+}: {
+  children: ReactNode;
+  routeKey: string;
+}) {
+  return (
+    <div
+      key={routeKey}
+      className="h-full min-h-0 animate-in fade-in-0 slide-in-from-bottom-1 duration-150 ease-out motion-reduce:animate-none motion-reduce:transition-none"
+    >
+      {children}
+    </div>
+  );
+}
+
 function AppRoutes() {
   const location = useLocation();
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -133,72 +150,74 @@ function AppRoutes() {
 
   return (
     <Suspense fallback={<LoadingScreen />}>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <Navigate
-              to={setupRequired ? "/setup" : authenticatedHome}
-              replace
-            />
-          }
-        />
-        <Route
-          path="/setup"
-          element={
-            setupRequired ? (
-              <SetupScreen onAuthenticated={loadSession} />
-            ) : (
-              <Navigate to={authenticatedHome} replace />
-            )
-          }
-        />
-        <Route
-          path="/login"
-          element={
-            setupRequired ? (
-              <Navigate to="/setup" replace />
-            ) : authenticated ? (
-              <Navigate to="/subscriptions" replace />
-            ) : (
-              <LoginScreen onAuthenticated={loadSession} />
-            )
-          }
-        />
-        <Route
-          path="/subscriptions"
-          element={
-            <ProtectedRoute
-              authenticated={authenticated}
-              setupRequired={setupRequired}
-            >
-              <SubscriptionsScreen />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/home"
-          element={
-            <ProtectedRoute
-              authenticated={authenticated}
-              setupRequired={setupRequired}
-            >
-              <HomeScreen />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/settings"
-          element={
-            <ProtectedRoute
-              authenticated={authenticated}
-              setupRequired={setupRequired}
-            >
-              <SettingsScreen onSessionChange={loadSession} />
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
+      <RouteTransition routeKey={location.pathname}>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <Navigate
+                to={setupRequired ? "/setup" : authenticatedHome}
+                replace
+              />
+            }
+          />
+          <Route
+            path="/setup"
+            element={
+              setupRequired ? (
+                <SetupScreen onAuthenticated={loadSession} />
+              ) : (
+                <Navigate to={authenticatedHome} replace />
+              )
+            }
+          />
+          <Route
+            path="/login"
+            element={
+              setupRequired ? (
+                <Navigate to="/setup" replace />
+              ) : authenticated ? (
+                <Navigate to="/subscriptions" replace />
+              ) : (
+                <LoginScreen onAuthenticated={loadSession} />
+              )
+            }
+          />
+          <Route
+            path="/subscriptions"
+            element={
+              <ProtectedRoute
+                authenticated={authenticated}
+                setupRequired={setupRequired}
+              >
+                <SubscriptionsScreen />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/home"
+            element={
+              <ProtectedRoute
+                authenticated={authenticated}
+                setupRequired={setupRequired}
+              >
+                <HomeScreen />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute
+                authenticated={authenticated}
+                setupRequired={setupRequired}
+              >
+                <SettingsScreen onSessionChange={loadSession} />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </RouteTransition>
     </Suspense>
   );
 }
