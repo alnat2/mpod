@@ -99,20 +99,26 @@ vi.mock("@/components/mpod", () => ({
   Player: ({
     title,
     podcastTitle,
+    elapsedLabel,
     durationLabel,
+    progressValue,
     onProgressSeek,
     onNotes,
   }: {
     title: string;
     podcastTitle: string;
+    elapsedLabel: string;
     durationLabel: string;
+    progressValue?: number;
     onProgressSeek?: (progressRatio: number) => void;
     onNotes?: () => void;
   }) => (
     <section data-testid="player">
       <div>{title}</div>
       <div>{podcastTitle}</div>
-      <div>{durationLabel}</div>
+      <div data-testid="elapsed-label">{elapsedLabel}</div>
+      <div data-testid="duration-label">{durationLabel}</div>
+      <div data-testid="progress-value">{progressValue}</div>
       <button type="button" onClick={() => onProgressSeek?.(0.5)}>
         Seek middle
       </button>
@@ -238,11 +244,20 @@ describe("HomeScreen", () => {
 
     render(<HomeScreen />);
 
-    const player = await screen.findByTestId("player");
-    expect(player).toHaveTextContent("38:24");
+    expect(await screen.findByTestId("duration-label")).toHaveTextContent("40:00");
 
     await user.click(screen.getByRole("button", { name: "Seek middle" }));
     expect(seekToMock).toHaveBeenCalledWith(1200);
+  });
+
+  it("shows total duration on the right side of the player instead of remaining time", async () => {
+    playbackDurationSeconds = 96;
+
+    render(<HomeScreen />);
+
+    expect(await screen.findByTestId("elapsed-label")).toHaveTextContent("1:36");
+    expect(screen.getByTestId("duration-label")).toHaveTextContent("1:36");
+    expect(screen.getByTestId("progress-value")).toHaveTextContent("100");
   });
 
   it("removes playlist items immediately from the row action", async () => {
