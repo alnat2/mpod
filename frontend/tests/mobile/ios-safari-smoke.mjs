@@ -275,6 +275,75 @@ async function assertVerticalSwipeScrolls(driver, route) {
   }
 }
 
+async function assertOPMLFileInputUsable(driver) {
+  await driver.url(appUrl("/subscriptions"));
+  await wait(1_500);
+
+  const result = await driver.executeAsync((done) => {
+    const buttonText = (element) =>
+      element.textContent?.trim().replace(/\s+/g, " ");
+    const clickButton = (label) => {
+      const button = Array.from(document.querySelectorAll("button")).find(
+        (element) =>
+          buttonText(element) === label ||
+          element.getAttribute("aria-label") === label,
+      );
+      button?.click();
+      return Boolean(button);
+    };
+
+    if (!clickButton("Add podcast")) {
+      done({ ok: false, reason: "Add podcast button not found" });
+      return;
+    }
+
+    window.setTimeout(() => {
+      if (!clickButton("Import OPML File")) {
+        done({ ok: false, reason: "Import OPML File tab not found" });
+        return;
+      }
+
+      window.setTimeout(() => {
+        const input = document.querySelector('input[type="file"]');
+        if (!input) {
+          done({ ok: false, reason: "File input not found" });
+          return;
+        }
+
+        const rect = input.getBoundingClientRect();
+        const style = window.getComputedStyle(input);
+        done({
+          ok:
+            !input.disabled &&
+            rect.width > 0 &&
+            rect.height > 0 &&
+            style.display !== "none" &&
+            style.visibility !== "hidden" &&
+            style.opacity !== "0" &&
+            style.pointerEvents !== "none",
+          details: {
+            disabled: input.disabled,
+            display: style.display,
+            height: Math.round(rect.height),
+            opacity: style.opacity,
+            pointerEvents: style.pointerEvents,
+            visibility: style.visibility,
+            width: Math.round(rect.width),
+          },
+        });
+      }, 300);
+    }, 300);
+  });
+
+  if (!result.ok) {
+    throw new Error(
+      `OPML file input is not usable in Mobile Safari: ${JSON.stringify(result)}`,
+    );
+  }
+
+  console.log("✓ OPML file input");
+}
+
 async function bootstrapAuth(driver) {
   await driver.url(appUrl("/"));
   await wait(1_000);
@@ -378,6 +447,7 @@ async function main() {
     await driver.setTimeout({ script: 15_000 });
     await bootstrapAuth(driver);
     await checkRoute(driver, "/subscriptions");
+    await assertOPMLFileInputUsable(driver);
     await checkRoute(driver, "/home");
     await checkRoute(driver, "/settings");
   } finally {
