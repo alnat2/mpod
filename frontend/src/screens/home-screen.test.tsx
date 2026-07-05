@@ -244,20 +244,20 @@ describe("HomeScreen", () => {
 
     render(<HomeScreen />);
 
-    expect(await screen.findByTestId("duration-label")).toHaveTextContent("40:00");
+    expect(await screen.findByTestId("duration-label")).toHaveTextContent("38:24");
 
     await user.click(screen.getByRole("button", { name: "Seek middle" }));
     expect(seekToMock).toHaveBeenCalledWith(1200);
   });
 
-  it("shows total duration on the right side of the player instead of remaining time", async () => {
-    playbackDurationSeconds = 96;
+  it("shows remaining time on the right side of the player", async () => {
+    playbackDurationSeconds = 2400;
 
     render(<HomeScreen />);
 
     expect(await screen.findByTestId("elapsed-label")).toHaveTextContent("1:36");
-    expect(screen.getByTestId("duration-label")).toHaveTextContent("1:36");
-    expect(screen.getByTestId("progress-value")).toHaveTextContent("100");
+    expect(screen.getByTestId("duration-label")).toHaveTextContent("38:24");
+    expect(screen.getByTestId("progress-value")).toHaveTextContent("4");
   });
 
   it("removes playlist items immediately from the row action", async () => {
