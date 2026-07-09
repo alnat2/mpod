@@ -289,6 +289,7 @@ export function HomeScreen() {
                   return (
                     <EpisodeRow
                       layout={isMobile ? "mobile" : "desktop"}
+                      showDragHandle
                       current={isCurrentEpisode}
                       title={episode.title}
                       podcastTitle={episode.podcastTitle}

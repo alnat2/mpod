@@ -250,7 +250,7 @@ describe("SubscriptionsScreen", () => {
       "Show notes",
       "Mark as listened",
     ]);
-    expect(screen.getByTestId("drag-handle-QA reorder third")).toBeInTheDocument();
+    expect(screen.queryByTestId("drag-handle-QA reorder third")).not.toBeInTheDocument();
     expect(row).not.toHaveTextContent("Build Your SaaS");
     expect(row).not.toHaveTextContent(podcast.title);
     expect(screen.getByText("1 podcast")).toBeInTheDocument();

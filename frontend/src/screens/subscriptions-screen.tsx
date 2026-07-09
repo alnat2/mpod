@@ -207,7 +207,6 @@ function MobilePodcastColumn({
             >
               <EpisodeRow
                 layout="mobile"
-                showDragHandle
                 title={episode.title}
                 subtitle={subtitle}
                 dateLabel={publishedAt || undefined}
@@ -999,7 +998,6 @@ export function SubscriptionsScreen() {
                           >
                             <EpisodeRow
                               layout={isMobile ? "mobile" : "desktop"}
-                              showDragHandle
                               title={episode.title}
                               subtitle={subtitle}
                               dateLabel={publishedAt || undefined}

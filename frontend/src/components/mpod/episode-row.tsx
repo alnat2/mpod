@@ -159,7 +159,7 @@ export function EpisodeRow({
   thumbnailAlt = "",
   showArtwork = true,
   episodeRowId,
-  showDragHandle = true,
+  showDragHandle = false,
   mobileMenuAction,
   draggable,
   dragging,
@@ -206,7 +206,7 @@ export function EpisodeRow({
       className={cn(
         "flex w-full shrink-0 items-center rounded shadow-xs bg-card text-foreground",
         isMobile
-          ? "h-[76px] gap-2 overflow-hidden px-2 py-2"
+          ? "h-[76px] gap-2 overflow-hidden px-3 py-2"
           : isDesktop
             ? "h-[70px] gap-3 px-3"
             : "h-[76px] gap-2 overflow-hidden px-2 py-2 md:h-[70px] md:gap-3 md:px-3 md:py-0",

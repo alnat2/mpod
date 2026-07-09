@@ -142,13 +142,16 @@ vi.mock("@/components/mpod", () => ({
   EpisodeRow: ({
     title,
     current,
+    showDragHandle,
     actions = [],
   }: {
     title: string;
     current?: boolean;
+    showDragHandle?: boolean;
     actions?: Array<{ label: string; onClick?: () => void }>;
   }) => (
     <div data-testid={`episode-row-${title}`} data-current={current ? "yes" : "no"}>
+      {showDragHandle ? <span data-testid={`drag-handle-${title}`} /> : null}
       <span>{title}</span>
       {actions.map((action) => (
         <button
@@ -213,6 +216,7 @@ describe("HomeScreen", () => {
       "data-current",
       "no"
     );
+    expect(screen.getByTestId("drag-handle-First queued episode")).toBeInTheDocument();
   });
 
   it("plays the clicked playlist row without relying on queue position", async () => {
