@@ -485,6 +485,10 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       );
       setPlaybackError(null);
       setPlaying(true);
+      void attemptAudioPlay(audio, (error) => {
+        setPlaying(false);
+        setPlaybackError(describeAudioError(error));
+      });
     };
 
     const startBackendFallbackEpisode = async (
