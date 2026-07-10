@@ -381,8 +381,9 @@ sequenceDiagram
 
   F->>B: POST /api/playback
   B->>B: Apply sync rules
+  B->>B: Decide completion fallback if the finished item was last in playlist
   B->>D: Update playback state
-  B-->>F: Return stored playback
+  B-->>F: Return stored playback + nextEpisodeId
 ```
 
 ## Session and Auth Flow

@@ -473,13 +473,16 @@ Success response:
     "episodeId": 55,
     "positionSeconds": 812,
     "lastUpdated": "2026-04-21T10:15:01Z"
-  }
+  },
+  "nextEpisodeId": null
 }
 ```
 
 Rules:
 - Conflict resolution rules belong to the playback sync section
 - If playback completion marks the episode listened, that behavior must be applied here
+- `nextEpisodeId` is backend-owned playback guidance for what to play next after a completion update
+- For non-completion updates, `nextEpisodeId` is `null`
 
 ### Settings Endpoints
 
@@ -665,6 +668,16 @@ Request fields:
   - it is marked as listened
   - playback position is stored as full duration or final reported position
   - any file and playlist side effects follow file lifecycle rules
+- Before removing the finished episode from the playlist, the backend checks whether it was the last item in the pre-removal playlist order.
+- If the finished episode was the last playlist item, the backend looks upward through earlier playlist items and selects the highest eligible fallback episode.
+- An eligible fallback episode must:
+  - still be in the playlist after the finished episode cleanup
+  - be unlistened
+  - have a playback record
+  - have `positionSeconds > 0`
+  - not already count as completed under the same playback completion rules
+- If no eligible earlier episode exists, the backend returns `nextEpisodeId = null`.
+- The selected fallback episode must not be marked listened, removed, reordered, or have its files changed as part of the finished episode cleanup.
 
 ### Position Update Rules
 - If no playback record exists yet, create one.
@@ -686,8 +699,14 @@ After an accepted update, the API returns the stored playback state:
 - `episodeId`
 - `positionSeconds`
 - `lastUpdated`
+- `nextEpisodeId`
 
 If an update is ignored because it is stale or invalid for sync purposes, the API should still return the current stored playback state instead of failing.
+
+`nextEpisodeId` rules:
+- For ordinary progress updates and ignored stale updates, `nextEpisodeId` is `null`.
+- If playback completion finishes a non-last playlist item, `nextEpisodeId` is `null`; normal sequential playback remains a frontend concern.
+- If playback completion finishes the last playlist item and an eligible earlier in-progress playlist item exists, `nextEpisodeId` contains that episode ID.
 
 ### Read Behavior
 `GET /api/playback/:episodeId` returns:
