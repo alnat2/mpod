@@ -886,8 +886,9 @@ func (r *Router) handleEpisodeAudio(w nethttp.ResponseWriter, req *nethttp.Reque
 		r.writeAPIError(w, nethttp.StatusBadGateway, "AUDIO_LOAD_FAILED", "Audio source is not playable")
 		return
 	}
-	if contentType != "" {
-		w.Header().Set("Content-Type", contentType)
+	resolvedContentType := media.PreferredPlayableContentType(contentType, prefix)
+	if resolvedContentType != "" {
+		w.Header().Set("Content-Type", resolvedContentType)
 	}
 	if acceptRanges := strings.TrimSpace(resp.Header.Get("Accept-Ranges")); acceptRanges != "" {
 		w.Header().Set("Accept-Ranges", acceptRanges)

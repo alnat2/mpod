@@ -75,6 +75,48 @@ func TestReadBodyPrefixPropagatesReadErrors(t *testing.T) {
 	}
 }
 
+func TestPreferredPlayableContentType(t *testing.T) {
+	tests := []struct {
+		name   string
+		header string
+		sample []byte
+		want   string
+	}{
+		{
+			name:   "preserves specific playable header",
+			header: "audio/mpeg; charset=utf-8",
+			sample: []byte("ID3\x03\x00\x00payload"),
+			want:   "audio/mpeg",
+		},
+		{
+			name:   "upgrades generic binary from sniffed mp3",
+			header: "application/octet-stream",
+			sample: []byte("ID3\x03\x00\x00payload"),
+			want:   "audio/mpeg",
+		},
+		{
+			name:   "keeps generic binary when sniff cannot improve it",
+			header: "application/octet-stream",
+			sample: []byte("plain text but not html"),
+			want:   "application/octet-stream",
+		},
+		{
+			name:   "returns empty for non-playable types",
+			header: "text/html",
+			sample: []byte("<html>bad</html>"),
+			want:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := PreferredPlayableContentType(tt.header, tt.sample); got != tt.want {
+				t.Fatalf("PreferredPlayableContentType(%q, %q) = %q, want %q", tt.header, string(tt.sample), got, tt.want)
+			}
+		})
+	}
+}
+
 type errReader struct{}
 
 func (errReader) Read([]byte) (int, error) {

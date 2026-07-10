@@ -1803,6 +1803,34 @@ func TestEpisodeAudioProxiesRemoteAudioWhenNotDownloaded(t *testing.T) {
 	}
 }
 
+func TestEpisodeAudioNormalizesGenericBinaryRemoteAudioContentType(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return routerBinaryResponse("application/octet-stream", []byte("ID3\x03\x00\x00remote-audio")), nil
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+	seedEpisode(t, db, 1, 1)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/episodes/1/audio", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); got != "audio/mpeg" {
+		t.Fatalf("expected audio/mpeg content type, got %q", got)
+	}
+	if !bytes.Equal(rec.Body.Bytes(), []byte("ID3\x03\x00\x00remote-audio")) {
+		t.Fatalf("expected proxied remote audio body, got %q", rec.Body.Bytes())
+	}
+}
+
 func TestEpisodeAudioForwardsRangeHeaderToRemoteAudio(t *testing.T) {
 	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
 		if got := req.Header.Get("Range"); got != "bytes=10-19" {
