@@ -16,7 +16,12 @@ import {
   isPlaybackSpeedLabel,
   type PlaybackSpeedLabel,
 } from "@/components/mpod/playback";
-import { api, type Episode, type PlaybackState } from "./api";
+import {
+  api,
+  type Episode,
+  type PlaybackState,
+  type PlaybackUpdateResponse,
+} from "./api";
 
 export type QueueEpisode = Episode & {
   podcastTitle: string;
@@ -250,11 +255,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       options: { completed?: boolean; didSeek?: boolean } = {}
     ) => {
       const episode = currentEpisodeRef.current;
-      if (!episode) return;
+      if (!episode) return null;
 
       try {
         const durationSeconds = currentEpisodeDurationRef.current;
-        await api.playback.update({
+        return await api.playback.update({
           episodeId: episode.id,
           positionSeconds: Math.round(
             clampPosition(nextPositionSeconds, durationSeconds)
@@ -266,6 +271,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         });
       } catch {
         // silently fail for background sync
+        return null;
       }
     },
     []
@@ -464,6 +470,43 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       setPlaybackError(null);
     };
 
+    const startQueuedEpisode = (episode: QueueEpisode) => {
+      const nextPosition = episode.playback?.positionSeconds ?? 0;
+      setActiveEpisodeId(episode.id);
+      primeAudioSource(
+        audio,
+        episode,
+        speedLabelRef.current,
+        nextPosition,
+        setPositionSeconds,
+        () => {
+          sourcePrimedRef.current = true;
+        }
+      );
+      setPlaybackError(null);
+      setPlaying(true);
+    };
+
+    const startBackendFallbackEpisode = async (
+      response: PlaybackUpdateResponse | null
+    ) => {
+      if (response?.nextEpisodeId == null) {
+        return;
+      }
+
+      const fallbackEpisode = queueRef.current.find(
+        (episode) => episode.id === response.nextEpisodeId
+      );
+      if (!fallbackEpisode) {
+        return;
+      }
+
+      const syncedEpisode = await refreshPlaybackState(fallbackEpisode, {
+        applyEvenIfNotNewer: true,
+      });
+      startQueuedEpisode(syncedEpisode);
+    };
+
     const onEnded = () => {
       const finishedEpisode = currentEpisodeRef.current;
       const currentQueue = queueRef.current;
@@ -474,26 +517,18 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         currentIndex >= 0 ? currentQueue[currentIndex + 1] ?? null : null;
 
       if (nextEpisode) {
-        const nextPosition = nextEpisode.playback?.positionSeconds ?? 0;
-        setActiveEpisodeId(nextEpisode.id);
-        primeAudioSource(
-          audio,
-          nextEpisode,
-          speedLabelRef.current,
-          nextPosition,
-          setPositionSeconds,
-          () => {
-            sourcePrimedRef.current = true;
-          }
-        );
-        setPlaybackError(null);
-        setPlaying(true);
+        startQueuedEpisode(nextEpisode);
       } else {
         setPlaying(false);
       }
 
-      void commitPlayback(audio.currentTime, { completed: true }).then(() =>
-        loadQueue()
+      void commitPlayback(audio.currentTime, { completed: true }).then(
+        async (response) => {
+          if (!nextEpisode) {
+            await startBackendFallbackEpisode(response);
+          }
+          await loadQueue();
+        }
       );
     };
 
@@ -532,7 +567,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       audio.src = "";
       sourcePrimedRef.current = false;
     };
-  }, [commitPlayback, loadQueue]);
+  }, [commitPlayback, loadQueue, refreshPlaybackState]);
 
   // Initial load
   useEffect(() => {

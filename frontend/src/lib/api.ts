@@ -69,6 +69,11 @@ export type PlaybackState = {
   lastUpdated: string;
 };
 
+export type PlaybackUpdateResponse = {
+  playback: PlaybackState;
+  nextEpisodeId: number | null;
+};
+
 export type SettingsValues = {
   dailyRefreshTime: string;
   playbackSpeed: string;
@@ -247,7 +252,7 @@ export const api = {
       didSeek?: boolean;
       clientUpdatedAt?: string;
     }) =>
-      apiRequest<{ playback: PlaybackState }>("/api/playback", {
+      apiRequest<PlaybackUpdateResponse>("/api/playback", {
         method: "POST",
         body: {
           durationSeconds: 0,
