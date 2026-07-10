@@ -597,7 +597,7 @@ func (r *Router) handlePlaybackPost(w nethttp.ResponseWriter, req *nethttp.Reque
 		clientUpdatedAt = &parsed
 	}
 
-	state, err := r.playback.Update(req.Context(), playback.UpdateInput{
+	result, err := r.playback.Update(req.Context(), playback.UpdateInput{
 		EpisodeID:       payload.EpisodeID,
 		PositionSeconds: payload.PositionSeconds,
 		DurationSeconds: payload.DurationSeconds,
@@ -617,7 +617,7 @@ func (r *Router) handlePlaybackPost(w nethttp.ResponseWriter, req *nethttp.Reque
 		return
 	}
 
-	r.writeJSON(w, nethttp.StatusOK, map[string]any{"playback": state})
+	r.writeJSON(w, nethttp.StatusOK, result)
 }
 
 func (r *Router) handlePlaylistList(w nethttp.ResponseWriter, req *nethttp.Request) {

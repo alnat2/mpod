@@ -29,6 +29,11 @@ type State struct {
 	LastUpdated     time.Time `json:"lastUpdated"`
 }
 
+type UpdateResult struct {
+	Playback      State  `json:"playback"`
+	NextEpisodeID *int64 `json:"nextEpisodeId"`
+}
+
 type UpdateInput struct {
 	EpisodeID       int64
 	PositionSeconds int64
@@ -64,26 +69,26 @@ func (s *Service) Get(ctx context.Context, episodeID int64) (*State, error) {
 	return &state, nil
 }
 
-func (s *Service) Update(ctx context.Context, input UpdateInput) (State, error) {
+func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, error) {
 	if input.PositionSeconds < 0 {
-		return State{}, ErrInvalidPosition
+		return UpdateResult{}, ErrInvalidPosition
 	}
 
 	var episodeExists int
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM episodes WHERE id = ?`, input.EpisodeID).Scan(&episodeExists); err != nil {
-		return State{}, fmt.Errorf("check episode exists: %w", err)
+		return UpdateResult{}, fmt.Errorf("check episode exists: %w", err)
 	}
 	if episodeExists == 0 {
-		return State{}, ErrEpisodeNotFound
+		return UpdateResult{}, ErrEpisodeNotFound
 	}
 
 	current, err := s.Get(ctx, input.EpisodeID)
 	if err != nil {
-		return State{}, err
+		return UpdateResult{}, err
 	}
 
 	if current != nil && input.ClientUpdatedAt != nil && input.ClientUpdatedAt.UTC().Before(current.LastUpdated) {
-		return *current, nil
+		return UpdateResult{Playback: *current}, nil
 	}
 
 	position := input.PositionSeconds
@@ -95,33 +100,52 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (State, error) 
 		if input.DurationSeconds > 0 {
 			position = input.DurationSeconds
 		}
+		nextEpisodeID, err := s.findCompletionFallback(ctx, input.EpisodeID)
+		if err != nil {
+			return UpdateResult{}, err
+		}
 		state, err := s.saveState(ctx, input.EpisodeID, position)
 		if err != nil {
-			return State{}, err
+			return UpdateResult{}, err
 		}
 		if err := s.applyCompletionSideEffects(ctx, input.EpisodeID); err != nil {
-			return State{}, err
+			return UpdateResult{}, err
 		}
-		return state, nil
+		return UpdateResult{
+			Playback:      state,
+			NextEpisodeID: nextEpisodeID,
+		}, nil
 	}
 
 	if current == nil {
-		return s.saveState(ctx, input.EpisodeID, position)
+		state, err := s.saveState(ctx, input.EpisodeID, position)
+		if err != nil {
+			return UpdateResult{}, err
+		}
+		return UpdateResult{Playback: state}, nil
 	}
 
 	if position > current.PositionSeconds {
-		return s.saveState(ctx, input.EpisodeID, position)
+		state, err := s.saveState(ctx, input.EpisodeID, position)
+		if err != nil {
+			return UpdateResult{}, err
+		}
+		return UpdateResult{Playback: state}, nil
 	}
 
 	diff := current.PositionSeconds - position
 	if diff < 30 {
-		return *current, nil
+		return UpdateResult{Playback: *current}, nil
 	}
 	if !input.DidSeek {
-		return *current, nil
+		return UpdateResult{Playback: *current}, nil
 	}
 
-	return s.saveState(ctx, input.EpisodeID, position)
+	state, err := s.saveState(ctx, input.EpisodeID, position)
+	if err != nil {
+		return UpdateResult{}, err
+	}
+	return UpdateResult{Playback: state}, nil
 }
 
 func (s *Service) saveState(ctx context.Context, episodeID, position int64) (State, error) {
@@ -151,6 +175,67 @@ func (s *Service) applyCompletionSideEffects(ctx context.Context, episodeID int6
 		return fmt.Errorf("remove completed episode from playlist: %w", err)
 	}
 	return nil
+}
+
+func (s *Service) findCompletionFallback(ctx context.Context, completedEpisodeID int64) (*int64, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT playlist.episode_id, episodes.is_listened, playback.position_seconds, episodes.duration
+		FROM playlist
+		JOIN episodes ON episodes.id = playlist.episode_id
+		LEFT JOIN playback ON playback.episode_id = playlist.episode_id
+		ORDER BY playlist.position ASC, playlist.id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("load playlist for completion fallback: %w", err)
+	}
+	defer rows.Close()
+
+	type candidate struct {
+		episodeID int64
+		listened  bool
+		position  sql.NullInt64
+		duration  sql.NullInt64
+	}
+
+	var items []candidate
+	currentIndex := -1
+	for rows.Next() {
+		var item candidate
+		if err := rows.Scan(&item.episodeID, &item.listened, &item.position, &item.duration); err != nil {
+			return nil, fmt.Errorf("scan completion fallback candidate: %w", err)
+		}
+		if item.episodeID == completedEpisodeID {
+			currentIndex = len(items)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate completion fallback candidates: %w", err)
+	}
+
+	if currentIndex == -1 || currentIndex != len(items)-1 {
+		return nil, nil
+	}
+
+	for i := currentIndex - 1; i >= 0; i-- {
+		item := items[i]
+		if item.listened || !item.position.Valid || item.position.Int64 <= 0 {
+			continue
+		}
+
+		duration := int64(0)
+		if item.duration.Valid {
+			duration = item.duration.Int64
+		}
+		if isCompleted(item.position.Int64, duration) {
+			continue
+		}
+
+		nextEpisodeID := item.episodeID
+		return &nextEpisodeID, nil
+	}
+
+	return nil, nil
 }
 
 func isCompleted(position, duration int64) bool {

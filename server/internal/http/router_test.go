@@ -1503,6 +1503,46 @@ func TestPlaybackEndpoints(t *testing.T) {
 	if postRec.Code != nethttp.StatusOK {
 		t.Fatalf("expected 200 from playback post, got %d body=%s", postRec.Code, postRec.Body.String())
 	}
+	if !strings.Contains(postRec.Body.String(), `"nextEpisodeId":null`) {
+		t.Fatalf("expected null nextEpisodeId in playback response, got %s", postRec.Body.String())
+	}
+}
+
+func TestPlaybackCompletionReturnsFallbackEpisodeForLastPlaylistItem(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test Podcast', 'https://example.com/feed.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration, is_listened) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3', 600, 0)`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration, is_listened) VALUES (2, 1, 'ep-2', 'Episode 2', 'https://example.com/2.mp3', 600, 0)`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration, is_listened) VALUES (3, 1, 'ep-3', 'Episode 3', 'https://example.com/3.mp3', 600, 0)`)
+	mustExecHTTP(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+	mustExecHTTP(t, db, `INSERT INTO playlist (episode_id, position) VALUES (2, 2)`)
+	mustExecHTTP(t, db, `INSERT INTO playlist (episode_id, position) VALUES (3, 3)`)
+	mustExecHTTP(t, db, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (1, 120, CURRENT_TIMESTAMP)`)
+	mustExecHTTP(t, db, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (2, 590, CURRENT_TIMESTAMP)`)
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/playback", bytes.NewReader([]byte(`{"episodeId":3,"positionSeconds":600,"durationSeconds":600,"completed":true}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from playback completion, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		Playback struct {
+			EpisodeID int64 `json:"episodeId"`
+		} `json:"playback"`
+		NextEpisodeID *int64 `json:"nextEpisodeId"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal playback response: %v", err)
+	}
+	if payload.NextEpisodeID == nil || *payload.NextEpisodeID != 1 {
+		t.Fatalf("expected fallback episode 1, got %+v", payload.NextEpisodeID)
+	}
 }
 
 func TestPlaybackRejectsInvalidClientUpdatedAt(t *testing.T) {
