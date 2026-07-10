@@ -162,8 +162,6 @@ body {
   overflow: hidden;
   overflow-x: hidden !important;
   overscroll-behavior: none;
-  position: fixed;
-  inset: 0;
 }
 
 html,
