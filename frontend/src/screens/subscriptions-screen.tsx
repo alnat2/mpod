@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -6,7 +6,6 @@ import {
   DownloadSquare02Icon,
   Loading02Icon,
   NoteIcon,
-  PodcastIcon,
   PlayListAddIcon,
   PlayListRemoveIcon,
   RefreshDotIcon,
@@ -27,14 +26,15 @@ import {
   Carousel,
   CarouselContent,
   CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
 } from "@/components/ui/carousel";
 import { api, type Episode, type Podcast } from "@/lib/api";
 import { usePlaybackDispatch } from "@/lib/playback-context";
 import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
+import { SubscriptionsEmptyState } from "./subscriptions-empty-state";
+import { MobilePodcastColumn } from "./subscriptions-mobile-podcast-column";
+import { SubscriptionsPodcastCarousel } from "./subscriptions-podcast-carousel";
 import {
   SubscriptionsPageHeader,
   type SubscriptionsPageAction,
@@ -77,226 +77,6 @@ function episodeSummaryLabel(totalCount: number, unlistenedCount: number) {
 
 function isVisibleByDefault(episode: { inPlaylist: boolean; isListened: boolean }) {
   return episode.inPlaylist || !episode.isListened;
-}
-
-type MobilePodcastColumnProps = {
-  podcast: PodcastWithEpisodes;
-  visibleEpisodes: Array<Episode & { inPlaylist: boolean }>;
-  showAll: boolean;
-  downloadingEpisodeIds: Set<number>;
-  podcastCardNode: ReactNode;
-  onMarkListened: (episodes: Array<Pick<Episode, "id" | "title">>, isListened: boolean) => void;
-  onDownload: (episodeId: number) => void;
-  onRemoveFromPlaylist: (episode: Pick<Episode, "id" | "title">) => void;
-  onAddToPlaylist: (episodeId: number) => void;
-  onShowNotes: (episodeId: number) => void;
-};
-
-function MobilePodcastColumn({
-  podcast,
-  visibleEpisodes,
-  showAll,
-  downloadingEpisodeIds,
-  podcastCardNode,
-  onMarkListened,
-  onDownload,
-  onRemoveFromPlaylist,
-  onAddToPlaylist,
-  onShowNotes,
-}: MobilePodcastColumnProps) {
-  const [isVisible, setIsVisible] = useState(false);
-  const columnRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setIsVisible(entry.isIntersecting);
-      },
-      { rootMargin: "100% 0px" }
-    );
-    if (columnRef.current) observer.observe(columnRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  const [episodeScrollTop, setEpisodeScrollTop] = useState(0);
-  const [episodeViewportHeight, setEpisodeViewportHeight] = useState(MOBILE_EPISODE_VIEWPORT_HEIGHT);
-  const episodeListRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!isVisible) return;
-    const container = episodeListRef.current;
-    if (!container) return;
-    const syncMetrics = () => {
-      setEpisodeViewportHeight(container.clientHeight || MOBILE_EPISODE_VIEWPORT_HEIGHT);
-      setEpisodeScrollTop(container.scrollTop);
-    };
-    syncMetrics();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(syncMetrics);
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [isVisible, showAll, visibleEpisodes.length]);
-
-  const episodeRowHeight = MOBILE_EPISODE_ROW_HEIGHT;
-  const episodeRowPitch = episodeRowHeight + EPISODE_ROW_GAP;
-
-  const virtualEpisodeWindow = useMemo(() => {
-    const startIndex = Math.max(0, Math.floor(episodeScrollTop / episodeRowPitch) - EPISODE_OVERSCAN_ROWS);
-    const visibleRowCount = Math.ceil(episodeViewportHeight / episodeRowPitch) + EPISODE_OVERSCAN_ROWS * 2;
-    const endIndex = Math.min(visibleEpisodes.length, startIndex + visibleRowCount);
-    return {
-      startIndex,
-      endIndex,
-      items: visibleEpisodes.slice(startIndex, endIndex),
-      topSpacerHeight: startIndex * episodeRowPitch,
-      bottomSpacerHeight: (visibleEpisodes.length - endIndex) * episodeRowPitch,
-    };
-  }, [episodeRowPitch, episodeScrollTop, episodeViewportHeight, visibleEpisodes]);
-
-  const durationForEpisode = useAudioMetadataDurations(virtualEpisodeWindow.items);
-
-  const podcastTotalEpisodeCount = podcast.episodes.length;
-  const podcastUnlistenedEpisodeCount = podcast.episodes.filter((episode) => !episode.isListened).length;
-
-  return (
-    <div ref={columnRef} className="flex h-full flex-col gap-4">
-      <div className="shrink-0">{podcastCardNode}</div>
-      {isVisible ? (
-        <PlaylistQueue
-          className="min-h-0 w-full flex-1"
-          bodyClassName="mpod-scroll block min-h-0 flex-1 overflow-y-auto pb-20"
-          bodyRef={episodeListRef}
-        bodyOnScroll={(event) => setEpisodeScrollTop(event.currentTarget.scrollTop)}
-        summary={episodeSummaryLabel(podcastTotalEpisodeCount, podcastUnlistenedEpisodeCount)}
-        headerAction={
-          <>
-            {visibleEpisodes.some((episode) => !episode.isListened) && (
-              <Button
-                variant="link"
-                type="button"
-                className="h-auto whitespace-normal py-1 text-right leading-tight"
-                onClick={() => onMarkListened(visibleEpisodes.filter((episode) => !episode.isListened), true)}
-              >
-                Mark all listened
-              </Button>
-            )}
-          </>
-        }
-      >
-        {virtualEpisodeWindow.topSpacerHeight > 0 ? (
-          <div
-            aria-hidden="true"
-            className="shrink-0"
-            style={{ height: virtualEpisodeWindow.topSpacerHeight }}
-          />
-        ) : null}
-        {virtualEpisodeWindow.items.map((episode) => {
-          const duration = formatDuration(durationForEpisode(episode));
-          const publishedAt = formatEpisodeDate(episode.publishedAt);
-          const downloading = downloadingEpisodeIds.has(episode.id);
-          const subtitle = episode.downloaded
-            ? episode.inPlaylist
-              ? "Downloaded · In playlist"
-              : "Downloaded"
-            : episode.inPlaylist
-              ? "In playlist"
-              : undefined;
-
-          return (
-            <div
-              key={episode.id}
-              className="shrink-0"
-              style={{ height: episodeRowPitch }}
-            >
-              <EpisodeRow
-                layout="mobile"
-                title={episode.title}
-                subtitle={subtitle}
-                dateLabel={publishedAt || undefined}
-                durationLabel={duration || undefined}
-                thumbnailUrl={podcast.imageUrl ? api.podcasts.imagePath(podcast.id) : undefined}
-                thumbnailAlt={`${podcast.title} artwork`}
-                actions={[
-                  {
-                    label: downloading ? "Downloading" : episode.downloaded ? "Downloaded" : "Download",
-                    icon: downloading ? Loading02Icon : episode.downloaded ? DownloadSquare02Icon : DownloadSquare01Icon,
-                    iconClassName: downloading ? "animate-spin" : episode.downloaded ? "text-muted-foreground" : undefined,
-                    disabled: downloading,
-                    onClick: episode.downloaded || downloading ? undefined : () => onDownload(episode.id),
-                  },
-                  {
-                    label: episode.inPlaylist ? "Remove from playlist" : "Add to playlist",
-                    icon: episode.inPlaylist ? PlayListRemoveIcon : PlayListAddIcon,
-                    onClick: () => (episode.inPlaylist ? onRemoveFromPlaylist(episode) : onAddToPlaylist(episode.id)),
-                  },
-                  {
-                    label: "Show notes",
-                    icon: NoteIcon,
-                    onClick: () => onShowNotes(episode.id),
-                  },
-                  {
-                    label: episode.isListened ? "Mark as unlistened" : "Mark as listened",
-                    icon: episode.isListened ? ViewOffIcon : ViewIcon,
-                    onClick: () => onMarkListened([episode], !episode.isListened),
-                  },
-                ]}
-              />
-            </div>
-          );
-        })}
-        {virtualEpisodeWindow.bottomSpacerHeight > 0 ? (
-          <div
-            aria-hidden="true"
-            className="shrink-0"
-            style={{ height: virtualEpisodeWindow.bottomSpacerHeight }}
-          />
-        ) : null}
-      </PlaylistQueue>
-      ) : (
-        <div className="min-h-0 w-full flex-1" />
-      )}
-    </div>
-  );
-}
-
-type SubscriptionsEmptyStateProps = {
-  description: string;
-  onAddRss: () => void;
-  onImportOpml: () => void;
-  title: string;
-};
-
-function SubscriptionsEmptyState({
-  description,
-  onAddRss,
-  onImportOpml,
-  title,
-}: SubscriptionsEmptyStateProps) {
-  return (
-    <section className="flex min-h-[256px] w-full items-center justify-center overflow-hidden rounded-lg bg-card p-12">
-      <div className="flex w-full max-w-96 flex-col items-center gap-6 text-center">
-        <div className="flex w-full flex-col items-center gap-2">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
-            <HugeiconsIcon icon={PodcastIcon} aria-hidden="true" />
-          </div>
-          <h2 className="text-lg leading-7 font-medium text-card-foreground">
-            {title}
-          </h2>
-          <p className="text-sm leading-5 text-muted-foreground">
-            {description}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <Button type="button" onClick={onAddRss}>
-            Add RSS feed
-          </Button>
-          <Button variant="outline" type="button" onClick={onImportOpml}>
-            Import OPML
-          </Button>
-        </div>
-      </div>
-    </section>
-  );
 }
 
 export function SubscriptionsScreen() {
@@ -879,46 +659,10 @@ export function SubscriptionsScreen() {
                   </Carousel>
                 ) : (
                   <>
-                    <div className="min-w-0 shrink-0">
-                      <Carousel
-                        className="w-full max-w-full overflow-hidden"
-                        opts={{
-                          align: "start",
-                          containScroll: "trimSnaps",
-                        }}
-                      >
-                        <CarouselContent
-                          className={cn(
-                            "ml-0 gap-5",
-                            !isMobile && visiblePodcasts.length < 4 && "justify-center"
-                          )}
-                        >
-                          {visiblePodcasts.map((podcast) => (
-                            <CarouselItem
-                              key={podcast.id}
-                              className={cn(
-                                "pl-0",
-                                isMobile
-                                  ? "basis-[min(320px,100%)]"
-                                  : "basis-[285px]"
-                              )}
-                            >
-                              {renderPodcastCard(podcast)}
-                            </CarouselItem>
-                          ))}
-                        </CarouselContent>
-                        <div className="mt-2 hidden items-center justify-center gap-5 md:flex">
-                          <CarouselPrevious
-                            size="icon"
-                            className="static size-8 translate-x-0 translate-y-0 rounded-full"
-                          />
-                          <CarouselNext
-                            size="icon"
-                            className="static size-8 translate-x-0 translate-y-0 rounded-full"
-                          />
-                        </div>
-                      </Carousel>
-                    </div>
+                    <SubscriptionsPodcastCarousel
+                      podcasts={visiblePodcasts}
+                      renderPodcastCard={renderPodcastCard}
+                    />
                     <PlaylistQueue
                       key={`${selectedPodcast.id}-${showAll ? "all" : "unlistened"}`}
                       className="min-h-0 w-full flex-1"
