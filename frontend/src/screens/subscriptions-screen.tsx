@@ -18,7 +18,6 @@ import {
   AppShell,
   EpisodeRow,
   ModalScreen,
-  PageHeader,
   PlaylistQueue,
   PodcastCard,
   ShowNotes,
@@ -36,6 +35,10 @@ import { usePlaybackDispatch } from "@/lib/playback-context";
 import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
+import {
+  SubscriptionsPageHeader,
+  type SubscriptionsPageAction,
+} from "./subscriptions-page-header";
 import {
   ErrorBanner,
   ListLoadingState,
@@ -513,7 +516,7 @@ export function SubscriptionsScreen() {
   const pageSubtitle = hasSubscriptions
     ? podcastCountLabel(podcastsWithPending.length)
     : "Start with one RSS feed or import subscriptions from another app.";
-  const pageActions =
+  const pageActions: SubscriptionsPageAction[] =
     hasSubscriptions
       ? [
           {
@@ -795,42 +798,19 @@ export function SubscriptionsScreen() {
       >
         <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5">
           {isMobile ? (
-            <div className="pt-4 px-5">
-              <PageHeader
-                layout="mobile"
-                title={pageTitle}
-                subtitle={pageSubtitle}
-                actions={pageActions}
-              />
-            </div>
+            <SubscriptionsPageHeader
+              isMobile
+              title={pageTitle}
+              subtitle={pageSubtitle}
+              actions={pageActions}
+            />
           ) : (
-            <div className="flex w-full items-center gap-6">
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
-                <h1 className="truncate text-3xl leading-9 font-semibold tracking-normal text-foreground">
-                  {pageTitle}
-                </h1>
-                <p className="truncate text-base leading-6 font-medium text-muted-foreground">
-                  {pageSubtitle}
-                </p>
-              </div>
-              {pageActions.length > 0 ? (
-                <div className="flex h-[34px] shrink-0 items-center gap-2 overflow-hidden">
-                  {pageActions.map((action) => (
-                    <Button
-                      key={action.label}
-                      type="button"
-                      disabled={action.disabled}
-                      variant={action.variant}
-                      className={action.variant === "default" ? "shadow-xs" : undefined}
-                      onClick={action.onClick}
-                    >
-                      {action.icon}
-                      {action.label}
-                    </Button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
+            <SubscriptionsPageHeader
+              isMobile={false}
+              title={pageTitle}
+              subtitle={pageSubtitle}
+              actions={pageActions}
+            />
           )}
           <div className="px-5 md:px-0">
             <ScreenBannerStack>
