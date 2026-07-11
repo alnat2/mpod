@@ -22,6 +22,16 @@ import {
   type PlaybackState,
   type PlaybackUpdateResponse,
 } from "./api";
+import {
+  applyPlaybackRate,
+  attemptAudioPlay,
+  clampPosition,
+  describeAudioError,
+  describeMediaError,
+  getPositiveDuration,
+  primeAudioSource,
+  readAudioDuration,
+} from "./playback-audio";
 
 export type QueueEpisode = Episode & {
   podcastTitle: string;
@@ -87,104 +97,6 @@ const PlaybackProgressContext =
   createContext<PlaybackProgressContextType | null>(null);
 const PlaybackDispatchContext =
   createContext<PlaybackDispatchContextType | null>(null);
-
-function playbackRateFromLabel(label: PlaybackSpeedLabel) {
-  return Number(label.replace("Speed ", "").replace("x", "")) || 1;
-}
-
-function applyPlaybackRate(
-  audio: HTMLAudioElement,
-  speedLabel: PlaybackSpeedLabel
-) {
-  const nextRate = playbackRateFromLabel(speedLabel);
-  audio.defaultPlaybackRate = nextRate;
-  audio.playbackRate = nextRate;
-}
-
-function clampPosition(positionSeconds: number, durationSeconds?: number | null) {
-  const nonNegativePosition = Math.max(0, positionSeconds);
-  if (!durationSeconds) {
-    return nonNegativePosition;
-  }
-  return Math.min(durationSeconds, nonNegativePosition);
-}
-
-function getPositiveDuration(...values: Array<number | null | undefined>) {
-  return (
-    values.find(
-      (value): value is number =>
-        typeof value === "number" && Number.isFinite(value) && value > 0
-    ) ?? 0
-  );
-}
-
-function readAudioDuration(audio: HTMLAudioElement) {
-  return getPositiveDuration(audio.duration);
-}
-
-async function attemptAudioPlay(
-  audio: HTMLAudioElement,
-  onFailure: (error: unknown) => void
-) {
-  try {
-    await audio.play();
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      return;
-    }
-    onFailure(error);
-  }
-}
-
-function describeAudioError(error: unknown) {
-  if (error instanceof DOMException) {
-    return `${error.name}: ${error.message || "Playback was blocked."}`;
-  }
-
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "Playback failed.";
-}
-
-function describeMediaError(error: MediaError | null) {
-  if (!error) {
-    return "Media failed to load.";
-  }
-
-  switch (error.code) {
-    case MediaError.MEDIA_ERR_ABORTED:
-      return "Media loading was aborted.";
-    case MediaError.MEDIA_ERR_NETWORK:
-      return "Network error while loading audio.";
-    case MediaError.MEDIA_ERR_DECODE:
-      return "Audio could not be decoded.";
-    case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-      return "Audio source is not supported.";
-    default:
-      return error.message || "Media failed to load.";
-  }
-}
-
-function primeAudioSource(
-  audio: HTMLAudioElement,
-  episode: QueueEpisode,
-  speedLabel: PlaybackSpeedLabel,
-  positionSeconds: number,
-  setPositionSeconds: (positionSeconds: number) => void,
-  markPrimed: () => void
-) {
-  const targetSrc = `${window.location.origin}/api/episodes/${episode.id}/audio`;
-  if (!audio.src.includes(targetSrc)) {
-    audio.pause();
-    audio.src = targetSrc;
-    markPrimed();
-  }
-  applyPlaybackRate(audio, speedLabel);
-  audio.currentTime = positionSeconds;
-  setPositionSeconds(positionSeconds);
-}
 
 export function PlaybackProvider({ children }: { children: ReactNode }) {
   const [queue, setQueue] = useState<QueueEpisode[]>([]);
