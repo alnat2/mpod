@@ -5,15 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/cross/mpod/server/internal/config"
 	httpapi "github.com/cross/mpod/server/internal/http"
-	"github.com/cross/mpod/server/internal/podcasts"
-	"github.com/cross/mpod/server/internal/remote"
+	"github.com/cross/mpod/server/internal/pathutil"
 	"github.com/cross/mpod/server/internal/scheduler"
-	"github.com/cross/mpod/server/internal/settings"
 	"github.com/cross/mpod/server/internal/storage"
 )
 
@@ -37,7 +34,7 @@ func New(logger *log.Logger) (*App, error) {
 		return nil, err
 	}
 
-	if err := storage.Migrate(db.SQL, firstExistingDir("migrations", "server/migrations")); err != nil {
+	if err := storage.Migrate(db.SQL, pathutil.FirstExistingDir("migrations", "server/migrations")); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -47,17 +44,12 @@ func New(logger *log.Logger) (*App, error) {
 		return nil, err
 	}
 
-	settingsService := settings.NewService(db.SQL, cfg.SOCKS5Host != "", cfg.AppBuild)
-	client, err := remote.NewHTTPClientWithProxyDecider(cfg, func(ctx context.Context) bool {
-		enabled, err := settingsService.ProxyEnabled(ctx)
-		return err == nil && enabled
-	})
+	routerServices, err := httpapi.NewRouterServicesForRuntime(cfg, db.SQL)
 	if err != nil {
 		_ = db.Close()
 		return nil, err
 	}
-	podcastService := podcasts.NewService(db.SQL, client)
-	schedulerService, err := scheduler.NewService(db.SQL, logger, settingsService, podcastService.RefreshAll, cfg.TZ)
+	schedulerService, err := scheduler.NewService(db.SQL, logger, routerServices.Settings, routerServices.Podcasts.RefreshAll, cfg.TZ)
 	if err != nil {
 		_ = db.Close()
 		return nil, err
@@ -65,7 +57,7 @@ func New(logger *log.Logger) (*App, error) {
 	runCtx, cancel := context.WithCancel(context.Background())
 	schedulerService.Start(runCtx)
 
-	router := httpapi.NewRouter(logger, cfg, db.SQL, schedulerService)
+	router := httpapi.NewRouterWithServices(logger, cfg, db.SQL, schedulerService, routerServices)
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%s", cfg.Port),
 		Handler:           router,
@@ -97,16 +89,4 @@ func (a *App) Shutdown(ctx context.Context) error {
 		return err
 	}
 	return a.db.Close()
-}
-
-func firstExistingDir(candidates ...string) string {
-	for _, candidate := range candidates {
-		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			return candidate
-		}
-	}
-	if len(candidates) == 0 {
-		return ""
-	}
-	return candidates[0]
 }

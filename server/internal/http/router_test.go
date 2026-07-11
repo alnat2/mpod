@@ -215,6 +215,20 @@ func TestRegisterRejectsInvalidJSON(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "INVALID_JSON")
 }
 
+func TestRegisterRejectsOversizedJSONBody(t *testing.T) {
+	handler, _ := newTestRouter(t)
+
+	oversizedBody := `{"username":"` + strings.Repeat("a", maxJSONBodyBytes) + `","password":"secret"}`
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/auth/register", bytes.NewReader([]byte(oversizedBody)))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "REQUEST_TOO_LARGE")
+}
+
 func TestSessionEndpointReturnsStableInternalErrorContractOnAuthFailure(t *testing.T) {
 	authDB := newTestDB(t)
 	appDB := newTestDB(t)
@@ -231,6 +245,31 @@ func TestSessionEndpointReturnsStableInternalErrorContractOnAuthFailure(t *testi
 	handler.ServeHTTP(rec, req)
 
 	assertAPIError(t, rec, nethttp.StatusInternalServerError, "SESSION_CHECK_FAILED")
+}
+
+func TestRecoverAndLogDoesNotAppendJSONErrorAfterResponseStarts(t *testing.T) {
+	r := &Router{logger: log.New(io.Discard, "", 0)}
+	handler := r.recoverAndLog(nethttp.HandlerFunc(func(w nethttp.ResponseWriter, req *nethttp.Request) {
+		w.WriteHeader(nethttp.StatusOK)
+		if _, err := w.Write([]byte("partial-response")); err != nil {
+			t.Fatalf("write failed: %v", err)
+		}
+		panic("boom")
+	}))
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/panic", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 to remain after partial response, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != "partial-response" {
+		t.Fatalf("expected partial response body to be preserved, got %q", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "INTERNAL_ERROR") {
+		t.Fatalf("expected no appended JSON error body, got %q", rec.Body.String())
+	}
 }
 
 func TestRegisterReturnsStableInternalErrorContractOnAuthFailure(t *testing.T) {
@@ -3061,6 +3100,7 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 		downloads:       downloadsService,
 		podcasts:        podcastsService,
 		remoteClient:    client,
+		audioClient:     client,
 		settings:        settingsService,
 		scheduler:       schedulerService,
 	}

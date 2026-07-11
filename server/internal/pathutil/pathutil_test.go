@@ -1,4 +1,4 @@
-package app
+package pathutil
 
 import (
 	"os"
@@ -19,7 +19,7 @@ func TestFirstExistingDirReturnsFirstMatch(t *testing.T) {
 		t.Fatalf("MkdirAll later: %v", err)
 	}
 
-	got := firstExistingDir(missing, existing, later)
+	got := FirstExistingDir(missing, existing, later)
 	if got != existing {
 		t.Fatalf("expected %q, got %q", existing, got)
 	}
@@ -30,14 +30,14 @@ func TestFirstExistingDirFallsBackToFirstCandidate(t *testing.T) {
 	first := filepath.Join(base, "missing-one")
 	second := filepath.Join(base, "missing-two")
 
-	got := firstExistingDir(first, second)
+	got := FirstExistingDir(first, second)
 	if got != first {
 		t.Fatalf("expected fallback %q, got %q", first, got)
 	}
 }
 
 func TestFirstExistingDirEmptyCandidates(t *testing.T) {
-	if got := firstExistingDir(); got != "" {
+	if got := FirstExistingDir(); got != "" {
 		t.Fatalf("expected empty string, got %q", got)
 	}
 }

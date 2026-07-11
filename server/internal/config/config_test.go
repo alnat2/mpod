@@ -50,10 +50,3 @@ func TestLoadRequiresSocksHostAndPortTogether(t *testing.T) {
 		t.Fatalf("expected SOCKS5 host/port validation error")
 	}
 }
-
-func TestDSNFormatsFilePath(t *testing.T) {
-	cfg := Config{DBPath: "/data/mpod.sqlite"}
-	if got := cfg.DSN(); got != "file:/data/mpod.sqlite" {
-		t.Fatalf("unexpected DSN %q", got)
-	}
-}

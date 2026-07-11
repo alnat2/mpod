@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/cross/mpod/server/internal/config"
 )
@@ -16,7 +15,7 @@ func TestNewHTTPClientUsesDefaultTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewHTTPClient failed: %v", err)
 	}
-	if client.Timeout != 30*time.Second {
+	if client.Timeout != defaultClientTimeout {
 		t.Fatalf("expected 30s timeout, got %v", client.Timeout)
 	}
 	if _, ok := client.Transport.(*http.Transport); !ok {
@@ -46,7 +45,7 @@ func TestNewHTTPClientWithProxyConfiguredBuildsProxyTransport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewHTTPClient failed: %v", err)
 	}
-	if client.Timeout != 30*time.Second {
+	if client.Timeout != defaultClientTimeout {
 		t.Fatalf("expected 30s timeout, got %v", client.Timeout)
 	}
 	if _, ok := client.Transport.(*http.Transport); !ok {
@@ -64,7 +63,7 @@ func TestNewHTTPClientWithProxyDeciderWrapsTransportSelection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewHTTPClientWithProxyDecider failed: %v", err)
 	}
-	if client.Timeout != 30*time.Second {
+	if client.Timeout != defaultClientTimeout {
 		t.Fatalf("expected 30s timeout, got %v", client.Timeout)
 	}
 	if _, ok := client.Transport.(roundTripperFunc); !ok {
@@ -79,11 +78,29 @@ func TestNewHTTPClientWithProxyDeciderWithoutProxyConfigUsesDirectTransport(t *t
 	if err != nil {
 		t.Fatalf("NewHTTPClientWithProxyDecider failed: %v", err)
 	}
-	if client.Timeout != 30*time.Second {
+	if client.Timeout != defaultClientTimeout {
 		t.Fatalf("expected 30s timeout, got %v", client.Timeout)
 	}
 	if _, ok := client.Transport.(*http.Transport); !ok {
 		t.Fatalf("expected direct transport without proxy config, got %T", client.Transport)
+	}
+}
+
+func TestNewStreamingHTTPClientWithProxyDeciderDisablesClientTimeout(t *testing.T) {
+	client, err := NewStreamingHTTPClientWithProxyDecider(config.Config{
+		SOCKS5Host: "127.0.0.1",
+		SOCKS5Port: "1080",
+	}, func(_ context.Context) bool {
+		return true
+	})
+	if err != nil {
+		t.Fatalf("NewStreamingHTTPClientWithProxyDecider failed: %v", err)
+	}
+	if client.Timeout != 0 {
+		t.Fatalf("expected no client timeout, got %v", client.Timeout)
+	}
+	if _, ok := client.Transport.(roundTripperFunc); !ok {
+		t.Fatalf("expected decider client to wrap transport selection, got %T", client.Transport)
 	}
 }
 
@@ -108,6 +125,7 @@ func TestNewClientWithRoundTrippersUsesProxyWhenEnabled(t *testing.T) {
 			}, nil
 		}),
 		func(_ context.Context) bool { return true },
+		defaultClientTimeout,
 	)
 
 	resp, err := client.Get("https://example.com")
@@ -142,6 +160,7 @@ func TestNewClientWithRoundTrippersUsesDirectWhenProxyDisabled(t *testing.T) {
 			}, nil
 		}),
 		func(_ context.Context) bool { return false },
+		defaultClientTimeout,
 	)
 
 	resp, err := client.Get("https://example.com")

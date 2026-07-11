@@ -11,14 +11,24 @@ import (
 	"golang.org/x/net/proxy"
 )
 
+const defaultClientTimeout = 30 * time.Second
+
 func NewHTTPClient(cfg config.Config) (*http.Client, error) {
 	return NewHTTPClientWithProxyDecider(cfg, nil)
 }
 
 func NewHTTPClientWithProxyDecider(cfg config.Config, proxyEnabled func(context.Context) bool) (*http.Client, error) {
+	return newHTTPClientWithProxyDeciderAndTimeout(cfg, proxyEnabled, defaultClientTimeout)
+}
+
+func NewStreamingHTTPClientWithProxyDecider(cfg config.Config, proxyEnabled func(context.Context) bool) (*http.Client, error) {
+	return newHTTPClientWithProxyDeciderAndTimeout(cfg, proxyEnabled, 0)
+}
+
+func newHTTPClientWithProxyDeciderAndTimeout(cfg config.Config, proxyEnabled func(context.Context) bool, timeout time.Duration) (*http.Client, error) {
 	directTransport := http.DefaultTransport.(*http.Transport).Clone()
 	if cfg.SOCKS5Host == "" {
-		return newClientWithRoundTrippers(directTransport, nil, proxyEnabled), nil
+		return newClientWithRoundTrippers(directTransport, nil, proxyEnabled, timeout), nil
 	}
 
 	proxyTransport := directTransport.Clone()
@@ -30,7 +40,7 @@ func NewHTTPClientWithProxyDecider(cfg config.Config, proxyEnabled func(context.
 		return dialer.Dial(network, addr)
 	}
 
-	return newClientWithRoundTrippers(directTransport, proxyTransport, proxyEnabled), nil
+	return newClientWithRoundTrippers(directTransport, proxyTransport, proxyEnabled, timeout), nil
 }
 
 func credentials(cfg config.Config) *proxy.Auth {
@@ -49,7 +59,7 @@ func (fn roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) 
 	return fn(req)
 }
 
-func newClientWithRoundTrippers(direct, proxy http.RoundTripper, proxyEnabled func(context.Context) bool) *http.Client {
+func newClientWithRoundTrippers(direct, proxy http.RoundTripper, proxyEnabled func(context.Context) bool, timeout time.Duration) *http.Client {
 	transport := direct
 	if proxy != nil {
 		transport = proxy
@@ -65,7 +75,7 @@ func newClientWithRoundTrippers(direct, proxy http.RoundTripper, proxyEnabled fu
 	}
 
 	return &http.Client{
-		Timeout:   30 * time.Second,
+		Timeout:   timeout,
 		Transport: transport,
 	}
 }

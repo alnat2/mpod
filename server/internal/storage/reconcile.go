@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"strings"
 )
 
 func ReconcileDownloads(db *sql.DB, logger *log.Logger) error {
@@ -43,18 +44,5 @@ func isTableMissing(err error) bool {
 	if err == nil {
 		return false
 	}
-	return contains(err.Error(), "no such table: episodes")
-}
-
-func contains(s, sub string) bool {
-	return len(sub) == 0 || (len(s) >= len(sub) && stringIndex(s, sub) >= 0)
-}
-
-func stringIndex(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return i
-		}
-	}
-	return -1
+	return strings.Contains(err.Error(), "no such table: episodes")
 }

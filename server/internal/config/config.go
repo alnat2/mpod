@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"fmt"
 	"os"
 )
 
@@ -57,8 +56,4 @@ func envOrDefault(key, fallback string) string {
 		return value
 	}
 	return fallback
-}
-
-func (c Config) DSN() string {
-	return fmt.Sprintf("file:%s", c.DBPath)
 }

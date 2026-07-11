@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql"
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	nethttp "net/http"
 	"os"
 	"path/filepath"
@@ -21,6 +23,7 @@ import (
 	"github.com/cross/mpod/server/internal/downloads"
 	"github.com/cross/mpod/server/internal/episodes"
 	"github.com/cross/mpod/server/internal/media"
+	"github.com/cross/mpod/server/internal/pathutil"
 	"github.com/cross/mpod/server/internal/playback"
 	"github.com/cross/mpod/server/internal/playlist"
 	"github.com/cross/mpod/server/internal/podcasts"
@@ -32,6 +35,7 @@ import (
 const (
 	audioProxyUserAgent = "mpod/1.0 (+self-hosted podcast client)"
 	audioProxyAccept    = "audio/*, application/octet-stream;q=0.9, */*;q=0.1"
+	maxJSONBodyBytes    = 1 << 20
 )
 
 type Router struct {
@@ -47,8 +51,23 @@ type Router struct {
 	downloads       *downloads.Service
 	podcasts        *podcasts.Service
 	remoteClient    *nethttp.Client
+	audioClient     *nethttp.Client
 	settings        *settings.Service
 	scheduler       *scheduler.Service
+}
+
+type RouterServices struct {
+	Auth            *auth.Service
+	Episodes        *episodes.Service
+	EpisodeActions  *episodes.Actions
+	Playback        *playback.Service
+	Playlist        *playlist.Service
+	PlaylistActions *playlist.Actions
+	Downloads       *downloads.Service
+	Podcasts        *podcasts.Service
+	RemoteClient    *nethttp.Client
+	AudioClient     *nethttp.Client
+	Settings        *settings.Service
 }
 
 type apiError struct {
@@ -60,14 +79,61 @@ type errorResponse struct {
 	Error apiError `json:"error"`
 }
 
-func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerService *scheduler.Service) nethttp.Handler {
+type trackedResponseWriter struct {
+	nethttp.ResponseWriter
+	wroteHeader bool
+}
+
+func (w *trackedResponseWriter) WriteHeader(statusCode int) {
+	w.wroteHeader = true
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (w *trackedResponseWriter) Write(p []byte) (int, error) {
+	if !w.wroteHeader {
+		w.wroteHeader = true
+	}
+	return w.ResponseWriter.Write(p)
+}
+
+func (w *trackedResponseWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(nethttp.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (w *trackedResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := w.ResponseWriter.(nethttp.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("response writer does not support hijacking")
+	}
+	return hijacker.Hijack()
+}
+
+func (w *trackedResponseWriter) Push(target string, opts *nethttp.PushOptions) error {
+	if pusher, ok := w.ResponseWriter.(nethttp.Pusher); ok {
+		return pusher.Push(target, opts)
+	}
+	return nethttp.ErrNotSupported
+}
+
+func (w *trackedResponseWriter) Unwrap() nethttp.ResponseWriter {
+	return w.ResponseWriter
+}
+
+func NewRouterServicesForRuntime(cfg config.Config, db *sql.DB) (*RouterServices, error) {
 	settingsService := settings.NewService(db, cfg.SOCKS5Host != "", cfg.AppBuild)
-	client, err := remote.NewHTTPClientWithProxyDecider(cfg, func(ctx context.Context) bool {
+	proxyEnabled := func(ctx context.Context) bool {
 		enabled, err := settingsService.ProxyEnabled(ctx)
 		return err == nil && enabled
-	})
+	}
+	client, err := remote.NewHTTPClientWithProxyDecider(cfg, proxyEnabled)
 	if err != nil {
-		panic(err)
+		return nil, err
+	}
+	audioClient, err := remote.NewStreamingHTTPClientWithProxyDecider(cfg, proxyEnabled)
+	if err != nil {
+		return nil, err
 	}
 	settingsService = settings.NewServiceWithProxyStatusLookup(db, cfg.SOCKS5Host != "", cfg.AppBuild, func(ctx context.Context) (settings.ProxyLookupResult, error) {
 		return fetchObservedProxyStatus(ctx, client)
@@ -75,22 +141,47 @@ func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerServi
 
 	playlistService := playlist.NewService(db)
 	downloadsService := downloads.NewService(db, client, cfg.DownloadsDir)
-	playlistActions := playlist.NewActions(db, downloadsService)
+	episodeActions := episodes.NewActions(db, downloadsService)
 
+	return &RouterServices{
+		Auth:            auth.NewService(db),
+		Episodes:        episodes.NewService(db),
+		EpisodeActions:  episodeActions,
+		Playback:        playback.NewService(db, episodeActions, playlistService),
+		Playlist:        playlistService,
+		PlaylistActions: playlist.NewActions(db, downloadsService),
+		Downloads:       downloadsService,
+		Podcasts:        podcasts.NewService(db, client),
+		RemoteClient:    client,
+		AudioClient:     audioClient,
+		Settings:        settingsService,
+	}, nil
+}
+
+func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerService *scheduler.Service) (nethttp.Handler, error) {
+	services, err := NewRouterServicesForRuntime(cfg, db)
+	if err != nil {
+		return nil, err
+	}
+	return NewRouterWithServices(logger, cfg, db, schedulerService, services), nil
+}
+
+func NewRouterWithServices(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerService *scheduler.Service, services *RouterServices) nethttp.Handler {
 	r := &Router{
 		logger:          logger,
 		config:          cfg,
 		db:              db,
-		auth:            auth.NewService(db),
-		episodes:        episodes.NewService(db),
-		episodeActions:  episodes.NewActions(db, downloadsService),
-		playback:        playback.NewService(db, episodes.NewActions(db, downloadsService), playlistService),
-		playlist:        playlistService,
-		playlistActions: playlistActions,
-		downloads:       downloadsService,
-		podcasts:        podcasts.NewService(db, client),
-		remoteClient:    client,
-		settings:        settingsService,
+		auth:            services.Auth,
+		episodes:        services.Episodes,
+		episodeActions:  services.EpisodeActions,
+		playback:        services.Playback,
+		playlist:        services.Playlist,
+		playlistActions: services.PlaylistActions,
+		downloads:       services.Downloads,
+		podcasts:        services.Podcasts,
+		remoteClient:    services.RemoteClient,
+		audioClient:     services.AudioClient,
+		settings:        services.Settings,
 		scheduler:       schedulerService,
 	}
 
@@ -126,7 +217,7 @@ func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerServi
 	mux.HandleFunc("GET /api/proxy/status", r.handleProxyStatus)
 	mux.HandleFunc("GET /api/episodes/{id}/audio", r.handleEpisodeAudio)
 
-	staticDir := firstExistingDir("frontend/dist", "../frontend/dist")
+	staticDir := pathutil.FirstExistingDir("frontend/dist", "../frontend/dist")
 	fs := nethttp.FileServer(nethttp.Dir(staticDir))
 	mux.Handle("/", nethttp.HandlerFunc(func(w nethttp.ResponseWriter, req *nethttp.Request) {
 		cleanPath := filepath.Clean(strings.TrimPrefix(req.URL.Path, "/"))
@@ -144,18 +235,6 @@ func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerServi
 
 func (r *Router) handleHealth(w nethttp.ResponseWriter, req *nethttp.Request) {
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{"ok": true})
-}
-
-func firstExistingDir(candidates ...string) string {
-	for _, candidate := range candidates {
-		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			return candidate
-		}
-	}
-	if len(candidates) == 0 {
-		return ""
-	}
-	return candidates[0]
 }
 
 func (r *Router) handleSession(w nethttp.ResponseWriter, req *nethttp.Request) {
@@ -190,8 +269,7 @@ func (r *Router) handleRegister(w nethttp.ResponseWriter, req *nethttp.Request) 
 		Password string `json:"password"`
 	}
 
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_JSON", "Request body must be valid JSON")
+	if !r.decodeJSON(w, req, &payload) {
 		return
 	}
 
@@ -220,8 +298,7 @@ func (r *Router) handleLogin(w nethttp.ResponseWriter, req *nethttp.Request) {
 		Password string `json:"password"`
 	}
 
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_JSON", "Request body must be valid JSON")
+	if !r.decodeJSON(w, req, &payload) {
 		return
 	}
 
@@ -278,8 +355,7 @@ func (r *Router) handlePodcastsCreate(w nethttp.ResponseWriter, req *nethttp.Req
 	var payload struct {
 		RSSURL string `json:"rssUrl"`
 	}
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_JSON", "Request body must be valid JSON")
+	if !r.decodeJSON(w, req, &payload) {
 		return
 	}
 
@@ -582,8 +658,7 @@ func (r *Router) handlePlaybackPost(w nethttp.ResponseWriter, req *nethttp.Reque
 		DidSeek         bool   `json:"didSeek"`
 		ClientUpdatedAt string `json:"clientUpdatedAt"`
 	}
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_JSON", "Request body must be valid JSON")
+	if !r.decodeJSON(w, req, &payload) {
 		return
 	}
 
@@ -642,8 +717,7 @@ func (r *Router) handlePlaylistAdd(w nethttp.ResponseWriter, req *nethttp.Reques
 	var payload struct {
 		EpisodeID int64 `json:"episodeId"`
 	}
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_JSON", "Request body must be valid JSON")
+	if !r.decodeJSON(w, req, &payload) {
 		return
 	}
 
@@ -686,8 +760,7 @@ func (r *Router) handlePlaylistReorder(w nethttp.ResponseWriter, req *nethttp.Re
 	var payload struct {
 		EpisodeIDs []int64 `json:"episodeIds"`
 	}
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_JSON", "Request body must be valid JSON")
+	if !r.decodeJSON(w, req, &payload) {
 		return
 	}
 
@@ -740,8 +813,7 @@ func (r *Router) handleEpisodePatch(w nethttp.ResponseWriter, req *nethttp.Reque
 	var payload struct {
 		IsListened *bool `json:"isListened"`
 	}
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_JSON", "Request body must be valid JSON")
+	if !r.decodeJSON(w, req, &payload) {
 		return
 	}
 	if payload.IsListened == nil {
@@ -860,7 +932,7 @@ func (r *Router) handleEpisodeAudio(w nethttp.ResponseWriter, req *nethttp.Reque
 		audioReq.Header.Set("Range", rangeHeader)
 	}
 
-	resp, err := r.remoteClient.Do(audioReq)
+	resp, err := r.audioClient.Do(audioReq)
 	if err != nil {
 		r.writeAPIError(w, nethttp.StatusBadGateway, "AUDIO_LOAD_FAILED", "Failed to load audio")
 		return
@@ -935,8 +1007,7 @@ func (r *Router) handleSettingsPatch(w nethttp.ResponseWriter, req *nethttp.Requ
 		PlaybackSpeed    *string `json:"playbackSpeed"`
 		ProxyEnabled     *bool   `json:"proxyEnabled"`
 	}
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_JSON", "Request body must be valid JSON")
+	if !r.decodeJSON(w, req, &payload) {
 		return
 	}
 
@@ -990,15 +1061,18 @@ func (r *Router) notImplemented(code string) nethttp.HandlerFunc {
 
 func (r *Router) recoverAndLog(next nethttp.Handler) nethttp.Handler {
 	return nethttp.HandlerFunc(func(w nethttp.ResponseWriter, req *nethttp.Request) {
+		trackedWriter := &trackedResponseWriter{ResponseWriter: w}
 		start := time.Now()
 		defer func() {
 			if rec := recover(); rec != nil {
 				r.logger.Printf("panic: %v", rec)
-				r.writeAPIError(w, nethttp.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+				if !trackedWriter.wroteHeader {
+					r.writeAPIError(trackedWriter, nethttp.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+				}
 			}
 			r.logger.Printf("%s %s %s", req.Method, req.URL.Path, time.Since(start))
 		}()
-		next.ServeHTTP(w, req)
+		next.ServeHTTP(trackedWriter, req)
 	})
 }
 
@@ -1023,6 +1097,27 @@ func (r *Router) pathInt64(w nethttp.ResponseWriter, req *nethttp.Request, key s
 		return 0, false
 	}
 	return value, true
+}
+
+func (r *Router) decodeJSON(w nethttp.ResponseWriter, req *nethttp.Request, dest any) bool {
+	req.Body = nethttp.MaxBytesReader(w, req.Body, maxJSONBodyBytes)
+	decoder := json.NewDecoder(req.Body)
+	if err := decoder.Decode(dest); err != nil {
+		if strings.Contains(err.Error(), "http: request body too large") {
+			r.writeAPIError(w, nethttp.StatusRequestEntityTooLarge, "REQUEST_TOO_LARGE", "Request body is too large")
+			return false
+		}
+		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_JSON", "Request body must be valid JSON")
+		return false
+	}
+
+	var extra json.RawMessage
+	if err := decoder.Decode(&extra); err != io.EOF {
+		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_JSON", "Request body must be valid JSON")
+		return false
+	}
+
+	return true
 }
 
 func (r *Router) writeJSON(w nethttp.ResponseWriter, status int, payload any) {
