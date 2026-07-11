@@ -244,7 +244,7 @@ func (r *Router) handleSession(w nethttp.ResponseWriter, req *nethttp.Request) {
 		return
 	}
 
-	user, err := r.auth.CurrentUser(req.Context(), auth.SessionIDFromRequest(req))
+	user, err := r.auth.CurrentUser(req.Context(), auth.SessionIDFromRequest(req, r.config.SessionSecret))
 	if err != nil {
 		r.writeAPIError(w, nethttp.StatusInternalServerError, "SESSION_CHECK_FAILED", "Failed to load session state")
 		return
@@ -286,7 +286,7 @@ func (r *Router) handleRegister(w nethttp.ResponseWriter, req *nethttp.Request) 
 		return
 	}
 
-	auth.SetSessionCookie(w, sessionID, auth.SessionCookieSecure(req))
+	auth.SetSessionCookie(w, sessionID, r.config.SessionSecret, auth.SessionCookieSecure(req))
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{
 		"user": user,
 	})
@@ -313,14 +313,14 @@ func (r *Router) handleLogin(w nethttp.ResponseWriter, req *nethttp.Request) {
 		return
 	}
 
-	auth.SetSessionCookie(w, sessionID, auth.SessionCookieSecure(req))
+	auth.SetSessionCookie(w, sessionID, r.config.SessionSecret, auth.SessionCookieSecure(req))
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{
 		"user": user,
 	})
 }
 
 func (r *Router) handleLogout(w nethttp.ResponseWriter, req *nethttp.Request) {
-	if err := r.auth.Logout(req.Context(), auth.SessionIDFromRequest(req)); err != nil {
+	if err := r.auth.Logout(req.Context(), auth.SessionIDFromRequest(req, r.config.SessionSecret)); err != nil {
 		r.writeAPIError(w, nethttp.StatusInternalServerError, "LOGOUT_FAILED", "Failed to log out")
 		return
 	}
@@ -1077,7 +1077,7 @@ func (r *Router) recoverAndLog(next nethttp.Handler) nethttp.Handler {
 }
 
 func (r *Router) requireUser(w nethttp.ResponseWriter, req *nethttp.Request) (*auth.User, bool) {
-	user, err := r.auth.CurrentUser(req.Context(), auth.SessionIDFromRequest(req))
+	user, err := r.auth.CurrentUser(req.Context(), auth.SessionIDFromRequest(req, r.config.SessionSecret))
 	if err != nil {
 		r.writeAPIError(w, nethttp.StatusInternalServerError, "AUTH_CHECK_FAILED", "Failed to load current session")
 		return nil, false
