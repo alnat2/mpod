@@ -230,13 +230,15 @@ describe("SubscriptionsScreen", () => {
     globalThis.IntersectionObserver = defaultIntersectionObserver;
 
     vi.spyOn(api.podcasts, "list").mockResolvedValue({ podcasts: [podcast] });
-    vi.spyOn(api.podcasts, "episodes").mockResolvedValue({
+    vi.spyOn(api.episodes, "list").mockResolvedValue({
       episodes: [baseEpisode],
     });
     vi.spyOn(api.playlist, "list").mockResolvedValue({ items: [] });
   });
 
   it("renders the agreed action order for a plain episode", async () => {
+    const perPodcastEpisodesSpy = vi.spyOn(api.podcasts, "episodes");
+
     render(<SubscriptionsScreen />);
 
     const row = await screen.findByTestId("episode-row-QA reorder third");
@@ -255,6 +257,7 @@ describe("SubscriptionsScreen", () => {
     expect(row).not.toHaveTextContent(podcast.title);
     expect(screen.getByText("1 podcast")).toBeInTheDocument();
     expect(screen.getByText("1 / 1 episodes")).toBeInTheDocument();
+    expect(perPodcastEpisodesSpy).not.toHaveBeenCalled();
   });
 
   it("shows total podcasts and selected podcast total/unlistened episode counts", async () => {
@@ -267,17 +270,13 @@ describe("SubscriptionsScreen", () => {
     vi.spyOn(api.podcasts, "list").mockResolvedValue({
       podcasts: [podcast, secondPodcast],
     });
-    vi.spyOn(api.podcasts, "episodes").mockImplementation((podcastId) =>
-      Promise.resolve({
-        episodes:
-          podcastId === podcast.id
-            ? [
-                baseEpisode,
-                { ...baseEpisode, id: 102, title: "Listened", isListened: true },
-              ]
-            : [{ ...baseEpisode, id: 201, podcastId: 2, title: "Second episode" }],
-      })
-    );
+    vi.spyOn(api.episodes, "list").mockResolvedValue({
+      episodes: [
+        baseEpisode,
+        { ...baseEpisode, id: 102, title: "Listened", isListened: true },
+        { ...baseEpisode, id: 201, podcastId: 2, title: "Second episode" },
+      ],
+    });
 
     render(<SubscriptionsScreen />);
 
@@ -307,12 +306,9 @@ describe("SubscriptionsScreen", () => {
     vi.spyOn(api.podcasts, "list").mockResolvedValue({
       podcasts: [podcast, secondPodcast],
     });
-    vi.spyOn(api.podcasts, "episodes").mockImplementation((podcastId) =>
-      Promise.resolve({
-        episodes:
-          podcastId === podcast.id ? [listenedPlaylistEpisode] : [secondEpisode],
-      })
-    );
+    vi.spyOn(api.episodes, "list").mockResolvedValue({
+      episodes: [listenedPlaylistEpisode, secondEpisode],
+    });
     vi.spyOn(api.playlist, "list").mockResolvedValue({
       items: [
         {
@@ -350,7 +346,7 @@ describe("SubscriptionsScreen", () => {
   });
 
   it("renders the state-based action variants", async () => {
-    vi.spyOn(api.podcasts, "episodes").mockResolvedValue({
+    vi.spyOn(api.episodes, "list").mockResolvedValue({
       episodes: [
         {
           ...baseEpisode,
@@ -430,11 +426,9 @@ describe("SubscriptionsScreen", () => {
     vi.spyOn(api.podcasts, "list").mockResolvedValue({
       podcasts: [podcast, secondPodcast],
     });
-    vi.spyOn(api.podcasts, "episodes").mockImplementation((podcastId) =>
-      Promise.resolve({
-        episodes: podcastId === secondPodcast.id ? [secondEpisode] : [baseEpisode],
-      })
-    );
+    vi.spyOn(api.episodes, "list").mockResolvedValue({
+      episodes: [baseEpisode, secondEpisode],
+    });
 
     render(<SubscriptionsScreen />);
 
@@ -456,7 +450,7 @@ describe("SubscriptionsScreen", () => {
       publishedAt: `2026-05-${String(index + 1).padStart(2, "0")}T10:00:00Z`,
     }));
 
-    vi.spyOn(api.podcasts, "episodes").mockResolvedValue({
+    vi.spyOn(api.episodes, "list").mockResolvedValue({
       episodes: manyEpisodes,
     });
 
@@ -504,7 +498,7 @@ describe("SubscriptionsScreen", () => {
 
   it("clears playlist state and reloads the playback queue after marking a playlist episode listened", async () => {
     const user = userEvent.setup();
-    vi.spyOn(api.podcasts, "episodes")
+    vi.spyOn(api.episodes, "list")
       .mockResolvedValueOnce({ episodes: [baseEpisode] })
       .mockResolvedValue({ episodes: [{ ...baseEpisode, isListened: true }] });
     vi.spyOn(api.playlist, "list")
@@ -588,7 +582,7 @@ describe("SubscriptionsScreen", () => {
 
   it("shows the no-subscriptions empty state without refresh controls", async () => {
     vi.spyOn(api.podcasts, "list").mockResolvedValue({ podcasts: [] });
-    const episodesSpy = vi.spyOn(api.podcasts, "episodes");
+    const episodesSpy = vi.spyOn(api.episodes, "list");
 
     render(<SubscriptionsScreen />);
 
@@ -598,12 +592,12 @@ describe("SubscriptionsScreen", () => {
     expect(screen.getByRole("button", { name: "Import OPML" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Refresh all" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Show all" })).not.toBeInTheDocument();
-    expect(episodesSpy).not.toHaveBeenCalled();
+    expect(episodesSpy).toHaveBeenCalledTimes(1);
   });
 
   it("shows the all-caught-up state when subscriptions have no unlistened episodes", async () => {
     const user = userEvent.setup();
-    vi.spyOn(api.podcasts, "episodes").mockResolvedValue({
+    vi.spyOn(api.episodes, "list").mockResolvedValue({
       episodes: [{ ...baseEpisode, isListened: true }],
     });
 

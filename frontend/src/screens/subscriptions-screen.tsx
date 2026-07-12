@@ -126,19 +126,26 @@ export function SubscriptionsScreen() {
       setError(null);
 
       try {
-        const [podcastResponse, playlistResponse] =
-          await Promise.all([api.podcasts.list(), api.playlist.list()]);
+        const [podcastResponse, playlistResponse, episodeResponse] =
+          await Promise.all([
+            api.podcasts.list(),
+            api.playlist.list(),
+            api.episodes.list(),
+          ]);
         const podcastItems = podcastResponse.podcasts ?? [];
         const playlistItems = playlistResponse.items ?? [];
+        const episodesByPodcast = new Map<number, Episode[]>();
+        for (const episode of episodeResponse.episodes ?? []) {
+          const episodes = episodesByPodcast.get(episode.podcastId) ?? [];
+          episodes.push(episode);
+          episodesByPodcast.set(episode.podcastId, episodes);
+        }
         const playlistEpisodeIds = new Set(
           playlistItems.map((item) => item.episodeId)
         );
-        const episodeResults = await Promise.all(
-          podcastItems.map((podcast) => api.podcasts.episodes(podcast.id))
-        );
-        const nextPodcasts = podcastItems.map((podcast, index) => ({
+        const nextPodcasts = podcastItems.map((podcast) => ({
           ...podcast,
-          episodes: (episodeResults[index].episodes ?? []).map((episode) => ({
+          episodes: (episodesByPodcast.get(podcast.id) ?? []).map((episode) => ({
             ...episode,
             inPlaylist: playlistEpisodeIds.has(episode.id),
           })),

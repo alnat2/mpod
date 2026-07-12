@@ -28,6 +28,28 @@ func NewService(db *sql.DB) *Service {
 	return &Service{db: db}
 }
 
+func (s *Service) List(ctx context.Context) ([]Episode, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, podcast_id, title, description, audio_url, duration, downloaded_path, is_listened, published_at
+		FROM episodes
+		ORDER BY podcast_id ASC, published_at DESC, id DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list episodes: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]Episode, 0)
+	for rows.Next() {
+		episode, err := scanEpisode(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, episode)
+	}
+	return items, rows.Err()
+}
+
 func (s *Service) ListByPodcast(ctx context.Context, podcastID int64) ([]Episode, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, podcast_id, title, description, audio_url, duration, downloaded_path, is_listened, published_at

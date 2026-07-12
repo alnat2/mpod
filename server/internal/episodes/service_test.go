@@ -42,6 +42,26 @@ func TestListByPodcastOrdersByPublishedAtDescAndMarksDownloaded(t *testing.T) {
 	}
 }
 
+func TestListReturnsEpisodesGroupedByPodcast(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	now := time.Date(2026, 4, 23, 10, 0, 0, 0, time.UTC)
+	mustExec(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'First', 'https://example.com/first.xml'), (2, 'Second', 'https://example.com/second.xml')`)
+	mustExec(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, published_at) VALUES (1, 1, 'ep-1', 'Older first', 'https://example.com/1.mp3', ?), (2, 1, 'ep-2', 'Newer first', 'https://example.com/2.mp3', ?), (3, 2, 'ep-3', 'Second episode', 'https://example.com/3.mp3', ?)`, now.Add(-time.Hour), now, now)
+
+	items, err := NewService(db.SQL).List(context.Background())
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(items) != 3 {
+		t.Fatalf("expected 3 episodes, got %d", len(items))
+	}
+	if items[0].ID != 2 || items[1].ID != 1 || items[2].ID != 3 {
+		t.Fatalf("expected episodes grouped and ordered by podcast, got %+v", items)
+	}
+}
+
 func TestGetByIDReturnsEpisode(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()

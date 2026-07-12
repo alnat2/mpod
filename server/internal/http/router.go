@@ -208,6 +208,7 @@ func NewRouterWithServices(logger *log.Logger, cfg config.Config, db *sql.DB, sc
 	mux.HandleFunc("POST /api/playlist", r.handlePlaylistAdd)
 	mux.HandleFunc("DELETE /api/playlist/{episodeId}", r.handlePlaylistRemove)
 	mux.HandleFunc("PATCH /api/playlist/reorder", r.handlePlaylistReorder)
+	mux.HandleFunc("GET /api/episodes", r.handleEpisodesList)
 	mux.HandleFunc("GET /api/episodes/{id}", r.handleEpisodeGet)
 	mux.HandleFunc("PATCH /api/episodes/{id}", r.handleEpisodePatch)
 	mux.HandleFunc("POST /api/episodes/{id}/download", r.handleEpisodeDownload)
@@ -539,6 +540,20 @@ func (r *Router) handlePodcastEpisodesList(w nethttp.ResponseWriter, req *nethtt
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{
 		"episodes": items,
 	})
+}
+
+func (r *Router) handleEpisodesList(w nethttp.ResponseWriter, req *nethttp.Request) {
+	if _, ok := r.requireUser(w, req); !ok {
+		return
+	}
+
+	items, err := r.episodes.List(req.Context())
+	if err != nil {
+		r.writeAPIError(w, nethttp.StatusInternalServerError, "EPISODE_LIST_FAILED", "Failed to load episodes")
+		return
+	}
+
+	r.writeJSON(w, nethttp.StatusOK, map[string]any{"episodes": items})
 }
 
 func (r *Router) handlePodcastsImportOPML(w nethttp.ResponseWriter, req *nethttp.Request) {

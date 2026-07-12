@@ -2247,6 +2247,25 @@ func TestPodcastEpisodesListIncludesSanitizedShowNotes(t *testing.T) {
 	}
 }
 
+func TestEpisodesListReturnsAllEpisodes(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast One', 'https://example.com/feed.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://cdn.example.com/1.mp3')`)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/episodes", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"id":1`) {
+		t.Fatalf("expected episode in payload, got %s", rec.Body.String())
+	}
+}
+
 func TestEpisodeDownloadRejectsUnknownEpisode(t *testing.T) {
 	handler, cookie := newAuthedRouter(t)
 
@@ -3128,6 +3147,7 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 	mux.HandleFunc("POST /api/playlist", r.handlePlaylistAdd)
 	mux.HandleFunc("DELETE /api/playlist/{episodeId}", r.handlePlaylistRemove)
 	mux.HandleFunc("PATCH /api/playlist/reorder", r.handlePlaylistReorder)
+	mux.HandleFunc("GET /api/episodes", r.handleEpisodesList)
 	mux.HandleFunc("GET /api/episodes/{id}", r.handleEpisodeGet)
 	mux.HandleFunc("PATCH /api/episodes/{id}", r.handleEpisodePatch)
 	mux.HandleFunc("POST /api/episodes/{id}/download", r.handleEpisodeDownload)

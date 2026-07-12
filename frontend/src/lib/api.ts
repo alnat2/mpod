@@ -207,8 +207,9 @@ export const api = {
        );
      },
      exportOPMLPath: "/api/podcasts/export-opml",
-   },
+  },
   episodes: {
+    list: () => apiRequest<{ episodes: MaybeArray<Episode> }>("/api/episodes"),
     get: (episodeId: number) =>
       apiRequest<{ episode: Episode }>(`/api/episodes/${episodeId}`),
     setListened: (episodeId: number, isListened: boolean) =>
