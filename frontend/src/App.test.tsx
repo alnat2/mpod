@@ -27,9 +27,12 @@ const settingsScreenMock = vi.fn((props?: unknown) => {
   void props;
   return <div>Settings screen</div>;
 });
+const playbackProviderMock = vi.fn(
+  ({ children }: { children: ReactNode }) => <>{children}</>
+);
 
 vi.mock("@/lib/playback-context", () => ({
-  PlaybackProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  PlaybackProvider: (props: { children: ReactNode }) => playbackProviderMock(props),
 }));
 
 vi.mock("@/components/mpod", () => ({
@@ -76,6 +79,7 @@ describe("App routing", () => {
     subscriptionsScreenMock.mockClear();
     homeScreenMock.mockClear();
     settingsScreenMock.mockClear();
+    playbackProviderMock.mockClear();
     window.history.replaceState({}, "", "/");
   });
 
@@ -105,6 +109,30 @@ describe("App routing", () => {
     render(<App />);
 
     expect(await screen.findByText("Login screen")).toBeInTheDocument();
+    expect(playbackProviderMock).not.toHaveBeenCalled();
+  });
+
+  it("does not start playback loading before session authentication completes", async () => {
+    let resolveSession: (session: AuthSession) => void;
+    vi.spyOn(api.auth, "session").mockReturnValue(
+      new Promise<AuthSession>((resolve) => {
+        resolveSession = resolve;
+      })
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText("Loading mpod")).toBeInTheDocument();
+    expect(playbackProviderMock).not.toHaveBeenCalled();
+
+    resolveSession!({
+      authenticated: true,
+      user: { id: 1, username: "qa" },
+      setupRequired: false,
+    });
+
+    expect(await screen.findByText("Subscriptions screen")).toBeInTheDocument();
+    expect(playbackProviderMock).toHaveBeenCalled();
   });
 
   it("renders protected routes for authenticated users", async () => {

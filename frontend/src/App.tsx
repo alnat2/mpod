@@ -148,10 +148,9 @@ function AppRoutes() {
   const setupRequired = session.setupRequired;
   const authenticatedHome = authenticated ? "/subscriptions" : "/login";
 
-  return (
-    <Suspense fallback={<LoadingScreen />}>
-      <RouteTransition routeKey={location.pathname}>
-        <Routes>
+  const routes = (
+    <RouteTransition routeKey={location.pathname}>
+      <Routes>
           <Route
             path="/"
             element={
@@ -216,8 +215,13 @@ function AppRoutes() {
               </ProtectedRoute>
             }
           />
-        </Routes>
-      </RouteTransition>
+      </Routes>
+    </RouteTransition>
+  );
+
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      {authenticated ? <PlaybackProvider>{routes}</PlaybackProvider> : routes}
     </Suspense>
   );
 }
@@ -227,9 +231,7 @@ export default function App() {
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <TooltipProvider>
         <BrowserRouter>
-          <PlaybackProvider>
-            <AppRoutes />
-          </PlaybackProvider>
+          <AppRoutes />
         </BrowserRouter>
       </TooltipProvider>
     </ThemeProvider>
