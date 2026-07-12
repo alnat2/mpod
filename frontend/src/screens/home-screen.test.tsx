@@ -219,6 +219,13 @@ describe("HomeScreen", () => {
     expect(screen.getByTestId("drag-handle-First queued episode")).toBeInTheDocument();
   });
 
+  it("does not reload the queue when the playback provider has already loaded it", async () => {
+    render(<HomeScreen />);
+
+    expect(await screen.findByTestId("player")).toBeInTheDocument();
+    expect(reloadQueueMock).not.toHaveBeenCalled();
+  });
+
   it("plays the clicked playlist row without relying on queue position", async () => {
     const user = userEvent.setup();
     render(<HomeScreen />);

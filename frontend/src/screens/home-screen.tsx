@@ -79,6 +79,10 @@ export function HomeScreen() {
   const dragMovedRef = useRef(false);
 
   useEffect(() => {
+    if (reloadKey === 0) {
+      return;
+    }
+
     void reloadQueue();
   }, [reloadKey, reloadQueue]);
 
