@@ -597,6 +597,35 @@ describe("PlaybackProvider", () => {
     expect(screen.getByTestId("speed")).toHaveTextContent("Speed 2x");
   });
 
+  it("refreshes playback speed from backend settings when a tab becomes visible", async () => {
+    const settingsGetSpy = vi.spyOn(api.settings, "get");
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("speed")).toHaveTextContent("Speed 1.3x");
+    });
+
+    settingsGetSpy.mockResolvedValueOnce({
+      settings: {
+        dailyRefreshTime: "03:00",
+        playbackSpeed: "Speed 2x",
+        proxyEnabled: false,
+        proxyConfigured: false,
+        appBuild: "test-build",
+      },
+    });
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("speed")).toHaveTextContent("Speed 2x");
+    });
+  });
+
   it("auto-advances to the next queue item when the current episode ends", async () => {
     const updateSpy = vi.spyOn(api.playback, "update");
     renderPlaybackProvider();

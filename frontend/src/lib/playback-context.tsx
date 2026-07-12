@@ -268,6 +268,18 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const loadPlaybackSettings = useCallback(async () => {
+    try {
+      const response = await api.settings.get();
+      const nextSpeed = response.settings.playbackSpeed;
+      setSpeedLabel(
+        isPlaybackSpeedLabel(nextSpeed) ? nextSpeed : defaultPlaybackSpeed
+      );
+    } catch (error) {
+      console.error("Failed to load playback settings", error);
+    }
+  }, []);
+
   const loadQueue = useCallback(async () => {
     try {
       const [playlistResponse, podcastResponse] = await Promise.all([
@@ -324,7 +336,13 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const syncVisiblePlaybackState = () => {
-      if (document.visibilityState !== "visible" || playingRef.current) {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+
+      void loadPlaybackSettings();
+
+      if (playingRef.current) {
         return;
       }
 
@@ -343,7 +361,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("focus", syncVisiblePlaybackState);
       document.removeEventListener("visibilitychange", syncVisiblePlaybackState);
     };
-  }, [refreshPlaybackState]);
+  }, [loadPlaybackSettings, refreshPlaybackState]);
 
   useEffect(() => {
     const pendingEpisodeId = pendingPlayEpisodeIdRef.current;
@@ -497,7 +515,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    const loadPlaybackSettings = async () => {
+    const loadInitialPlaybackSettings = async () => {
       try {
         const response = await api.settings.get();
         if (cancelled) {
@@ -515,7 +533,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    void loadPlaybackSettings();
+    void loadInitialPlaybackSettings();
 
     return () => {
       cancelled = true;
