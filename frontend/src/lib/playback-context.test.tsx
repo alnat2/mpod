@@ -279,6 +279,20 @@ describe("PlaybackProvider", () => {
     vi.spyOn(api.playback, "get").mockImplementation(async (episodeId) => ({
       playback: playback.get(episodeId) ?? null,
     }));
+    vi.spyOn(api.playback, "queue").mockImplementation(async () => ({
+      queue: playlistItems.map((item) => {
+        const episode = episodes.get(item.episodeId)!;
+        const podcast = podcasts.find(
+          (candidate) => candidate.id === episode.podcastId
+        )!;
+        return {
+          ...episode,
+          podcastTitle: podcast.title,
+          podcastImageUrl: null,
+          playback: playback.get(episode.id) ?? null,
+        };
+      }),
+    }));
     vi.spyOn(api.playback, "update").mockImplementation(async (payload) => ({
       playback: {
         episodeId: payload.episodeId,
@@ -318,6 +332,24 @@ describe("PlaybackProvider", () => {
     expect(screen.getByTestId("current-title")).toHaveTextContent("First queued episode");
     expect(screen.getByTestId("current-podcast")).toHaveTextContent("First Podcast");
     expect(screen.getByTestId("speed")).toHaveTextContent("Speed 1.3x");
+  });
+
+  it("loads the queue through one aggregated API request", async () => {
+    const queueSpy = vi.spyOn(api.playback, "queue");
+    const playlistSpy = vi.spyOn(api.playlist, "list");
+    const podcastSpy = vi.spyOn(api.podcasts, "list");
+    const episodeSpy = vi.spyOn(api.episodes, "get");
+
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    expect(queueSpy).toHaveBeenCalledTimes(1);
+    expect(playlistSpy).not.toHaveBeenCalled();
+    expect(podcastSpy).not.toHaveBeenCalled();
+    expect(episodeSpy).not.toHaveBeenCalled();
   });
 
   it("switches to the clicked queued episode and primes audio from its saved position", async () => {

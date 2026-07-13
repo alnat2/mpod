@@ -202,6 +202,7 @@ func NewRouterWithServices(logger *log.Logger, cfg config.Config, db *sql.DB, sc
 	mux.HandleFunc("GET /api/podcasts/export-opml", r.handlePodcastsExportOPML)
 	mux.HandleFunc("POST /api/podcasts/refresh-all", r.handlePodcastsRefreshAll)
 	mux.HandleFunc("GET /api/jobs/status", r.handleJobsStatus)
+	mux.HandleFunc("GET /api/playback/queue", r.handlePlaybackQueue)
 	mux.HandleFunc("GET /api/playback/{episodeId}", r.handlePlaybackGet)
 	mux.HandleFunc("POST /api/playback", r.handlePlaybackPost)
 	mux.HandleFunc("GET /api/playlist", r.handlePlaylistList)
@@ -658,6 +659,20 @@ func (r *Router) handlePlaybackGet(w nethttp.ResponseWriter, req *nethttp.Reques
 	}
 
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{"playback": state})
+}
+
+func (r *Router) handlePlaybackQueue(w nethttp.ResponseWriter, req *nethttp.Request) {
+	if _, ok := r.requireUser(w, req); !ok {
+		return
+	}
+
+	queue, err := r.playback.ListQueue(req.Context())
+	if err != nil {
+		r.writeAPIError(w, nethttp.StatusInternalServerError, "PLAYBACK_QUEUE_LOAD_FAILED", "Failed to load playback queue")
+		return
+	}
+
+	r.writeJSON(w, nethttp.StatusOK, map[string]any{"queue": queue})
 }
 
 func (r *Router) handlePlaybackPost(w nethttp.ResponseWriter, req *nethttp.Request) {

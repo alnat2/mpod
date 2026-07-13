@@ -18,7 +18,7 @@ import {
 } from "@/components/mpod/playback";
 import {
   api,
-  type Episode,
+  type PlaybackQueueEpisode,
   type PlaybackState,
   type PlaybackUpdateResponse,
 } from "./api";
@@ -33,11 +33,7 @@ import {
   readAudioDuration,
 } from "./playback-audio";
 
-export type QueueEpisode = Episode & {
-  podcastTitle: string;
-  podcastImageUrl?: string | null;
-  playback: PlaybackState | null;
-};
+export type QueueEpisode = PlaybackQueueEpisode;
 
 type PlaybackContextType = {
   queue: QueueEpisode[];
@@ -282,31 +278,8 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
   const loadQueue = useCallback(async () => {
     try {
-      const [playlistResponse, podcastResponse] = await Promise.all([
-        api.playlist.list(),
-        api.podcasts.list(),
-      ]);
-      const items = playlistResponse.items ?? [];
-      const podcasts = podcastResponse.podcasts ?? [];
-      const fullEpisodes = await Promise.all(
-        items.map((item) => api.episodes.get(item.episodeId))
-      );
-      const playbackResults = await Promise.all(
-        items.map((item) => api.playback.get(item.episodeId))
-      );
-      const nextQueue = fullEpisodes.map(({ episode }, index) => {
-        const podcast = podcasts.find((p) => p.id === episode.podcastId);
-        return {
-          ...episode,
-          podcastTitle: podcast?.title ?? "Podcast",
-          podcastImageUrl: podcast?.imageUrl
-            ? api.podcasts.imagePath(podcast.id)
-            : null,
-          playback: playbackResults[index].playback,
-        };
-      });
-
-      setQueue(nextQueue);
+      const response = await api.playback.queue();
+      setQueue(response.queue);
     } catch (err) {
       console.error("Failed to load queue", err);
     } finally {

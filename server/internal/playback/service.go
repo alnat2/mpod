@@ -29,6 +29,13 @@ type State struct {
 	LastUpdated     time.Time `json:"lastUpdated"`
 }
 
+type QueueEpisode struct {
+	episodes.Episode
+	PodcastTitle    string  `json:"podcastTitle"`
+	PodcastImageURL *string `json:"podcastImageUrl"`
+	Playback        *State  `json:"playback"`
+}
+
 type UpdateResult struct {
 	Playback      State  `json:"playback"`
 	NextEpisodeID *int64 `json:"nextEpisodeId"`
@@ -67,6 +74,79 @@ func (s *Service) Get(ctx context.Context, episodeID int64) (*State, error) {
 	}
 	state.LastUpdated = state.LastUpdated.UTC()
 	return &state, nil
+}
+
+func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT episodes.id, episodes.podcast_id, episodes.title, episodes.description,
+		       episodes.audio_url, episodes.duration, episodes.downloaded_path,
+		       episodes.is_listened, episodes.published_at,
+		       podcasts.title, podcasts.image_url,
+		       playback.episode_id, playback.position_seconds, playback.last_updated
+		FROM playlist
+		JOIN episodes ON episodes.id = playlist.episode_id
+		JOIN podcasts ON podcasts.id = episodes.podcast_id
+		LEFT JOIN playback ON playback.episode_id = episodes.id
+		ORDER BY playlist.position ASC, playlist.id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list playback queue: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]QueueEpisode, 0)
+	for rows.Next() {
+		var item QueueEpisode
+		var description, downloadedPath, podcastImageURL sql.NullString
+		var duration sql.NullInt64
+		var publishedAt, playbackUpdatedAt sql.NullTime
+		var playbackEpisodeID, playbackPosition sql.NullInt64
+		if err := rows.Scan(
+			&item.ID,
+			&item.PodcastID,
+			&item.Title,
+			&description,
+			&item.AudioURL,
+			&duration,
+			&downloadedPath,
+			&item.IsListened,
+			&publishedAt,
+			&item.PodcastTitle,
+			&podcastImageURL,
+			&playbackEpisodeID,
+			&playbackPosition,
+			&playbackUpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan playback queue: %w", err)
+		}
+
+		if description.Valid {
+			item.ShowNotes = episodes.SanitizeShowNotes(description.String)
+			item.Description = item.ShowNotes
+		}
+		if duration.Valid {
+			item.Duration = &duration.Int64
+		}
+		item.Downloaded = downloadedPath.Valid && downloadedPath.String != ""
+		if publishedAt.Valid {
+			timestamp := publishedAt.Time.UTC()
+			item.PublishedAt = &timestamp
+		}
+		if podcastImageURL.Valid {
+			imagePath := fmt.Sprintf("/api/podcasts/%d/image", item.PodcastID)
+			item.PodcastImageURL = &imagePath
+		}
+		if playbackEpisodeID.Valid {
+			item.Playback = &State{
+				EpisodeID:       playbackEpisodeID.Int64,
+				PositionSeconds: playbackPosition.Int64,
+				LastUpdated:     playbackUpdatedAt.Time.UTC(),
+			}
+		}
+
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, error) {

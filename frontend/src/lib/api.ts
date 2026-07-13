@@ -69,6 +69,12 @@ export type PlaybackState = {
   lastUpdated: string;
 };
 
+export type PlaybackQueueEpisode = Episode & {
+  podcastTitle: string;
+  podcastImageUrl?: string | null;
+  playback: PlaybackState | null;
+};
+
 export type PlaybackUpdateResponse = {
   playback: PlaybackState;
   nextEpisodeId: number | null;
@@ -241,6 +247,8 @@ export const api = {
       }),
   },
   playback: {
+    queue: () =>
+      apiRequest<{ queue: PlaybackQueueEpisode[] }>("/api/playback/queue"),
     get: (episodeId: number) =>
       apiRequest<{ playback: PlaybackState | null }>(
         `/api/playback/${episodeId}`

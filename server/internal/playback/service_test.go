@@ -41,6 +41,40 @@ func TestUpdateIgnoresStaleClientUpdate(t *testing.T) {
 	}
 }
 
+func TestListQueueReturnsPlaybackReadyEpisodesInPlaylistOrder(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	updatedAt := time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC)
+	mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url, image_url) VALUES (1, 'Test Podcast', 'https://example.com/feed.xml', 'https://example.com/artwork.png')`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, description, audio_url, duration, is_listened, published_at) VALUES (1, 1, 'ep-1', 'Episode 1', '<p>Safe notes</p>', 'https://example.com/1.mp3', 600, 0, ?)`, updatedAt)
+	mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+	mustExec(t, db.SQL, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (1, 120, ?)`, updatedAt)
+
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+	queue, err := service.ListQueue(context.Background())
+	if err != nil {
+		t.Fatalf("ListQueue failed: %v", err)
+	}
+	if len(queue) != 1 {
+		t.Fatalf("expected one queue episode, got %d", len(queue))
+	}
+
+	item := queue[0]
+	if item.Title != "Episode 1" || item.PodcastTitle != "Test Podcast" {
+		t.Fatalf("unexpected queue item: %+v", item)
+	}
+	if item.PodcastImageURL == nil || *item.PodcastImageURL != "/api/podcasts/1/image" {
+		t.Fatalf("expected proxied artwork path, got %+v", item.PodcastImageURL)
+	}
+	if item.ShowNotes == nil || *item.ShowNotes != "Safe notes" {
+		t.Fatalf("expected sanitized show notes, got %+v", item.ShowNotes)
+	}
+	if item.Playback == nil || item.Playback.PositionSeconds != 120 || !item.Playback.LastUpdated.Equal(updatedAt) {
+		t.Fatalf("unexpected playback state: %+v", item.Playback)
+	}
+}
+
 func TestUpdateCompletionAppliesSideEffects(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()

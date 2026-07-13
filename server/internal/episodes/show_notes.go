@@ -52,6 +52,11 @@ func sanitizeShowNotes(raw string) *string {
 	return &text
 }
 
+// SanitizeShowNotes converts feed-provided show notes into safe plain text for API responses.
+func SanitizeShowNotes(raw string) *string {
+	return sanitizeShowNotes(raw)
+}
+
 func renderShowNotesNode(builder *strings.Builder, node *nethtml.Node) {
 	switch node.Type {
 	case nethtml.TextNode:

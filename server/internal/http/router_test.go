@@ -2266,6 +2266,26 @@ func TestEpisodesListReturnsAllEpisodes(t *testing.T) {
 	}
 }
 
+func TestPlaybackQueueReturnsPlaybackReadyEpisodes(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast One', 'https://example.com/feed.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://cdn.example.com/1.mp3')`)
+	mustExecHTTP(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/playback/queue", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"podcastTitle":"Podcast One"`) {
+		t.Fatalf("expected playback-ready queue payload, got %s", rec.Body.String())
+	}
+}
+
 func TestEpisodeDownloadRejectsUnknownEpisode(t *testing.T) {
 	handler, cookie := newAuthedRouter(t)
 
@@ -3141,6 +3161,7 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 	mux.HandleFunc("GET /api/podcasts/export-opml", r.handlePodcastsExportOPML)
 	mux.HandleFunc("POST /api/podcasts/refresh-all", r.handlePodcastsRefreshAll)
 	mux.HandleFunc("GET /api/jobs/status", r.handleJobsStatus)
+	mux.HandleFunc("GET /api/playback/queue", r.handlePlaybackQueue)
 	mux.HandleFunc("GET /api/playback/{episodeId}", r.handlePlaybackGet)
 	mux.HandleFunc("POST /api/playback", r.handlePlaybackPost)
 	mux.HandleFunc("GET /api/playlist", r.handlePlaylistList)
