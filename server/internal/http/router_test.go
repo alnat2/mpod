@@ -370,6 +370,9 @@ func TestPodcastImageProxiesArtwork(t *testing.T) {
 	if rec.Header().Get("Content-Type") != "image/png" {
 		t.Fatalf("expected image/png content type, got %q", rec.Header().Get("Content-Type"))
 	}
+	if rec.Header().Get("Cache-Control") != "private, max-age=604800" {
+		t.Fatalf("expected one-week cache control, got %q", rec.Header().Get("Cache-Control"))
+	}
 	if rec.Body.String() != "image-bytes" {
 		t.Fatalf("unexpected image body: %q", rec.Body.String())
 	}

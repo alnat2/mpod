@@ -455,7 +455,7 @@ func (r *Router) handlePodcastImage(w nethttp.ResponseWriter, req *nethttp.Reque
 	}
 
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.Header().Set("Cache-Control", "private, max-age=604800")
 	if resp.ContentLength > 0 {
 		w.Header().Set("Content-Length", strconv.FormatInt(resp.ContentLength, 10))
 	}
