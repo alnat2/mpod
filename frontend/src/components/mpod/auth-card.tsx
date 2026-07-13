@@ -1,7 +1,7 @@
 import { useState, type FormEventHandler } from "react";
 
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ViewIcon } from "@hugeicons/core-free-icons";
+import { ViewIcon, ViewOffIcon } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -85,7 +85,9 @@ export function AuthCard({
                   onClick={() => setShowPassword((current) => !current)}
                 >
                   <HugeiconsIcon
-                    icon={ViewIcon}
+                    data-visible={showPassword}
+                    data-testid="password-visibility-icon"
+                    icon={showPassword ? ViewOffIcon : ViewIcon}
                     className="size-4 text-primary"
                     aria-hidden="true"
                   />

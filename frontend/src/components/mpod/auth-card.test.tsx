@@ -11,12 +11,16 @@ describe("AuthCard", () => {
     render(<AuthCard />);
 
     const passwordInput = screen.getByLabelText("Password");
+    const visibilityIcon = screen.getByTestId("password-visibility-icon");
     expect(passwordInput).toHaveAttribute("type", "password");
+    expect(visibilityIcon).toHaveAttribute("data-visible", "false");
 
     await user.click(screen.getByRole("button", { name: "Show password" }));
     expect(passwordInput).toHaveAttribute("type", "text");
+    expect(visibilityIcon).toHaveAttribute("data-visible", "true");
 
     await user.click(screen.getByRole("button", { name: "Hide password" }));
     expect(passwordInput).toHaveAttribute("type", "password");
+    expect(visibilityIcon).toHaveAttribute("data-visible", "false");
   });
 });
