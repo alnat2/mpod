@@ -7,7 +7,11 @@ import { BrowserRouter, useLocation } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthShell } from "@/components/mpod";
 import { api, type AuthSession } from "@/lib/api";
-import { PlaybackProvider } from "@/lib/playback-context";
+
+const AuthenticatedPlaybackProvider = lazy(async () => {
+  const module = await import("@/lib/playback-context");
+  return { default: module.PlaybackProvider };
+});
 
 const SetupScreen = lazy(async () => {
   const module = await import("@/screens/auth-screens");
@@ -221,7 +225,11 @@ function AppRoutes() {
 
   return (
     <Suspense fallback={<LoadingScreen />}>
-      {authenticated ? <PlaybackProvider>{routes}</PlaybackProvider> : routes}
+      {authenticated ? (
+        <AuthenticatedPlaybackProvider>{routes}</AuthenticatedPlaybackProvider>
+      ) : (
+        routes
+      )}
     </Suspense>
   );
 }
