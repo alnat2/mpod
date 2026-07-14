@@ -3,6 +3,7 @@ package playback
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -75,6 +76,91 @@ func TestListQueueReturnsPlaybackReadyEpisodesInPlaylistOrder(t *testing.T) {
 	}
 }
 
+func TestGetActiveInitiallyReturnsNil(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+	active, err := service.GetActive(context.Background())
+	if err != nil {
+		t.Fatalf("GetActive failed: %v", err)
+	}
+	if active != nil {
+		t.Fatalf("expected nil active playback, got %+v", active)
+	}
+}
+
+func TestSetActiveStoresAndReplacesPlaylistEpisode(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3')`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (2, 1, 'ep-2', 'Episode 2', 'https://example.com/2.mp3')`)
+	mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1), (2, 2)`)
+
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+	service.now = func() time.Time { return now }
+
+	first, err := service.SetActive(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("SetActive first failed: %v", err)
+	}
+	if first.EpisodeID != 1 || !first.LastUpdated.Equal(now) {
+		t.Fatalf("unexpected first active state: %+v", first)
+	}
+
+	service.now = func() time.Time { return now.Add(time.Minute) }
+	repeated, err := service.SetActive(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("SetActive repeat failed: %v", err)
+	}
+	if repeated.EpisodeID != 1 || !repeated.LastUpdated.Equal(now.Add(time.Minute)) {
+		t.Fatalf("expected idempotent refresh of same episode, got %+v", repeated)
+	}
+
+	service.now = func() time.Time { return now.Add(2 * time.Minute) }
+	replacement, err := service.SetActive(context.Background(), 2)
+	if err != nil {
+		t.Fatalf("SetActive replacement failed: %v", err)
+	}
+	if replacement.EpisodeID != 2 || !replacement.LastUpdated.Equal(now.Add(2*time.Minute)) {
+		t.Fatalf("expected episode 2 replacement, got %+v", replacement)
+	}
+
+	active, err := service.GetActive(context.Background())
+	if err != nil {
+		t.Fatalf("GetActive failed: %v", err)
+	}
+	if active == nil || active.EpisodeID != 2 {
+		t.Fatalf("expected active episode 2, got %+v", active)
+	}
+}
+
+func TestSetActiveRejectsUnknownEpisode(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+	if _, err := service.SetActive(context.Background(), 999); !errors.Is(err, ErrEpisodeNotFound) {
+		t.Fatalf("expected ErrEpisodeNotFound, got %v", err)
+	}
+}
+
+func TestSetActiveRejectsEpisodeOutsidePlaylist(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3')`)
+
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+	if _, err := service.SetActive(context.Background(), 1); !errors.Is(err, ErrEpisodeNotInPlaylist) {
+		t.Fatalf("expected ErrEpisodeNotInPlaylist, got %v", err)
+	}
+}
+
 func TestUpdateCompletionAppliesSideEffects(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
@@ -137,6 +223,112 @@ func TestUpdateCompletionAppliesSideEffects(t *testing.T) {
 
 	if _, err := os.Stat(downloadPath); !os.IsNotExist(err) {
 		t.Fatalf("expected file to be deleted, stat err=%v", err)
+	}
+}
+
+func TestActiveClearsWhenEpisodeLeavesPlaylist(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3')`)
+	mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+
+	playlistService := playlist.NewService(db.SQL)
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlistService)
+	if _, err := service.SetActive(context.Background(), 1); err != nil {
+		t.Fatalf("SetActive failed: %v", err)
+	}
+	if err := playlistService.Remove(context.Background(), 1); err != nil {
+		t.Fatalf("playlist Remove failed: %v", err)
+	}
+
+	active, err := service.GetActive(context.Background())
+	if err != nil {
+		t.Fatalf("GetActive failed: %v", err)
+	}
+	if active != nil {
+		t.Fatalf("expected active playback to clear after playlist removal, got %+v", active)
+	}
+}
+
+func TestActiveClearsWhenEpisodeIsMarkedListened(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, is_listened) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3', 0)`)
+	mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+
+	downloadService := downloads.NewService(db.SQL, nil, t.TempDir())
+	episodeActions := episodes.NewActions(db.SQL, downloadService)
+	service := NewService(db.SQL, episodeActions, playlist.NewService(db.SQL))
+	if _, err := service.SetActive(context.Background(), 1); err != nil {
+		t.Fatalf("SetActive failed: %v", err)
+	}
+	if err := episodeActions.SetListened(context.Background(), 1, true); err != nil {
+		t.Fatalf("SetListened failed: %v", err)
+	}
+
+	active, err := service.GetActive(context.Background())
+	if err != nil {
+		t.Fatalf("GetActive failed: %v", err)
+	}
+	if active != nil {
+		t.Fatalf("expected active playback to clear after mark listened, got %+v", active)
+	}
+}
+
+func TestActiveClearsWhenPlaybackCompletionRuns(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration, is_listened) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3', 300, 0)`)
+	mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+	if _, err := service.SetActive(context.Background(), 1); err != nil {
+		t.Fatalf("SetActive failed: %v", err)
+	}
+	if _, err := service.Update(context.Background(), UpdateInput{
+		EpisodeID:       1,
+		PositionSeconds: 300,
+		DurationSeconds: 300,
+		Completed:       true,
+	}); err != nil {
+		t.Fatalf("Update completion failed: %v", err)
+	}
+
+	active, err := service.GetActive(context.Background())
+	if err != nil {
+		t.Fatalf("GetActive failed: %v", err)
+	}
+	if active != nil {
+		t.Fatalf("expected active playback to clear after completion, got %+v", active)
+	}
+}
+
+func TestActiveClearsWhenPodcastCascadeDeletesEpisode(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3')`)
+	mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+	if _, err := service.SetActive(context.Background(), 1); err != nil {
+		t.Fatalf("SetActive failed: %v", err)
+	}
+	mustExec(t, db.SQL, `DELETE FROM podcasts WHERE id = 1`)
+
+	active, err := service.GetActive(context.Background())
+	if err != nil {
+		t.Fatalf("GetActive failed: %v", err)
+	}
+	if active != nil {
+		t.Fatalf("expected active playback to clear after podcast delete, got %+v", active)
 	}
 }
 

@@ -112,6 +112,13 @@ func (s *Service) Remove(ctx context.Context, episodeID int64) error {
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM playlist WHERE episode_id = ?`, episodeID); err != nil {
 		return fmt.Errorf("delete playlist item: %w", err)
 	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE active_playback
+		SET episode_id = NULL, last_updated = ?
+		WHERE singleton_id = 1 AND episode_id = ?
+	`, time.Now().UTC(), episodeID); err != nil {
+		return fmt.Errorf("clear active playback item: %w", err)
+	}
 	return s.normalizePositions(ctx)
 }
 

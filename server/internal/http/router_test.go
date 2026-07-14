@@ -1587,6 +1587,69 @@ func TestPlaybackCompletionReturnsFallbackEpisodeForLastPlaylistItem(t *testing.
 	}
 }
 
+func TestPlaybackActiveEndpointSetsActiveEpisode(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+	seedEpisode(t, db, 1, 1)
+	mustExecHTTP(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+
+	req := httptest.NewRequest(nethttp.MethodPut, "/api/playback/active", bytes.NewReader([]byte(`{"episodeId":1}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"episodeId":1`) || !strings.Contains(rec.Body.String(), `"lastUpdated"`) {
+		t.Fatalf("expected active playback payload, got %s", rec.Body.String())
+	}
+}
+
+func TestPlaybackActiveEndpointRejectsUnknownEpisode(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPut, "/api/playback/active", bytes.NewReader([]byte(`{"episodeId":999}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "EPISODE_NOT_FOUND")
+}
+
+func TestPlaybackActiveEndpointRejectsEpisodeOutsidePlaylist(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+	seedEpisode(t, db, 1, 1)
+
+	req := httptest.NewRequest(nethttp.MethodPut, "/api/playback/active", bytes.NewReader([]byte(`{"episodeId":1}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "EPISODE_NOT_IN_PLAYLIST")
+}
+
+func TestPlaybackActiveEndpointRequiresAuth(t *testing.T) {
+	handler, db := newTestRouter(t)
+	seedEpisode(t, db, 1, 1)
+	mustExecHTTP(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+
+	req := httptest.NewRequest(nethttp.MethodPut, "/api/playback/active", bytes.NewReader([]byte(`{"episodeId":1}`)))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestPlaybackRejectsInvalidClientUpdatedAt(t *testing.T) {
 	handler, db := newTestRouter(t)
 	cookie := register(t, handler, "admin", "secret")
@@ -2286,6 +2349,29 @@ func TestPlaybackQueueReturnsPlaybackReadyEpisodes(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"podcastTitle":"Podcast One"`) {
 		t.Fatalf("expected playback-ready queue payload, got %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"activePlayback":null`) {
+		t.Fatalf("expected null activePlayback in queue payload, got %s", rec.Body.String())
+	}
+}
+
+func TestPlaybackQueueReturnsActivePlayback(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+	seedEpisode(t, db, 1, 1)
+	mustExecHTTP(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+	mustExecHTTP(t, db, `INSERT INTO active_playback (singleton_id, episode_id, last_updated) VALUES (1, 1, ?)`, time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC))
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/playback/queue", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"activePlayback":{"episodeId":1`) {
+		t.Fatalf("expected activePlayback in queue payload, got %s", rec.Body.String())
 	}
 }
 
@@ -3165,6 +3251,7 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 	mux.HandleFunc("POST /api/podcasts/refresh-all", r.handlePodcastsRefreshAll)
 	mux.HandleFunc("GET /api/jobs/status", r.handleJobsStatus)
 	mux.HandleFunc("GET /api/playback/queue", r.handlePlaybackQueue)
+	mux.HandleFunc("PUT /api/playback/active", r.handlePlaybackActivePut)
 	mux.HandleFunc("GET /api/playback/{episodeId}", r.handlePlaybackGet)
 	mux.HandleFunc("POST /api/playback", r.handlePlaybackPost)
 	mux.HandleFunc("GET /api/playlist", r.handlePlaylistList)

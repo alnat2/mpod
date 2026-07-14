@@ -51,6 +51,13 @@ func (a *Actions) SetListened(ctx context.Context, episodeID int64, listened boo
 	}
 
 	if listened {
+		if _, err := a.db.ExecContext(ctx, `
+			UPDATE active_playback
+			SET episode_id = NULL, last_updated = CURRENT_TIMESTAMP
+			WHERE singleton_id = 1 AND episode_id = ?
+		`, episodeID); err != nil {
+			return fmt.Errorf("clear active listened episode: %w", err)
+		}
 		if err := a.playlist.Remove(ctx, episodeID); err != nil {
 			return fmt.Errorf("remove listened episode from playlist: %w", err)
 		}

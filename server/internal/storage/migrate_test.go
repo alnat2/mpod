@@ -74,6 +74,43 @@ func TestMigrateRollsBackFailedMigrationWithoutRecordingVersion(t *testing.T) {
 	}
 }
 
+func TestProjectMigrationAddsActivePlaybackToExistingDatabase(t *testing.T) {
+	db := openMigrateTestDB(t)
+	defer db.Close()
+
+	if _, err := db.SQL.Exec(`
+		CREATE TABLE schema_migrations (
+			version TEXT PRIMARY KEY,
+			applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE episodes (
+			id INTEGER PRIMARY KEY
+		);
+		INSERT INTO schema_migrations (version) VALUES
+			('0001_initial.sql'),
+			('0002_scheduler_state.sql'),
+			('0003_proxy_enabled.sql'),
+			('0004_playback_speed.sql'),
+			('0005_scheduler_trigger.sql');
+	`); err != nil {
+		t.Fatalf("prepare existing db failed: %v", err)
+	}
+
+	if err := Migrate(db.SQL, "../../migrations"); err != nil {
+		t.Fatalf("Migrate existing db failed: %v", err)
+	}
+
+	var tableName string
+	if err := db.SQL.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'active_playback'`).Scan(&tableName); err != nil {
+		t.Fatalf("active_playback table missing: %v", err)
+	}
+	if tableName != "active_playback" {
+		t.Fatalf("expected active_playback table, got %q", tableName)
+	}
+
+	assertMigrationVersions(t, db.SQL, 6)
+}
+
 func openMigrateTestDB(t *testing.T) *DB {
 	t.Helper()
 

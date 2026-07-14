@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	ErrEpisodeNotFound = errors.New("episode not found")
-	ErrInvalidPosition = errors.New("invalid playback position")
+	ErrEpisodeNotFound      = errors.New("episode not found")
+	ErrEpisodeNotInPlaylist = errors.New("episode not in playlist")
+	ErrInvalidPosition      = errors.New("invalid playback position")
 )
 
 type Service struct {
@@ -27,6 +28,11 @@ type State struct {
 	EpisodeID       int64     `json:"episodeId"`
 	PositionSeconds int64     `json:"positionSeconds"`
 	LastUpdated     time.Time `json:"lastUpdated"`
+}
+
+type ActiveState struct {
+	EpisodeID   int64     `json:"episodeId"`
+	LastUpdated time.Time `json:"lastUpdated"`
 }
 
 type QueueEpisode struct {
@@ -74,6 +80,87 @@ func (s *Service) Get(ctx context.Context, episodeID int64) (*State, error) {
 	}
 	state.LastUpdated = state.LastUpdated.UTC()
 	return &state, nil
+}
+
+func (s *Service) GetActive(ctx context.Context) (*ActiveState, error) {
+	var episodeID sql.NullInt64
+	var lastUpdated time.Time
+	err := s.db.QueryRowContext(ctx, `
+		SELECT episode_id, last_updated
+		FROM active_playback
+		WHERE singleton_id = 1
+	`).Scan(&episodeID, &lastUpdated)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("load active playback: %w", err)
+	}
+	if !episodeID.Valid {
+		return nil, nil
+	}
+
+	inPlaylist, err := s.episodeInPlaylist(ctx, episodeID.Int64)
+	if err != nil {
+		return nil, err
+	}
+	if !inPlaylist {
+		if err := s.ClearActiveIfEpisode(ctx, episodeID.Int64); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+
+	return &ActiveState{
+		EpisodeID:   episodeID.Int64,
+		LastUpdated: lastUpdated.UTC(),
+	}, nil
+}
+
+func (s *Service) SetActive(ctx context.Context, episodeID int64) (ActiveState, error) {
+	var exists int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM episodes WHERE id = ?`, episodeID).Scan(&exists); err != nil {
+		return ActiveState{}, fmt.Errorf("check active episode exists: %w", err)
+	}
+	if exists == 0 {
+		return ActiveState{}, ErrEpisodeNotFound
+	}
+
+	inPlaylist, err := s.episodeInPlaylist(ctx, episodeID)
+	if err != nil {
+		return ActiveState{}, err
+	}
+	if !inPlaylist {
+		return ActiveState{}, ErrEpisodeNotInPlaylist
+	}
+
+	now := s.now().UTC()
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO active_playback (singleton_id, episode_id, last_updated)
+		VALUES (1, ?, ?)
+		ON CONFLICT (singleton_id) DO UPDATE SET
+			episode_id = excluded.episode_id,
+			last_updated = excluded.last_updated
+	`, episodeID, now); err != nil {
+		return ActiveState{}, fmt.Errorf("save active playback: %w", err)
+	}
+
+	return ActiveState{
+		EpisodeID:   episodeID,
+		LastUpdated: now,
+	}, nil
+}
+
+func (s *Service) ClearActiveIfEpisode(ctx context.Context, episodeID int64) error {
+	now := s.now().UTC()
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE active_playback
+		SET episode_id = NULL, last_updated = ?
+		WHERE singleton_id = 1 AND episode_id = ?
+	`, now, episodeID); err != nil {
+		return fmt.Errorf("clear active playback: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
@@ -147,6 +234,14 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (s *Service) episodeInPlaylist(ctx context.Context, episodeID int64) (bool, error) {
+	var count int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE episode_id = ?`, episodeID).Scan(&count); err != nil {
+		return false, fmt.Errorf("check active episode playlist state: %w", err)
+	}
+	return count > 0, nil
 }
 
 func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, error) {

@@ -203,6 +203,7 @@ func NewRouterWithServices(logger *log.Logger, cfg config.Config, db *sql.DB, sc
 	mux.HandleFunc("POST /api/podcasts/refresh-all", r.handlePodcastsRefreshAll)
 	mux.HandleFunc("GET /api/jobs/status", r.handleJobsStatus)
 	mux.HandleFunc("GET /api/playback/queue", r.handlePlaybackQueue)
+	mux.HandleFunc("PUT /api/playback/active", r.handlePlaybackActivePut)
 	mux.HandleFunc("GET /api/playback/{episodeId}", r.handlePlaybackGet)
 	mux.HandleFunc("POST /api/playback", r.handlePlaybackPost)
 	mux.HandleFunc("GET /api/playlist", r.handlePlaylistList)
@@ -671,8 +672,44 @@ func (r *Router) handlePlaybackQueue(w nethttp.ResponseWriter, req *nethttp.Requ
 		r.writeAPIError(w, nethttp.StatusInternalServerError, "PLAYBACK_QUEUE_LOAD_FAILED", "Failed to load playback queue")
 		return
 	}
+	active, err := r.playback.GetActive(req.Context())
+	if err != nil {
+		r.writeAPIError(w, nethttp.StatusInternalServerError, "PLAYBACK_QUEUE_LOAD_FAILED", "Failed to load playback queue")
+		return
+	}
 
-	r.writeJSON(w, nethttp.StatusOK, map[string]any{"queue": queue})
+	r.writeJSON(w, nethttp.StatusOK, map[string]any{
+		"queue":          queue,
+		"activePlayback": active,
+	})
+}
+
+func (r *Router) handlePlaybackActivePut(w nethttp.ResponseWriter, req *nethttp.Request) {
+	if _, ok := r.requireUser(w, req); !ok {
+		return
+	}
+
+	var payload struct {
+		EpisodeID int64 `json:"episodeId"`
+	}
+	if !r.decodeJSON(w, req, &payload) {
+		return
+	}
+
+	active, err := r.playback.SetActive(req.Context(), payload.EpisodeID)
+	if err != nil {
+		switch err {
+		case playback.ErrEpisodeNotFound:
+			r.writeAPIError(w, nethttp.StatusNotFound, "EPISODE_NOT_FOUND", "Episode was not found")
+		case playback.ErrEpisodeNotInPlaylist:
+			r.writeAPIError(w, nethttp.StatusBadRequest, "EPISODE_NOT_IN_PLAYLIST", "Episode is not in the playlist")
+		default:
+			r.writeAPIError(w, nethttp.StatusInternalServerError, "PLAYBACK_ACTIVE_UPDATE_FAILED", "Failed to update active playback")
+		}
+		return
+	}
+
+	r.writeJSON(w, nethttp.StatusOK, map[string]any{"activePlayback": active})
 }
 
 func (r *Router) handlePlaybackPost(w nethttp.ResponseWriter, req *nethttp.Request) {

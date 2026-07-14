@@ -190,6 +190,8 @@ const playback = new Map<number, PlaybackState | null>([
   ],
 ]);
 
+let activePlaybackEpisodeId: number | null = null;
+
 function Harness() {
   const {
     currentEpisode,
@@ -290,6 +292,7 @@ describe("PlaybackProvider", () => {
       positionSeconds: 42,
       lastUpdated: "2026-05-22T08:05:00Z",
     });
+    activePlaybackEpisodeId = null;
 
     vi.spyOn(api.playlist, "list").mockResolvedValue({ items: playlistItems });
     vi.spyOn(api.podcasts, "list").mockResolvedValue({ podcasts });
@@ -312,6 +315,13 @@ describe("PlaybackProvider", () => {
           playback: playback.get(episode.id) ?? null,
         };
       }),
+      activePlayback:
+        activePlaybackEpisodeId === null
+          ? null
+          : {
+              episodeId: activePlaybackEpisodeId,
+              lastUpdated: "2026-05-22T09:05:00Z",
+            },
     }));
     vi.spyOn(api.playback, "update").mockImplementation(async (payload) => ({
       playback: {
@@ -321,6 +331,15 @@ describe("PlaybackProvider", () => {
       },
       nextEpisodeId: null,
     }));
+    vi.spyOn(api.playback, "setActive").mockImplementation(async (episodeId) => {
+      activePlaybackEpisodeId = episodeId;
+      return {
+        activePlayback: {
+          episodeId,
+          lastUpdated: "2026-05-22T09:05:00Z",
+        },
+      };
+    });
     vi.spyOn(api.settings, "get").mockResolvedValue({
       settings: {
         dailyRefreshTime: "03:00",
@@ -354,6 +373,36 @@ describe("PlaybackProvider", () => {
     expect(screen.getByTestId("speed")).toHaveTextContent("Speed 1.3x");
   });
 
+  it("uses backend active playback from the queue without autoplay", async () => {
+    vi.spyOn(api.playback, "queue").mockResolvedValueOnce({
+      queue: playlistItems.map((item) => {
+        const episode = episodes.get(item.episodeId)!;
+        const podcast = podcasts.find(
+          (candidate) => candidate.id === episode.podcastId
+        )!;
+        return {
+          ...episode,
+          podcastTitle: podcast.title,
+          podcastImageUrl: null,
+          playback: playback.get(episode.id) ?? null,
+        };
+      }),
+      activePlayback: {
+        episodeId: 2,
+        lastUpdated: "2026-05-22T09:05:00Z",
+      },
+    });
+
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    expect(screen.getByTestId("current-title")).toHaveTextContent("Second queued episode");
+    expect(screen.getByTestId("playing")).toHaveTextContent("no");
+  });
+
   it("loads the queue through one aggregated API request", async () => {
     const queueSpy = vi.spyOn(api.playback, "queue");
     const playlistSpy = vi.spyOn(api.playlist, "list");
@@ -374,6 +423,7 @@ describe("PlaybackProvider", () => {
 
   it("switches to the clicked queued episode and primes audio from its saved position", async () => {
     const user = userEvent.setup();
+    const setActiveSpy = vi.spyOn(api.playback, "setActive");
     renderPlaybackProvider();
 
     await waitFor(() => {
@@ -387,6 +437,7 @@ describe("PlaybackProvider", () => {
     expect(audio.src).toContain("/api/episodes/2/audio");
     expect(audio.currentTime).toBe(42);
     expect(audio.playImpl).toHaveBeenCalled();
+    expect(setActiveSpy).toHaveBeenCalledWith(2);
     expect(screen.getByTestId("current-title")).toHaveTextContent("Second queued episode");
   });
 

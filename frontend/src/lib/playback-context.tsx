@@ -227,6 +227,14 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     [commitPlayback, commitPlaybackBeacon]
   );
 
+  const commitActivePlayback = useCallback(async (episodeId: number) => {
+    try {
+      await api.playback.setActive(episodeId);
+    } catch (error) {
+      console.error("Failed to update active playback", error);
+    }
+  }, []);
+
   const refreshPlaybackState = useCallback(
     async (
       episode: QueueEpisode,
@@ -284,6 +292,13 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     try {
       const response = await api.playback.queue();
       setQueue(response.queue);
+      const nextActiveEpisodeId = response.activePlayback?.episodeId ?? null;
+      setActiveEpisodeId(
+        nextActiveEpisodeId !== null &&
+          response.queue.some((episode) => episode.id === nextActiveEpisodeId)
+          ? nextActiveEpisodeId
+          : null
+      );
     } catch (err) {
       console.error("Failed to load queue", err);
     } finally {
@@ -381,6 +396,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     const startQueuedEpisode = (episode: QueueEpisode) => {
       const nextPosition = episode.playback?.positionSeconds ?? 0;
       setActiveEpisodeId(episode.id);
+      void commitActivePlayback(episode.id);
       sourceReadyRef.current = false;
       primeAudioSource(
         audio,
@@ -583,7 +599,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       );
     }
 
-  }, [currentEpisode, playing]);
+  }, [commitActivePlayback, currentEpisode, playing]);
 
   // Sync playing state to audio element
   useEffect(() => {
@@ -643,6 +659,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     if (audio && currentEpisode) {
       void (async () => {
         const syncedEpisode = await refreshPlaybackState(currentEpisode);
+        void commitActivePlayback(syncedEpisode.id);
         const nextPosition =
           syncedEpisode.playback?.positionSeconds ?? positionSeconds ?? 0;
         sourceReadyRef.current = false;
@@ -671,6 +688,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     setPlaying(true);
   }, [
     commitCurrentPlayback,
+    commitActivePlayback,
     currentEpisode,
     playing,
     positionSeconds,
@@ -689,6 +707,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         : null;
       pendingPlayEpisodeIdRef.current = syncedEpisode ? null : episodeId;
       setActiveEpisodeId(episodeId);
+      void commitActivePlayback(episodeId);
       const audio = audioRef.current;
       if (!audio) {
         setPlaying(true);
@@ -716,7 +735,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         }
       );
     })();
-  }, [queue, refreshPlaybackState, speedLabel]);
+  }, [commitActivePlayback, queue, refreshPlaybackState, speedLabel]);
 
   const seekForward = useCallback(() => {
     if (!audioRef.current || !currentEpisode) return;

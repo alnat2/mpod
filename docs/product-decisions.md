@@ -452,6 +452,60 @@ Response:
 }
 ```
 
+#### `GET /api/playback/queue`
+
+Response:
+```json
+{
+  "queue": [
+    {
+      "id": 55,
+      "podcastId": 12,
+      "title": "Episode",
+      "podcastTitle": "Podcast",
+      "playback": {
+        "episodeId": 55,
+        "positionSeconds": 812,
+        "lastUpdated": "2026-07-14T11:58:00Z"
+      }
+    }
+  ],
+  "activePlayback": {
+    "episodeId": 55,
+    "lastUpdated": "2026-07-14T12:00:00Z"
+  }
+}
+```
+
+If no active episode has been selected, `activePlayback` is `null`.
+
+#### `PUT /api/playback/active`
+
+Request:
+```json
+{
+  "episodeId": 55
+}
+```
+
+Success response:
+```json
+{
+  "activePlayback": {
+    "episodeId": 55,
+    "lastUpdated": "2026-07-14T12:00:00Z"
+  }
+}
+```
+
+Rules:
+- Requires authentication.
+- Returns `404 EPISODE_NOT_FOUND` when the episode does not exist.
+- Returns `400 EPISODE_NOT_IN_PLAYLIST` when the episode is not in the playlist.
+- Repeating the same episode ID is successful and refreshes `lastUpdated`.
+- `lastUpdated` is written using server time.
+- This endpoint is for explicit playback starts only; progress sync, pause, and seek updates must not call it.
+
 #### `POST /api/playback`
 
 Request:
@@ -640,9 +694,15 @@ Playback speed selection should also be treated as backend-owned user playback s
 
 ### Rules
 - Playback state is stored per episode.
+- Active playback state stores the single episode the user explicitly started most recently.
 - Each episode has at most one playback record.
 - The server is the final authority for stored playback state.
 - Playback updates are accepted only for existing episodes.
+- Active playback can only point to an existing episode that is currently in the playlist.
+- Active playback changes only through `PUT /api/playback/active`.
+- `POST /api/playback` position updates, pause, and seek do not change active playback.
+- The last processed explicit active playback update wins across devices.
+- Reading active playback must not automatically start playback.
 - Playback speed selection should be stored as user playback state on the backend, not only in the frontend.
 - If no playback speed has been selected yet, the default speed is `Speed 1.3x`.
 - Playback state contains:
@@ -660,6 +720,11 @@ Request fields:
 - `completed`
 - `didSeek`
 - `clientUpdatedAt`
+
+Active playback is updated through `PUT /api/playback/active`.
+
+Active playback request fields:
+- `episodeId`
 
 ### Completion Rules
 - If `completed = true`, the episode is treated as finished immediately.
@@ -719,6 +784,17 @@ Example:
   "playback": null
 }
 ```
+
+`GET /api/playback/queue` returns the current playlist queue and a nullable `activePlayback` object.
+Clients should:
+- show `activePlayback.episodeId` in the player when it is present in `queue`
+- fall back to the first queue item when `activePlayback` is `null` or no longer present in `queue`
+- not auto-start playback after loading queue state
+- call `PUT /api/playback/active` when the user explicitly starts an episode
+- call `PUT /api/playback/active` when the client automatically advances to the next episode
+- not call `PUT /api/playback/active` for progress sync, pause, or seek
+
+Active playback is cleared when the active episode is removed from the playlist, marked listened, completed through playback completion, or deleted with its podcast.
 
 ### Notes
 - This keeps sync simple for a personal multi-device app.
