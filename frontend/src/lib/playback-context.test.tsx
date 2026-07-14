@@ -19,8 +19,10 @@ class FakeAudio {
   static instances: FakeAudio[] = [];
 
   src = "";
-  currentTime = 0;
+  private currentTimeValue = 0;
+  throwOnCurrentTimeSet = false;
   duration = 0;
+  readyState = 1;
   playbackRate = 1;
   defaultPlaybackRate = 1;
   paused = true;
@@ -37,10 +39,28 @@ class FakeAudio {
     FakeAudio.instances.push(this);
   }
 
+  get currentTime() {
+    return this.currentTimeValue;
+  }
+
+  set currentTime(value: number) {
+    if (this.throwOnCurrentTimeSet) {
+      throw new DOMException("Seek is not ready", "NotSupportedError");
+    }
+    this.currentTimeValue = value;
+  }
+
   addEventListener(type: string, listener: () => void) {
     const listeners = this.listeners.get(type) ?? new Set<() => void>();
     listeners.add(listener);
     this.listeners.set(type, listeners);
+
+    if (
+      this.readyState >= 1 &&
+      (type === "loadedmetadata" || type === "canplay")
+    ) {
+      queueMicrotask(listener);
+    }
   }
 
   removeEventListener(type: string, listener: () => void) {
@@ -370,6 +390,31 @@ describe("PlaybackProvider", () => {
     expect(screen.getByTestId("current-title")).toHaveTextContent("Second queued episode");
   });
 
+  it("waits for metadata before seeking and playing a new source", async () => {
+    const user = userEvent.setup();
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    const audio = FakeAudio.instances[0];
+    audio.readyState = 0;
+    await user.click(screen.getByRole("button", { name: "Play second" }));
+
+    expect(audio.src).toContain("/api/episodes/2/audio");
+    expect(audio.currentTime).toBe(0);
+    expect(audio.playImpl).not.toHaveBeenCalled();
+
+    audio.readyState = 1;
+    audio.emit("loadedmetadata");
+
+    await waitFor(() => {
+      expect(audio.currentTime).toBe(42);
+      expect(audio.playImpl).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("can prime playback for an episode that is not yet in the loaded queue", async () => {
     const user = userEvent.setup();
     renderPlaybackProvider();
@@ -383,6 +428,49 @@ describe("PlaybackProvider", () => {
     const audio = FakeAudio.instances[0];
     expect(audio.src).toContain("/api/episodes/999/audio");
     expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+  });
+
+  it("waits for metadata in the direct episode play path", async () => {
+    const user = userEvent.setup();
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    const audio = FakeAudio.instances[0];
+    audio.readyState = 0;
+    await user.click(screen.getByRole("button", { name: "Play queued later" }));
+
+    expect(audio.src).toContain("/api/episodes/999/audio");
+    expect(audio.playImpl).not.toHaveBeenCalled();
+
+    audio.readyState = 1;
+    audio.emit("canplay");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+      expect(audio.playImpl).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("continues playback when a saved-position write is not supported", async () => {
+    const user = userEvent.setup();
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    const audio = FakeAudio.instances[0];
+    audio.throwOnCurrentTimeSet = true;
+    await user.click(screen.getByRole("button", { name: "Play second" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+      expect(audio.playImpl).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByTestId("position")).toHaveTextContent("0");
   });
 
   it("surfaces user-initiated play failures and clears them on demand", async () => {
@@ -720,7 +808,9 @@ describe("PlaybackProvider", () => {
 
     expect(audio.src).toContain("/api/episodes/1/audio");
     expect(audio.currentTime).toBe(15);
-    expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
     expect(updateSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         episodeId: 2,

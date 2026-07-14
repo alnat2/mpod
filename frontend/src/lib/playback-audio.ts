@@ -86,21 +86,68 @@ export function describeMediaError(error: MediaError | null) {
   }
 }
 
+export function setAudioPosition(
+  audio: HTMLAudioElement,
+  positionSeconds: number
+) {
+  try {
+    audio.currentTime = positionSeconds;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function primeAudioSource(
   audio: HTMLAudioElement,
   episode: AudioSourceEpisode,
   speedLabel: PlaybackSpeedLabel,
   positionSeconds: number,
   setPositionSeconds: (positionSeconds: number) => void,
-  markPrimed: () => void
+  markPrimed: () => void,
+  onReady: () => void
 ) {
   const targetSrc = `${window.location.origin}/api/episodes/${episode.id}/audio`;
-  if (!audio.src.includes(targetSrc)) {
+  const sourceChanged = !audio.src.includes(targetSrc);
+  let settled = false;
+
+  const cleanup = () => {
+    audio.removeEventListener("loadedmetadata", applyPosition);
+    audio.removeEventListener("canplay", applyPosition);
+    audio.removeEventListener("error", cleanup);
+  };
+
+  const applyPosition = () => {
+    if (settled || !audio.src.includes(targetSrc)) {
+      return;
+    }
+
+    settled = true;
+    cleanup();
+    const positionApplied = setAudioPosition(audio, positionSeconds);
+    setPositionSeconds(positionApplied ? positionSeconds : 0);
+    onReady();
+  };
+
+  if (sourceChanged) {
     audio.pause();
     audio.src = targetSrc;
     markPrimed();
+    applyPlaybackRate(audio, speedLabel);
+    audio.addEventListener("loadedmetadata", applyPosition);
+    audio.addEventListener("canplay", applyPosition);
+    audio.addEventListener("error", cleanup);
+    return;
   }
+
   applyPlaybackRate(audio, speedLabel);
-  audio.currentTime = positionSeconds;
-  setPositionSeconds(positionSeconds);
+
+  if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
+    applyPosition();
+    return;
+  }
+
+  audio.addEventListener("loadedmetadata", applyPosition);
+  audio.addEventListener("canplay", applyPosition);
+  audio.addEventListener("error", cleanup);
 }

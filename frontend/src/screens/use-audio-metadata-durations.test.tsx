@@ -77,4 +77,12 @@ describe("useAudioMetadataDurations", () => {
     expect(screen.getByTestId("duration-42")).toHaveTextContent("1800");
     expect(FakeAudio.instances).toHaveLength(0);
   });
+
+  it("silently ignores metadata probe errors", () => {
+    render(<Harness episodes={[{ id: 42, duration: null }]} />);
+
+    FakeAudio.instances[0].emit("error");
+
+    expect(screen.getByTestId("duration-42")).toHaveTextContent("missing");
+  });
 });

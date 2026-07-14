@@ -74,10 +74,12 @@ export function useAudioMetadataDurations(
             : { ...current, [episodeId]: nextDuration }
         );
       };
+      const ignoreError = () => {};
 
       audio.preload = "metadata";
       audio.addEventListener("loadedmetadata", handleDuration);
       audio.addEventListener("durationchange", handleDuration);
+      audio.addEventListener("error", ignoreError);
       audio.src = `/api/episodes/${episodeId}/audio`;
 
       audioProbesRef.current.set(episodeId, {
@@ -85,6 +87,7 @@ export function useAudioMetadataDurations(
         cleanup: () => {
           audio.removeEventListener("loadedmetadata", handleDuration);
           audio.removeEventListener("durationchange", handleDuration);
+          audio.removeEventListener("error", ignoreError);
           audio.pause();
           audio.src = "";
         },

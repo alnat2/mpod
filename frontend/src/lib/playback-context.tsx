@@ -31,6 +31,7 @@ import {
   getPositiveDuration,
   primeAudioSource,
   readAudioDuration,
+  setAudioPosition,
 } from "./playback-audio";
 
 export type QueueEpisode = PlaybackQueueEpisode;
@@ -110,6 +111,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sourcePrimedRef = useRef(false);
+  const sourceReadyRef = useRef(false);
   const userInitiatedPlayRef = useRef(false);
   const queueRef = useRef<QueueEpisode[]>([]);
   const playingRef = useRef(false);
@@ -250,10 +252,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
             currentEpisodeDurationRef.current
           );
           const audio = audioRef.current;
-          if (audio && sourcePrimedRef.current) {
-            audio.currentTime = nextPosition;
+          if (audio && sourcePrimedRef.current && sourceReadyRef.current) {
+            const positionApplied = setAudioPosition(audio, nextPosition);
+            setPositionSeconds(positionApplied ? nextPosition : 0);
+          } else {
+            setPositionSeconds(nextPosition);
           }
-          setPositionSeconds(nextPosition);
         }
 
         return { ...episode, playback: nextPlayback };
@@ -358,6 +362,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     const audio = new Audio();
     audioRef.current = audio;
     sourcePrimedRef.current = false;
+    sourceReadyRef.current = false;
 
     const onTimeUpdate = () => {
       setPositionSeconds(audio.currentTime);
@@ -376,6 +381,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     const startQueuedEpisode = (episode: QueueEpisode) => {
       const nextPosition = episode.playback?.positionSeconds ?? 0;
       setActiveEpisodeId(episode.id);
+      sourceReadyRef.current = false;
       primeAudioSource(
         audio,
         episode,
@@ -384,14 +390,17 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         setPositionSeconds,
         () => {
           sourcePrimedRef.current = true;
+        },
+        () => {
+          sourceReadyRef.current = true;
+          setPlaying(true);
+          void attemptAudioPlay(audio, (error) => {
+            setPlaying(false);
+            setPlaybackError(describeAudioError(error));
+          });
         }
       );
       setPlaybackError(null);
-      setPlaying(true);
-      void attemptAudioPlay(audio, (error) => {
-        setPlaying(false);
-        setPlaybackError(describeAudioError(error));
-      });
     };
 
     const startBackendFallbackEpisode = async (
@@ -440,6 +449,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     };
 
     const onError = () => {
+      sourceReadyRef.current = false;
       setPlaying(false);
       if (!userInitiatedPlayRef.current) {
         return;
@@ -473,6 +483,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       audio.pause();
       audio.src = "";
       sourcePrimedRef.current = false;
+      sourceReadyRef.current = false;
     };
   }, [commitPlayback, loadQueue, refreshPlaybackState]);
 
@@ -529,6 +540,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       audio.pause();
       audio.src = "";
       sourcePrimedRef.current = false;
+      sourceReadyRef.current = false;
       setPlaying(false);
       return;
     }
@@ -544,12 +556,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
     if (!currentSrc.includes(targetSrc)) {
       const initialPos = currentEpisode.playback?.positionSeconds ?? 0;
-      setPositionSeconds(initialPos);
       if (!shouldPrimeSource) {
         setPlaybackError(null);
         return;
       }
 
+      sourceReadyRef.current = false;
       primeAudioSource(
         audio,
         currentEpisode,
@@ -558,16 +570,19 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         setPositionSeconds,
         () => {
           sourcePrimedRef.current = true;
+        },
+        () => {
+          sourceReadyRef.current = true;
+          if (playingRef.current) {
+            void attemptAudioPlay(audio, (error) => {
+              setPlaying(false);
+              setPlaybackError(describeAudioError(error));
+            });
+          }
         }
       );
     }
 
-    if (playing) {
-      void attemptAudioPlay(audio, (error) => {
-        setPlaying(false);
-        setPlaybackError(describeAudioError(error));
-      });
-    }
   }, [currentEpisode, playing]);
 
   // Sync playing state to audio element
@@ -575,12 +590,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current;
     if (!audio) return;
 
-    if (playing) {
-      void attemptAudioPlay(audio, (error) => {
-        setPlaying(false);
-        setPlaybackError(describeAudioError(error));
-      });
-    } else {
+    if (!playing) {
       audio.pause();
     }
   }, [playing]);
@@ -635,17 +645,25 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         const syncedEpisode = await refreshPlaybackState(currentEpisode);
         const nextPosition =
           syncedEpisode.playback?.positionSeconds ?? positionSeconds ?? 0;
-      primeAudioSource(
-        audio,
+        sourceReadyRef.current = false;
+        primeAudioSource(
+          audio,
           syncedEpisode,
-        speedLabel,
-        nextPosition,
-        setPositionSeconds,
-        () => {
-          sourcePrimedRef.current = true;
-        }
-      );
-        setPlaying(true);
+          speedLabel,
+          nextPosition,
+          setPositionSeconds,
+          () => {
+            sourcePrimedRef.current = true;
+          },
+          () => {
+            sourceReadyRef.current = true;
+            setPlaying(true);
+            void attemptAudioPlay(audio, (error) => {
+              setPlaying(false);
+              setPlaybackError(describeAudioError(error));
+            });
+          }
+        );
       })();
       return;
     }
@@ -678,33 +696,25 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       }
 
       const initialPos = syncedEpisode?.playback?.positionSeconds ?? 0;
-      if (queuedEpisode) {
-        primeAudioSource(
-          audio,
-          syncedEpisode ?? queuedEpisode,
-          speedLabel,
-          initialPos,
-          setPositionSeconds,
-          () => {
-            sourcePrimedRef.current = true;
-          }
-        );
-      } else {
-        const targetSrc = `${window.location.origin}/api/episodes/${episodeId}/audio`;
-        if (!audio.src.includes(targetSrc)) {
-          audio.pause();
-          audio.src = targetSrc;
+      sourceReadyRef.current = false;
+      primeAudioSource(
+        audio,
+        syncedEpisode ?? queuedEpisode ?? { id: episodeId },
+        speedLabel,
+        initialPos,
+        setPositionSeconds,
+        () => {
           sourcePrimedRef.current = true;
+        },
+        () => {
+          sourceReadyRef.current = true;
+          setPlaying(true);
+          void attemptAudioPlay(audio, (error) => {
+            setPlaying(false);
+            setPlaybackError(describeAudioError(error));
+          });
         }
-        applyPlaybackRate(audio, speedLabel);
-        audio.currentTime = initialPos;
-        setPositionSeconds(initialPos);
-      }
-      void attemptAudioPlay(audio, (error) => {
-        setPlaying(false);
-        setPlaybackError(describeAudioError(error));
-      });
-      setPlaying(true);
+      );
     })();
   }, [queue, refreshPlaybackState, speedLabel]);
 
@@ -714,9 +724,10 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       audioRef.current.currentTime + 15,
       currentEpisodeDuration
     );
-    audioRef.current.currentTime = nextPos;
-    setPositionSeconds(nextPos);
-    void commitPlayback(nextPos, { didSeek: true });
+    if (setAudioPosition(audioRef.current, nextPos)) {
+      setPositionSeconds(nextPos);
+      void commitPlayback(nextPos, { didSeek: true });
+    }
   }, [currentEpisode, currentEpisodeDuration, commitPlayback]);
 
   const seekBackward = useCallback(() => {
@@ -725,17 +736,19 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       audioRef.current.currentTime - 10,
       currentEpisodeDuration
     );
-    audioRef.current.currentTime = nextPos;
-    setPositionSeconds(nextPos);
-    void commitPlayback(nextPos, { didSeek: true });
+    if (setAudioPosition(audioRef.current, nextPos)) {
+      setPositionSeconds(nextPos);
+      void commitPlayback(nextPos, { didSeek: true });
+    }
   }, [currentEpisode, currentEpisodeDuration, commitPlayback]);
 
   const seekTo = useCallback((positionSeconds: number) => {
     if (!audioRef.current || !currentEpisode) return;
     const nextPos = clampPosition(positionSeconds, currentEpisodeDuration);
-    audioRef.current.currentTime = nextPos;
-    setPositionSeconds(nextPos);
-    void commitPlayback(nextPos, { didSeek: true });
+    if (setAudioPosition(audioRef.current, nextPos)) {
+      setPositionSeconds(nextPos);
+      void commitPlayback(nextPos, { didSeek: true });
+    }
   }, [currentEpisode, currentEpisodeDuration, commitPlayback]);
 
   const updateSpeedLabel = useCallback((label: PlaybackSpeedLabel) => {
