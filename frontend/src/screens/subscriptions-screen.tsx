@@ -335,6 +335,7 @@ export function SubscriptionsScreen() {
     setActionError(null);
     try {
       await action();
+      await reloadQueue();
       setReloadKey((current) => current + 1);
     } catch (caught) {
       setActionError(getErrorMessage(caught));

@@ -494,6 +494,9 @@ describe("SubscriptionsScreen", () => {
     await waitFor(() => {
       expect(addSpy).toHaveBeenCalledWith(101);
     });
+    await waitFor(() => {
+      expect(reloadQueueMock).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("clears playlist state and reloads the playback queue after marking a playlist episode listened", async () => {
