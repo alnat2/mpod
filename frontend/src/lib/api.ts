@@ -210,6 +210,11 @@ export const api = {
        apiRequest<{ success: true; state: "running" }>("/api/podcasts/refresh-all", {
          method: "POST"
        }),
+     markAllListened: (podcastId: number) =>
+       apiRequest<{ success: true; markedEpisodes: number }>(
+         `/api/podcasts/${podcastId}/mark-all-listened`,
+         { method: "POST" }
+       ),
      episodes: (podcastId: number) =>
        apiRequest<{ episodes: MaybeArray<Episode> }>(
          `/api/podcasts/${podcastId}/episodes`

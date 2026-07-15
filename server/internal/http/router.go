@@ -33,9 +33,11 @@ import (
 )
 
 const (
-	audioProxyUserAgent = "mpod/1.0 (+self-hosted podcast client)"
-	audioProxyAccept    = "audio/*, application/octet-stream;q=0.9, */*;q=0.1"
-	maxJSONBodyBytes    = 1 << 20
+	audioProxyUserAgent       = "mpod/1.0 (+self-hosted podcast client)"
+	audioProxyAccept          = "audio/*, application/octet-stream;q=0.9, */*;q=0.1"
+	maxJSONBodyBytes          = 1 << 20
+	maxOPMLFileBytes          = 5_000_000
+	maxOPMLMultipartBodyBytes = maxOPMLFileBytes + (1 << 20)
 )
 
 type Router struct {
@@ -197,6 +199,7 @@ func NewRouterWithServices(logger *log.Logger, cfg config.Config, db *sql.DB, sc
 	mux.HandleFunc("GET /api/podcasts/{id}/image", r.handlePodcastImage)
 	mux.HandleFunc("DELETE /api/podcasts/{id}", r.handlePodcastDelete)
 	mux.HandleFunc("POST /api/podcasts/{id}/refresh", r.handlePodcastRefresh)
+	mux.HandleFunc("POST /api/podcasts/{id}/mark-all-listened", r.handlePodcastMarkAllListened)
 	mux.HandleFunc("GET /api/podcasts/{id}/episodes", r.handlePodcastEpisodesList)
 	mux.HandleFunc("POST /api/podcasts/import-opml", r.handlePodcastsImportOPML)
 	mux.HandleFunc("GET /api/podcasts/export-opml", r.handlePodcastsExportOPML)
@@ -523,6 +526,33 @@ func (r *Router) handlePodcastRefresh(w nethttp.ResponseWriter, req *nethttp.Req
 	})
 }
 
+func (r *Router) handlePodcastMarkAllListened(w nethttp.ResponseWriter, req *nethttp.Request) {
+	if _, ok := r.requireUser(w, req); !ok {
+		return
+	}
+
+	podcastID, ok := r.pathInt64(w, req, "id")
+	if !ok {
+		return
+	}
+
+	result, err := r.episodeActions.MarkPodcastListened(req.Context(), podcastID)
+	if err != nil {
+		switch err {
+		case episodes.ErrPodcastNotFound:
+			r.writeAPIError(w, nethttp.StatusNotFound, "PODCAST_NOT_FOUND", "Podcast was not found")
+		default:
+			r.writeAPIError(w, nethttp.StatusInternalServerError, "PODCAST_MARK_ALL_LISTENED_FAILED", "Failed to mark podcast episodes listened")
+		}
+		return
+	}
+
+	r.writeJSON(w, nethttp.StatusOK, map[string]any{
+		"success":        true,
+		"markedEpisodes": result.MarkedEpisodes,
+	})
+}
+
 func (r *Router) handlePodcastEpisodesList(w nethttp.ResponseWriter, req *nethttp.Request) {
 	if _, ok := r.requireUser(w, req); !ok {
 		return
@@ -563,17 +593,27 @@ func (r *Router) handlePodcastsImportOPML(w nethttp.ResponseWriter, req *nethttp
 		return
 	}
 
-	if err := req.ParseMultipartForm(10 << 20); err != nil {
+	req.Body = nethttp.MaxBytesReader(w, req.Body, maxOPMLMultipartBodyBytes)
+	if err := req.ParseMultipartForm(maxOPMLMultipartBodyBytes); err != nil {
+		var maxBytesErr *nethttp.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			r.writeAPIError(w, nethttp.StatusRequestEntityTooLarge, "OPML_TOO_LARGE", "OPML file is too large")
+			return
+		}
 		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_MULTIPART", "OPML upload must use multipart/form-data")
 		return
 	}
 
-	file, _, err := req.FormFile("file")
+	file, header, err := req.FormFile("file")
 	if err != nil {
 		r.writeAPIError(w, nethttp.StatusBadRequest, "OPML_FILE_REQUIRED", "OPML file is required")
 		return
 	}
 	defer file.Close()
+	if header.Size > maxOPMLFileBytes {
+		r.writeAPIError(w, nethttp.StatusRequestEntityTooLarge, "OPML_TOO_LARGE", "OPML file is too large")
+		return
+	}
 
 	result, err := r.podcasts.ImportOPML(req.Context(), file)
 	if err != nil {

@@ -1590,6 +1590,48 @@ func TestPlaybackCompletionReturnsFallbackEpisodeForLastPlaylistItem(t *testing.
 	}
 }
 
+func TestPodcastMarkAllListenedEndpoint(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, is_listened) VALUES (1, 1, 'ep-1', 'One', 'https://example.com/1.mp3', 0)`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, is_listened) VALUES (2, 1, 'ep-2', 'Two', 'https://example.com/2.mp3', 0)`)
+	mustExecHTTP(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1), (2, 2)`)
+	mustExecHTTP(t, db, `INSERT INTO active_playback (singleton_id, episode_id, last_updated) VALUES (1, 1, CURRENT_TIMESTAMP)`)
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/1/mark-all-listened", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"success":true`) || !strings.Contains(rec.Body.String(), `"markedEpisodes":2`) {
+		t.Fatalf("unexpected mark all listened payload: %s", rec.Body.String())
+	}
+	assertTableCount(t, db, `SELECT COUNT(*) FROM episodes WHERE podcast_id = 1 AND is_listened = 1`, 2)
+	assertTableCount(t, db, `SELECT COUNT(*) FROM playlist`, 0)
+	assertTableCount(t, db, `SELECT COUNT(*) FROM active_playback WHERE episode_id IS NOT NULL`, 0)
+}
+
+func TestPodcastMarkAllListenedRejectsMissingPodcast(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/999/mark-all-listened", nil)
+	req.SetPathValue("id", "999")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "PODCAST_NOT_FOUND")
+}
+
 func TestPlaybackActiveEndpointSetsActiveEpisode(t *testing.T) {
 	handler, db := newTestRouter(t)
 	cookie := register(t, handler, "admin", "secret")
@@ -3008,6 +3050,63 @@ func TestImportOPMLRejectsInvalidDocument(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "INVALID_OPML")
 }
 
+func TestImportOPMLAllowsFileAtSizeLimit(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+	payload := opmlPayloadOfSize(t, maxOPMLFileBytes)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	fileWriter, err := writer.CreateFormFile("file", "subscriptions.opml")
+	if err != nil {
+		t.Fatalf("CreateFormFile failed: %v", err)
+	}
+	if _, err := fileWriter.Write(payload); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close multipart writer failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/import-opml", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code == nethttp.StatusRequestEntityTooLarge {
+		t.Fatalf("expected file at limit not to return 413, got body=%s", rec.Body.String())
+	}
+}
+
+func TestImportOPMLRejectsFileAboveSizeLimit(t *testing.T) {
+	handler, cookie := newAuthedRouter(t)
+	payload := opmlPayloadOfSize(t, maxOPMLFileBytes+1)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	fileWriter, err := writer.CreateFormFile("file", "subscriptions.opml")
+	if err != nil {
+		t.Fatalf("CreateFormFile failed: %v", err)
+	}
+	if _, err := fileWriter.Write(payload); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close multipart writer failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/import-opml", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "OPML_TOO_LARGE")
+}
+
 func TestImportOPMLImportsFeeds(t *testing.T) {
 	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
 		switch req.URL.Path {
@@ -3248,6 +3347,7 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 	mux.HandleFunc("GET /api/podcasts/{id}/image", r.handlePodcastImage)
 	mux.HandleFunc("DELETE /api/podcasts/{id}", r.handlePodcastDelete)
 	mux.HandleFunc("POST /api/podcasts/{id}/refresh", r.handlePodcastRefresh)
+	mux.HandleFunc("POST /api/podcasts/{id}/mark-all-listened", r.handlePodcastMarkAllListened)
 	mux.HandleFunc("GET /api/podcasts/{id}/episodes", r.handlePodcastEpisodesList)
 	mux.HandleFunc("POST /api/podcasts/import-opml", r.handlePodcastsImportOPML)
 	mux.HandleFunc("GET /api/podcasts/export-opml", r.handlePodcastsExportOPML)
@@ -3409,6 +3509,22 @@ func waitForTableCount(t *testing.T, db *storage.DB, query string, want int) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("expected count %d, got %d for query %q", want, got, query)
+}
+
+func opmlPayloadOfSize(t *testing.T, size int) []byte {
+	t.Helper()
+
+	prefix := []byte(`<?xml version="1.0" encoding="UTF-8"?><opml version="2.0"><body><!--`)
+	suffix := []byte(`--></body></opml>`)
+	if size < len(prefix)+len(suffix) {
+		t.Fatalf("requested OPML payload size %d is too small", size)
+	}
+
+	payload := make([]byte, 0, size)
+	payload = append(payload, prefix...)
+	payload = append(payload, bytes.Repeat([]byte("x"), size-len(prefix)-len(suffix))...)
+	payload = append(payload, suffix...)
+	return payload
 }
 
 func testRouterRSSFeed(title, episodeTitle, guid, audioURL string) string {

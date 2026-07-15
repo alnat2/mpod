@@ -249,8 +249,32 @@ Rules:
 - Failure of one podcast must not stop refresh attempts for other podcasts
 - If a refresh for the same podcast is already running, the request should be rejected for MVP
 
+#### `POST /api/podcasts/:id/mark-all-listened`
+
+Marks every episode for one podcast as listened in one backend-owned operation.
+
+Success response:
+```json
+{
+  "success": true,
+  "markedEpisodes": 12
+}
+```
+
+Rules:
+- Requires authentication.
+- Returns `404 PODCAST_NOT_FOUND` if the podcast does not exist.
+- Marks all podcast episodes listened in one DB transaction.
+- Removes affected podcast episodes from the playlist.
+- Clears `activePlayback` if the active episode belongs to that podcast.
+- Applies the same downloaded-file cleanup rule used when marking an episode listened.
+- Repeating the request is safe; already-listened episodes are not counted again.
+- `markedEpisodes` is the number of episodes changed from unlistened to listened.
+
 #### `POST /api/podcasts/import-opml`
 Request is `multipart/form-data` with one OPML file.
+
+The uploaded OPML file must be at most `5,000,000` bytes. Larger files return `413 Request Entity Too Large` with error code `OPML_TOO_LARGE`.
 
 Response:
 ```json
