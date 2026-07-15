@@ -21,9 +21,10 @@ type MarkPodcastListenedResult struct {
 }
 
 type Actions struct {
-	db        *sql.DB
-	downloads *downloads.Service
-	playlist  *playlist.Service
+	db                                *sql.DB
+	downloads                         *downloads.Service
+	playlist                          *playlist.Service
+	afterMarkPodcastDownloadPathsLoad func()
 }
 
 func NewActions(db *sql.DB, downloads *downloads.Service) *Actions {
@@ -93,10 +94,8 @@ func (a *Actions) MarkPodcastListened(ctx context.Context, podcastID int64) (Mar
 	if err != nil {
 		return MarkPodcastListenedResult{}, err
 	}
-	for _, path := range downloadedPaths {
-		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return MarkPodcastListenedResult{}, fmt.Errorf("delete podcast episode download: %w", err)
-		}
+	if a.afterMarkPodcastDownloadPathsLoad != nil {
+		a.afterMarkPodcastDownloadPathsLoad()
 	}
 
 	var markedEpisodes int64
@@ -121,6 +120,10 @@ func (a *Actions) MarkPodcastListened(ctx context.Context, podcastID int64) (Mar
 
 	if err := tx.Commit(); err != nil {
 		return MarkPodcastListenedResult{}, fmt.Errorf("commit mark podcast listened tx: %w", err)
+	}
+
+	for _, path := range downloadedPaths {
+		_ = os.Remove(path)
 	}
 
 	return MarkPodcastListenedResult{MarkedEpisodes: markedEpisodes}, nil

@@ -226,7 +226,42 @@ func TestMarkPodcastListenedMissingPodcast(t *testing.T) {
 	}
 }
 
-func TestMarkPodcastListenedRollsBackWhenDownloadDeletionFails(t *testing.T) {
+func TestMarkPodcastListenedDoesNotDeleteFilesBeforeSuccessfulDBUpdate(t *testing.T) {
+	db := newActionsTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	downloadPath := filepath.Join(downloadDir, "1", "episode.mp3")
+	if err := os.MkdirAll(filepath.Dir(downloadPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(downloadPath, []byte("audio"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	mustExecActions(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecActions(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path, is_listened) VALUES (1, 1, 'ep-1', 'One', 'https://example.com/1.mp3', ?, 0)`, downloadPath)
+	mustExecActions(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+	mustExecActions(t, db, `INSERT INTO active_playback (singleton_id, episode_id, last_updated) VALUES (1, 1, CURRENT_TIMESTAMP)`)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	actions := NewActions(db.SQL, downloads.NewService(db.SQL, nil, downloadDir))
+	actions.afterMarkPodcastDownloadPathsLoad = func() {
+		cancel()
+	}
+	if _, err := actions.MarkPodcastListened(ctx, 1); err == nil {
+		t.Fatal("expected MarkPodcastListened to fail")
+	}
+	assertEpisodeListened(t, db, 1, false)
+	if count := playlistCountForEpisode(t, db, 1); count != 1 {
+		t.Fatalf("expected playlist entry to remain, got %d", count)
+	}
+	if _, err := os.Stat(downloadPath); err != nil {
+		t.Fatalf("expected file not to be deleted before successful DB commit, stat err=%v", err)
+	}
+}
+
+func TestMarkPodcastListenedKeepsCommittedDBWhenPostCommitFileDeletionFails(t *testing.T) {
 	db := newActionsTestDB(t)
 	defer db.Close()
 
@@ -245,23 +280,24 @@ func TestMarkPodcastListenedRollsBackWhenDownloadDeletionFails(t *testing.T) {
 	mustExecActions(t, db, `INSERT INTO active_playback (singleton_id, episode_id, last_updated) VALUES (1, 1, CURRENT_TIMESTAMP)`)
 
 	actions := NewActions(db.SQL, downloads.NewService(db.SQL, nil, downloadDir))
-	if _, err := actions.MarkPodcastListened(context.Background(), 1); err == nil {
-		t.Fatal("expected MarkPodcastListened to fail")
+	result, err := actions.MarkPodcastListened(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("MarkPodcastListened failed: %v", err)
+	}
+	if result.MarkedEpisodes != 1 {
+		t.Fatalf("expected 1 marked episode, got %d", result.MarkedEpisodes)
 	}
 
-	assertEpisodeListened(t, db, 1, false)
-	var downloadedPath sql.NullString
-	if err := db.SQL.QueryRow(`SELECT downloaded_path FROM episodes WHERE id = 1`).Scan(&downloadedPath); err != nil {
-		t.Fatalf("query downloaded path: %v", err)
+	assertEpisodeListened(t, db, 1, true)
+	assertEpisodeDownloadedPathCleared(t, db, 1)
+	if count := playlistCountForEpisode(t, db, 1); count != 0 {
+		t.Fatalf("expected playlist entry to be removed, got %d", count)
 	}
-	if !downloadedPath.Valid || downloadedPath.String != downloadPath {
-		t.Fatalf("expected downloaded_path to remain set, got %+v", downloadedPath)
+	if active := activeEpisodeID(t, db); active.Valid {
+		t.Fatalf("expected active playback to clear, got %+v", active)
 	}
-	if count := playlistCountForEpisode(t, db, 1); count != 1 {
-		t.Fatalf("expected playlist entry to remain, got %d", count)
-	}
-	if active := activeEpisodeID(t, db); !active.Valid || active.Int64 != 1 {
-		t.Fatalf("expected active playback to remain episode 1, got %+v", active)
+	if _, err := os.Stat(downloadPath); err != nil {
+		t.Fatalf("expected orphan file to remain after failed cleanup, stat err=%v", err)
 	}
 }
 

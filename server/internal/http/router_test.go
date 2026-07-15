@@ -3051,7 +3051,14 @@ func TestImportOPMLRejectsInvalidDocument(t *testing.T) {
 }
 
 func TestImportOPMLAllowsFileAtSizeLimit(t *testing.T) {
-	handler, cookie := newAuthedRouter(t)
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return routerXMLResponse(testRouterRSSFeed("Podcast One", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
+	})
+	handler, _ := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
 	payload := opmlPayloadOfSize(t, maxOPMLFileBytes)
 
 	var body bytes.Buffer
@@ -3073,8 +3080,11 @@ func TestImportOPMLAllowsFileAtSizeLimit(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code == nethttp.StatusRequestEntityTooLarge {
-		t.Fatalf("expected file at limit not to return 413, got body=%s", rec.Body.String())
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 for file at limit, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"imported":1`) || !strings.Contains(rec.Body.String(), `"skipped":0`) {
+		t.Fatalf("unexpected OPML import payload at limit: %s", rec.Body.String())
 	}
 }
 
@@ -3514,7 +3524,7 @@ func waitForTableCount(t *testing.T, db *storage.DB, query string, want int) {
 func opmlPayloadOfSize(t *testing.T, size int) []byte {
 	t.Helper()
 
-	prefix := []byte(`<?xml version="1.0" encoding="UTF-8"?><opml version="2.0"><body><!--`)
+	prefix := []byte(`<?xml version="1.0" encoding="UTF-8"?><opml version="2.0"><body><outline text="Podcast" xmlUrl="https://example.com/feed.xml"/><!--`)
 	suffix := []byte(`--></body></opml>`)
 	if size < len(prefix)+len(suffix) {
 		t.Fatalf("requested OPML payload size %d is too small", size)
