@@ -111,6 +111,47 @@ func TestRunNowRejectsOverlappingRuns(t *testing.T) {
 	}
 }
 
+func TestStartRunNowMarksRunningAndReturnsBeforeRefreshCompletes(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false, "test-build"), func(context.Context) error {
+		started <- struct{}{}
+		<-release
+		return nil
+	}, "UTC")
+	if err != nil {
+		t.Fatalf("NewService failed: %v", err)
+	}
+
+	if err := service.StartRunNow(context.Background()); err != nil {
+		t.Fatalf("StartRunNow failed: %v", err)
+	}
+
+	status, err := service.GetStatus(context.Background())
+	if err != nil {
+		t.Fatalf("GetStatus failed: %v", err)
+	}
+	if status.State != "running" {
+		t.Fatalf("expected running state, got %q", status.State)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("timed out waiting for async scheduler run to start")
+	}
+
+	if err := service.StartRunNow(context.Background()); !errors.Is(err, ErrAlreadyRunning) {
+		t.Fatalf("expected ErrAlreadyRunning, got %v", err)
+	}
+
+	close(release)
+	waitForSchedulerIdle(t, service)
+}
+
 func TestParseClock(t *testing.T) {
 	hour, minute, err := parseClock("09:45")
 	if err != nil {

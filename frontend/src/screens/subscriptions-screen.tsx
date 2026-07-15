@@ -66,6 +66,7 @@ const EPISODE_OVERSCAN_ROWS = 4;
 const DEFAULT_EPISODE_VIEWPORT_HEIGHT = 350;
 const MOBILE_EPISODE_VIEWPORT_HEIGHT = 152;
 const PODCAST_EXIT_ANIMATION_MS = 220;
+const REFRESH_ALL_STATUS_POLL_MS = 3000;
 
 function podcastCountLabel(count: number) {
   return `${count} ${count === 1 ? "podcast" : "podcasts"}`;
@@ -110,6 +111,10 @@ export function SubscriptionsScreen() {
   const podcastExitTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(
     new Set()
   );
+  const refreshAllStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const mountedRef = useRef(true);
   const { pendingActions, scheduleAction, undoAction } = useDelayedActions({
     onCommitted: () => setReloadKey((current) => current + 1),
     onError: (caught) => setActionError(getErrorMessage(caught)),
@@ -173,6 +178,15 @@ export function SubscriptionsScreen() {
       cancelled = true;
     };
   }, [reloadKey]);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      if (refreshAllStatusTimeoutRef.current !== null) {
+        clearTimeout(refreshAllStatusTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(
     () => () => {
@@ -389,11 +403,44 @@ export function SubscriptionsScreen() {
 
     try {
       await api.podcasts.refreshAll();
-      setReloadKey((current) => current + 1);
+      pollRefreshAllCompletion();
     } catch (caught) {
       setActionError(getErrorMessage(caught));
     } finally {
       setRefreshingAll(false);
+    }
+  }
+
+  function pollRefreshAllCompletion() {
+    if (refreshAllStatusTimeoutRef.current !== null) {
+      clearTimeout(refreshAllStatusTimeoutRef.current);
+    }
+
+    refreshAllStatusTimeoutRef.current = setTimeout(() => {
+      void refreshAfterRefreshAllCompletes();
+    }, REFRESH_ALL_STATUS_POLL_MS);
+  }
+
+  async function refreshAfterRefreshAllCompletes() {
+    refreshAllStatusTimeoutRef.current = null;
+
+    try {
+      const { scheduler } = await api.jobs.status();
+      if (!mountedRef.current) {
+        return;
+      }
+      if (scheduler.state === "running") {
+        pollRefreshAllCompletion();
+        return;
+      }
+      if (scheduler.state === "failed") {
+        setActionError(scheduler.lastError ?? "Failed to refresh podcasts");
+      }
+      setReloadKey((current) => current + 1);
+    } catch {
+      if (mountedRef.current) {
+        pollRefreshAllCompletion();
+      }
     }
   }
 

@@ -1,5 +1,5 @@
 import type { ReactNode, Ref, UIEventHandler } from "react";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -222,6 +222,7 @@ describe("SubscriptionsScreen", () => {
   };
 
   beforeEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     reloadQueueMock.mockReset();
     scheduleActionMock.mockReset();
@@ -625,7 +626,7 @@ describe("SubscriptionsScreen", () => {
     });
     const refreshSpy = vi
       .spyOn(api.podcasts, "refreshAll")
-      .mockReturnValue(refreshPromise.then(() => ({ success: true })));
+      .mockReturnValue(refreshPromise.then(() => ({ success: true, state: "running" })));
 
     render(<SubscriptionsScreen />);
 
@@ -645,6 +646,68 @@ describe("SubscriptionsScreen", () => {
     await waitFor(() => {
       expect(refreshButton).not.toBeDisabled();
     });
+  });
+
+  it("releases Refresh all after the background job is accepted and reloads when it completes", async () => {
+    const user = userEvent.setup();
+    let resolveRefresh!: () => void;
+    const refreshPromise = new Promise<void>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const listSpy = vi
+      .spyOn(api.podcasts, "list")
+      .mockResolvedValue({ podcasts: [podcast] });
+    vi.spyOn(api.podcasts, "refreshAll").mockReturnValue(
+      refreshPromise.then(() => ({ success: true, state: "running" }))
+    );
+    const statusSpy = vi
+      .spyOn(api.jobs, "status")
+      .mockResolvedValueOnce({
+        scheduler: {
+          state: "running",
+          lastRunAt: "2026-05-27T10:00:00Z",
+          lastSuccessAt: null,
+        },
+      })
+      .mockResolvedValueOnce({
+        scheduler: {
+          state: "completed",
+          lastRunAt: "2026-05-27T10:00:00Z",
+          lastSuccessAt: "2026-05-27T10:00:05Z",
+        },
+      });
+
+    render(<SubscriptionsScreen />);
+
+    const refreshButton = await screen.findByRole("button", {
+      name: "Refresh all",
+    });
+    await user.click(refreshButton);
+
+    expect(refreshButton).toBeDisabled();
+
+    vi.useFakeTimers();
+    await act(async () => {
+      resolveRefresh();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(refreshButton).not.toBeDisabled();
+    expect(listSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(statusSpy).toHaveBeenCalledTimes(1);
+    expect(listSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    expect(statusSpy).toHaveBeenCalledTimes(2);
+    expect(listSpy).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
   });
 
   it("disables a podcast Refresh button while that refresh is in progress", async () => {

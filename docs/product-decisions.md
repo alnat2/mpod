@@ -235,15 +235,17 @@ Success response:
 
 #### `POST /api/podcasts/refresh-all`
 
-Success response:
+Accepted response:
 ```json
 {
-  "success": true
+  "success": true,
+  "state": "running"
 }
 ```
 
 Rules:
-- Refreshes all subscribed podcasts using the same logic as per-podcast refresh and scheduled refresh
+- Starts a background refresh for all subscribed podcasts using the same logic as per-podcast refresh and scheduled refresh
+- The request returns after the refresh job is accepted; clients should use `GET /api/jobs/status` to observe completion or failure
 - Failure of one podcast must not stop refresh attempts for other podcasts
 - If a refresh for the same podcast is already running, the request should be rejected for MVP
 

@@ -85,9 +85,20 @@ func (s *Service) RunOnce(ctx context.Context) error {
 
 func (s *Service) runOnceWithTrigger(ctx context.Context, trigger string) error {
 	startedAt := s.now().UTC()
+	if err := s.markRunStarted(ctx, trigger, startedAt); err != nil {
+		return err
+	}
+	return s.finishRun(ctx, trigger, startedAt)
+}
+
+func (s *Service) markRunStarted(ctx context.Context, trigger string, startedAt time.Time) error {
 	if err := s.setState(ctx, "running", trigger, &startedAt, nil, nil, nil); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (s *Service) finishRun(ctx context.Context, trigger string, startedAt time.Time) error {
 	if err := s.refreshAll(ctx); err != nil {
 		failedAt := s.now().UTC()
 		message := err.Error()
@@ -116,6 +127,38 @@ func (s *Service) RunNow(ctx context.Context) error {
 	}()
 
 	return s.RunOnce(ctx)
+}
+
+func (s *Service) StartRunNow(ctx context.Context) error {
+	startedAt := s.now().UTC()
+
+	s.mu.Lock()
+	if s.running {
+		s.mu.Unlock()
+		return ErrAlreadyRunning
+	}
+	s.running = true
+	s.mu.Unlock()
+
+	if err := s.markRunStarted(ctx, triggerManual, startedAt); err != nil {
+		s.mu.Lock()
+		s.running = false
+		s.mu.Unlock()
+		return err
+	}
+
+	go func() {
+		defer func() {
+			s.mu.Lock()
+			s.running = false
+			s.mu.Unlock()
+		}()
+		if err := s.finishRun(ctx, triggerManual, startedAt); err != nil {
+			s.logger.Printf("scheduler manual run failed: %v", err)
+		}
+	}()
+
+	return nil
 }
 
 func (s *Service) GetStatus(ctx context.Context) (Status, error) {

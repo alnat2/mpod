@@ -630,7 +630,7 @@ func (r *Router) handlePodcastsRefreshAll(w nethttp.ResponseWriter, req *nethttp
 		return
 	}
 
-	if err := r.scheduler.RunNow(req.Context()); err != nil {
+	if err := r.scheduler.StartRunNow(context.WithoutCancel(req.Context())); err != nil {
 		r.logger.Printf("podcasts refresh all failed: %v", err)
 		if errors.Is(err, scheduler.ErrAlreadyRunning) || errors.Is(err, podcasts.ErrRefreshAlreadyRunning) {
 			r.writeAPIError(w, nethttp.StatusConflict, "REFRESH_ALREADY_RUNNING", "One or more podcast refreshes are already running")
@@ -640,7 +640,7 @@ func (r *Router) handlePodcastsRefreshAll(w nethttp.ResponseWriter, req *nethttp
 		return
 	}
 
-	r.writeJSON(w, nethttp.StatusOK, map[string]any{"success": true})
+	r.writeJSON(w, nethttp.StatusAccepted, map[string]any{"success": true, "state": "running"})
 }
 
 func (r *Router) handlePlaybackGet(w nethttp.ResponseWriter, req *nethttp.Request) {

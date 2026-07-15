@@ -249,9 +249,10 @@ Goal:
 
 User steps:
 1. User triggers refresh all from Subscriptions, or refreshes one podcast from its card, when at least one podcast subscription exists.
-2. User waits for the backend refresh process.
-3. New episodes appear if any were found.
-4. Refresh status and last-checked state update.
+2. For refresh all, the backend accepts a background refresh job and the Subscriptions refresh control returns to idle after the job is accepted.
+3. The frontend watches refresh status through the scheduler status endpoint.
+4. New episodes appear after the background refresh completes, if any were found.
+5. Refresh status and last-checked state update.
 
 Design intent:
 - refreshing should feel safe and understandable

@@ -1092,13 +1092,16 @@ func TestPodcastsRefreshAllRefreshesSubscribedPodcasts(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != nethttp.StatusOK {
-		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != nethttp.StatusAccepted {
+		t.Fatalf("expected 202, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	if !strings.Contains(rec.Body.String(), `"success":true`) {
 		t.Fatalf("unexpected refresh-all payload: %s", rec.Body.String())
 	}
-	assertTableCount(t, db, `SELECT COUNT(*) FROM episodes`, 2)
+	if !strings.Contains(rec.Body.String(), `"state":"running"`) {
+		t.Fatalf("expected running refresh-all payload: %s", rec.Body.String())
+	}
+	waitForTableCount(t, db, `SELECT COUNT(*) FROM episodes`, 2)
 
 	jobsReq := httptest.NewRequest(nethttp.MethodGet, "/api/jobs/status", nil)
 	jobsReq.AddCookie(cookie)
@@ -1172,8 +1175,8 @@ func TestPodcastsRefreshAllRejectsConcurrentRun(t *testing.T) {
 	assertAPIError(t, rec, nethttp.StatusConflict, "REFRESH_ALREADY_RUNNING")
 
 	close(releaseRequest)
-	if code := <-firstDone; code != nethttp.StatusOK {
-		t.Fatalf("expected first refresh-all to finish with 200, got %d", code)
+	if code := <-firstDone; code != nethttp.StatusAccepted {
+		t.Fatalf("expected first refresh-all to be accepted with 202, got %d", code)
 	}
 }
 
@@ -3389,6 +3392,23 @@ func assertTableCount(t *testing.T, db *storage.DB, query string, want int) {
 	if got != want {
 		t.Fatalf("expected count %d, got %d for query %q", want, got, query)
 	}
+}
+
+func waitForTableCount(t *testing.T, db *storage.DB, query string, want int) {
+	t.Helper()
+
+	deadline := time.Now().Add(2 * time.Second)
+	var got int
+	for time.Now().Before(deadline) {
+		if err := db.SQL.QueryRow(query).Scan(&got); err != nil {
+			t.Fatalf("count query failed: %v", err)
+		}
+		if got == want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("expected count %d, got %d for query %q", want, got, query)
 }
 
 func testRouterRSSFeed(title, episodeTitle, guid, audioURL string) string {

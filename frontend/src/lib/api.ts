@@ -207,7 +207,7 @@ export const api = {
          { method: "POST" }
        ),
      refreshAll: () =>
-       apiRequest<{ success: true }>("/api/podcasts/refresh-all", {
+       apiRequest<{ success: true; state: "running" }>("/api/podcasts/refresh-all", {
          method: "POST"
        }),
      episodes: (podcastId: number) =>
