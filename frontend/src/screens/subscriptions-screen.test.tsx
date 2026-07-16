@@ -618,15 +618,15 @@ describe("SubscriptionsScreen", () => {
     expect(await screen.findByTestId("episode-row-QA reorder third")).toBeInTheDocument();
   });
 
-  it("disables Refresh all while a refresh is in progress", async () => {
+  it("releases Refresh all when the refresh request fails", async () => {
     const user = userEvent.setup();
-    let resolveRefresh!: () => void;
-    const refreshPromise = new Promise<void>((resolve) => {
-      resolveRefresh = resolve;
+    let rejectRefresh!: (error: Error) => void;
+    const refreshPromise = new Promise<never>((_resolve, reject) => {
+      rejectRefresh = reject;
     });
     const refreshSpy = vi
       .spyOn(api.podcasts, "refreshAll")
-      .mockReturnValue(refreshPromise.then(() => ({ success: true, state: "running" })));
+      .mockReturnValue(refreshPromise);
 
     render(<SubscriptionsScreen />);
 
@@ -641,14 +641,15 @@ describe("SubscriptionsScreen", () => {
     await user.click(refreshButton);
     expect(refreshSpy).toHaveBeenCalledTimes(1);
 
-    resolveRefresh();
+    rejectRefresh(new Error("Refresh request failed"));
 
     await waitFor(() => {
       expect(refreshButton).not.toBeDisabled();
     });
+    expect(screen.getByText("Request failed")).toBeInTheDocument();
   });
 
-  it("releases Refresh all after the background job is accepted and reloads when it completes", async () => {
+  it("keeps Refresh all disabled until the background job completes", async () => {
     const user = userEvent.setup();
     let resolveRefresh!: () => void;
     const refreshPromise = new Promise<void>((resolve) => {
@@ -691,7 +692,7 @@ describe("SubscriptionsScreen", () => {
       resolveRefresh();
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(refreshButton).not.toBeDisabled();
+    expect(refreshButton).toBeDisabled();
     expect(listSpy).toHaveBeenCalledTimes(1);
 
     await act(async () => {
@@ -699,6 +700,7 @@ describe("SubscriptionsScreen", () => {
     });
 
     expect(statusSpy).toHaveBeenCalledTimes(1);
+    expect(refreshButton).toBeDisabled();
     expect(listSpy).toHaveBeenCalledTimes(1);
 
     await act(async () => {
@@ -706,6 +708,7 @@ describe("SubscriptionsScreen", () => {
     });
 
     expect(statusSpy).toHaveBeenCalledTimes(2);
+    expect(refreshButton).not.toBeDisabled();
     expect(listSpy).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
   });

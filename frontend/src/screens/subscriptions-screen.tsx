@@ -406,7 +406,6 @@ export function SubscriptionsScreen() {
       pollRefreshAllCompletion();
     } catch (caught) {
       setActionError(getErrorMessage(caught));
-    } finally {
       setRefreshingAll(false);
     }
   }
@@ -436,6 +435,7 @@ export function SubscriptionsScreen() {
       if (scheduler.state === "failed") {
         setActionError(scheduler.lastError ?? "Failed to refresh podcasts");
       }
+      setRefreshingAll(false);
       setReloadKey((current) => current + 1);
     } catch {
       if (mountedRef.current) {
