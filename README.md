@@ -91,7 +91,7 @@ Deployment note:
 - Recommended deploy pattern:
   `APP_BUILD=$(git rev-parse --short HEAD) docker compose up -d --build`
 
-Proxy host, port, username, and password remain runtime configuration. Default proxy runtime values are `SOCKS5_HOST=192.168.0.222` and `SOCKS5_PORT=1080`. When proxy configuration is available, the user can turn proxy usage on or off from Settings. When proxy usage is enabled, backend outbound network operations use the configured proxy path. When proxy usage is off, backend outbound network operations use direct network access.
+Proxy host, port, username, and password remain runtime configuration. Default proxy runtime values are `SOCKS5_HOST=192.168.0.222` and `SOCKS5_PORT=1080`. When proxy configuration is available, the user can turn proxy usage on or off from Settings. When proxy usage is enabled, backend outbound network operations use the configured proxy path. When proxy usage is off, backend outbound network operations use direct network access. Authenticated playback streaming may make one direct retry if the proxied audio response fails or is not playable, because some podcast CDNs block specific proxy exits.
 
 ## Repository Status
 

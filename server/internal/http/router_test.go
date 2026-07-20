@@ -1993,6 +1993,63 @@ func TestEpisodeAudioProxiesRemoteAudioWhenNotDownloaded(t *testing.T) {
 	}
 }
 
+func TestEpisodeAudioRetriesDirectWhenProxyReturnsNonPlayableResponse(t *testing.T) {
+	proxyRequests := 0
+	directRequests := 0
+	proxyClient := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		proxyRequests++
+		if req.URL.String() != "https://cdn.example.com/audio.mp3" {
+			t.Fatalf("unexpected proxy audio request URL: %s", req.URL.String())
+		}
+		resp := routerBinaryResponse("text/html; charset=utf-8", []byte("<html>blocked by cdn</html>"))
+		resp.StatusCode = nethttp.StatusForbidden
+		resp.Status = "403 Forbidden"
+		return resp, nil
+	})
+	directClient := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		directRequests++
+		if req.URL.String() != "https://cdn.example.com/audio.mp3" {
+			t.Fatalf("unexpected direct audio request URL: %s", req.URL.String())
+		}
+		if got := req.Header.Get("User-Agent"); got != audioProxyUserAgent {
+			t.Fatalf("expected User-Agent %q, got %q", audioProxyUserAgent, got)
+		}
+		if got := req.Header.Get("Accept"); got != audioProxyAccept {
+			t.Fatalf("expected Accept %q, got %q", audioProxyAccept, got)
+		}
+		return routerBinaryResponse("audio/mpeg", []byte("direct-audio")), nil
+	})
+
+	handler, db := newTestRouterWithAudioClients(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+		SOCKS5Host:   "127.0.0.1",
+		SOCKS5Port:   "1080",
+	}, proxyClient, directClient)
+	cookie := register(t, handler, "admin", "secret")
+	enableProxyForTest(t, handler, cookie)
+	seedEpisode(t, db, 1, 1)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/episodes/1/audio", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != "direct-audio" {
+		t.Fatalf("expected direct fallback audio body, got %q", rec.Body.String())
+	}
+	if proxyRequests != 1 {
+		t.Fatalf("expected one proxy request, got %d", proxyRequests)
+	}
+	if directRequests != 1 {
+		t.Fatalf("expected one direct fallback request, got %d", directRequests)
+	}
+}
+
 func TestEpisodeAudioNormalizesGenericBinaryRemoteAudioContentType(t *testing.T) {
 	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
 		return routerBinaryResponse("application/octet-stream", []byte("ID3\x03\x00\x00remote-audio")), nil
@@ -3302,11 +3359,27 @@ func newTestRouterWithClient(t *testing.T, cfg config.Config, client *nethttp.Cl
 	return newSplitRouterWithClient(t, cfg, db, db, client), db
 }
 
+func newTestRouterWithAudioClients(t *testing.T, cfg config.Config, audioClient, directAudioClient *nethttp.Client) (nethttp.Handler, *storage.DB) {
+	t.Helper()
+
+	db := newTestDB(t)
+	return newSplitRouterWithClients(t, cfg, db, db, audioClient, directAudioClient), db
+}
+
 func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *storage.DB, client *nethttp.Client) nethttp.Handler {
+	t.Helper()
+
+	return newSplitRouterWithClients(t, cfg, authDB, appDB, client, client)
+}
+
+func newSplitRouterWithClients(t *testing.T, cfg config.Config, authDB, appDB *storage.DB, client, directAudioClient *nethttp.Client) nethttp.Handler {
 	t.Helper()
 
 	if client == nil {
 		client = newRouterDefaultClient(t, cfg, appDB)
+	}
+	if directAudioClient == nil {
+		directAudioClient = client
 	}
 
 	settingsService := settings.NewServiceWithProxyStatusLookup(appDB.SQL, cfg.SOCKS5Host != "", cfg.AppBuild, func(ctx context.Context) (settings.ProxyLookupResult, error) {
@@ -3328,21 +3401,22 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 	}
 
 	r := &Router{
-		logger:          log.New(io.Discard, "", 0),
-		config:          cfg,
-		db:              appDB.SQL,
-		auth:            auth.NewService(authDB.SQL),
-		episodes:        episodes.NewService(appDB.SQL),
-		episodeActions:  episodes.NewActions(appDB.SQL, downloadsService),
-		playback:        playback.NewService(appDB.SQL, episodes.NewActions(appDB.SQL, downloadsService), playlistService),
-		playlist:        playlistService,
-		playlistActions: playlistActions,
-		downloads:       downloadsService,
-		podcasts:        podcastsService,
-		remoteClient:    client,
-		audioClient:     client,
-		settings:        settingsService,
-		scheduler:       schedulerService,
+		logger:            log.New(io.Discard, "", 0),
+		config:            cfg,
+		db:                appDB.SQL,
+		auth:              auth.NewService(authDB.SQL),
+		episodes:          episodes.NewService(appDB.SQL),
+		episodeActions:    episodes.NewActions(appDB.SQL, downloadsService),
+		playback:          playback.NewService(appDB.SQL, episodes.NewActions(appDB.SQL, downloadsService), playlistService),
+		playlist:          playlistService,
+		playlistActions:   playlistActions,
+		downloads:         downloadsService,
+		podcasts:          podcastsService,
+		remoteClient:      client,
+		audioClient:       client,
+		directAudioClient: directAudioClient,
+		settings:          settingsService,
+		scheduler:         schedulerService,
 	}
 
 	mux := nethttp.NewServeMux()

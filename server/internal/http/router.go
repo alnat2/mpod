@@ -41,36 +41,43 @@ const (
 )
 
 type Router struct {
-	logger          *log.Logger
-	config          config.Config
-	db              *sql.DB
-	auth            *auth.Service
-	episodes        *episodes.Service
-	episodeActions  *episodes.Actions
-	playback        *playback.Service
-	playlist        *playlist.Service
-	playlistActions *playlist.Actions
-	downloads       *downloads.Service
-	podcasts        *podcasts.Service
-	remoteClient    *nethttp.Client
-	audioClient     *nethttp.Client
-	settings        *settings.Service
-	scheduler       *scheduler.Service
+	logger            *log.Logger
+	config            config.Config
+	db                *sql.DB
+	auth              *auth.Service
+	episodes          *episodes.Service
+	episodeActions    *episodes.Actions
+	playback          *playback.Service
+	playlist          *playlist.Service
+	playlistActions   *playlist.Actions
+	downloads         *downloads.Service
+	podcasts          *podcasts.Service
+	remoteClient      *nethttp.Client
+	audioClient       *nethttp.Client
+	directAudioClient *nethttp.Client
+	settings          *settings.Service
+	scheduler         *scheduler.Service
 }
 
 type RouterServices struct {
-	Auth            *auth.Service
-	Episodes        *episodes.Service
-	EpisodeActions  *episodes.Actions
-	Playback        *playback.Service
-	Playlist        *playlist.Service
-	PlaylistActions *playlist.Actions
-	Downloads       *downloads.Service
-	Podcasts        *podcasts.Service
-	RemoteClient    *nethttp.Client
-	AudioClient     *nethttp.Client
-	Settings        *settings.Service
+	Auth              *auth.Service
+	Episodes          *episodes.Service
+	EpisodeActions    *episodes.Actions
+	Playback          *playback.Service
+	Playlist          *playlist.Service
+	PlaylistActions   *playlist.Actions
+	Downloads         *downloads.Service
+	Podcasts          *podcasts.Service
+	RemoteClient      *nethttp.Client
+	AudioClient       *nethttp.Client
+	DirectAudioClient *nethttp.Client
+	Settings          *settings.Service
 }
+
+var (
+	errRemoteAudioLoad        = errors.New("remote audio load failed")
+	errRemoteAudioNotPlayable = errors.New("remote audio not playable")
+)
 
 type apiError struct {
 	Code    string `json:"code"`
@@ -137,6 +144,15 @@ func NewRouterServicesForRuntime(cfg config.Config, db *sql.DB) (*RouterServices
 	if err != nil {
 		return nil, err
 	}
+	directAudioCfg := cfg
+	directAudioCfg.SOCKS5Host = ""
+	directAudioCfg.SOCKS5Port = ""
+	directAudioCfg.SOCKS5Username = ""
+	directAudioCfg.SOCKS5Password = ""
+	directAudioClient, err := remote.NewStreamingHTTPClientWithProxyDecider(directAudioCfg, nil)
+	if err != nil {
+		return nil, err
+	}
 	settingsService = settings.NewServiceWithProxyStatusLookup(db, cfg.SOCKS5Host != "", cfg.AppBuild, func(ctx context.Context) (settings.ProxyLookupResult, error) {
 		return fetchObservedProxyStatus(ctx, client)
 	})
@@ -146,17 +162,18 @@ func NewRouterServicesForRuntime(cfg config.Config, db *sql.DB) (*RouterServices
 	episodeActions := episodes.NewActions(db, downloadsService)
 
 	return &RouterServices{
-		Auth:            auth.NewService(db),
-		Episodes:        episodes.NewService(db),
-		EpisodeActions:  episodeActions,
-		Playback:        playback.NewService(db, episodeActions, playlistService),
-		Playlist:        playlistService,
-		PlaylistActions: playlist.NewActions(db, downloadsService),
-		Downloads:       downloadsService,
-		Podcasts:        podcasts.NewService(db, client),
-		RemoteClient:    client,
-		AudioClient:     audioClient,
-		Settings:        settingsService,
+		Auth:              auth.NewService(db),
+		Episodes:          episodes.NewService(db),
+		EpisodeActions:    episodeActions,
+		Playback:          playback.NewService(db, episodeActions, playlistService),
+		Playlist:          playlistService,
+		PlaylistActions:   playlist.NewActions(db, downloadsService),
+		Downloads:         downloadsService,
+		Podcasts:          podcasts.NewService(db, client),
+		RemoteClient:      client,
+		AudioClient:       audioClient,
+		DirectAudioClient: directAudioClient,
+		Settings:          settingsService,
 	}, nil
 }
 
@@ -170,21 +187,25 @@ func NewRouter(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerServi
 
 func NewRouterWithServices(logger *log.Logger, cfg config.Config, db *sql.DB, schedulerService *scheduler.Service, services *RouterServices) nethttp.Handler {
 	r := &Router{
-		logger:          logger,
-		config:          cfg,
-		db:              db,
-		auth:            services.Auth,
-		episodes:        services.Episodes,
-		episodeActions:  services.EpisodeActions,
-		playback:        services.Playback,
-		playlist:        services.Playlist,
-		playlistActions: services.PlaylistActions,
-		downloads:       services.Downloads,
-		podcasts:        services.Podcasts,
-		remoteClient:    services.RemoteClient,
-		audioClient:     services.AudioClient,
-		settings:        services.Settings,
-		scheduler:       schedulerService,
+		logger:            logger,
+		config:            cfg,
+		db:                db,
+		auth:              services.Auth,
+		episodes:          services.Episodes,
+		episodeActions:    services.EpisodeActions,
+		playback:          services.Playback,
+		playlist:          services.Playlist,
+		playlistActions:   services.PlaylistActions,
+		downloads:         services.Downloads,
+		podcasts:          services.Podcasts,
+		remoteClient:      services.RemoteClient,
+		audioClient:       services.AudioClient,
+		directAudioClient: services.DirectAudioClient,
+		settings:          services.Settings,
+		scheduler:         schedulerService,
+	}
+	if r.directAudioClient == nil {
+		r.directAudioClient = r.audioClient
 	}
 
 	mux := nethttp.NewServeMux()
@@ -1027,45 +1048,25 @@ func (r *Router) handleEpisodeAudio(w nethttp.ResponseWriter, req *nethttp.Reque
 		return
 	}
 
-	audioReq, err := nethttp.NewRequestWithContext(req.Context(), nethttp.MethodGet, episode.AudioURL, nil)
+	audioResp, err := r.openRemoteEpisodeAudio(req, episode.AudioURL, r.audioClient)
 	if err != nil {
-		r.writeAPIError(w, nethttp.StatusInternalServerError, "AUDIO_LOAD_FAILED", "Failed to load audio")
-		return
+		if r.shouldRetryAudioDirect(req.Context()) {
+			r.logger.Printf("proxy episode audio failed, retrying direct path: %v", err)
+			audioResp, err = r.openRemoteEpisodeAudio(req, episode.AudioURL, r.directAudioClient)
+		}
+		if err != nil {
+			if errors.Is(err, errRemoteAudioNotPlayable) {
+				r.writeAPIError(w, nethttp.StatusBadGateway, "AUDIO_LOAD_FAILED", "Audio source is not playable")
+				return
+			}
+			r.writeAPIError(w, nethttp.StatusBadGateway, "AUDIO_LOAD_FAILED", "Failed to load audio")
+			return
+		}
 	}
-	audioReq.Header.Set("User-Agent", audioProxyUserAgent)
-	audioReq.Header.Set("Accept", audioProxyAccept)
+	defer audioResp.response.Body.Close()
 
-	if rangeHeader := strings.TrimSpace(req.Header.Get("Range")); rangeHeader != "" {
-		audioReq.Header.Set("Range", rangeHeader)
-	}
-
-	resp, err := r.audioClient.Do(audioReq)
-	if err != nil {
-		r.writeAPIError(w, nethttp.StatusBadGateway, "AUDIO_LOAD_FAILED", "Failed to load audio")
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		r.writeAPIError(w, nethttp.StatusBadGateway, "AUDIO_LOAD_FAILED", "Failed to load audio")
-		return
-	}
-
-	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
-	if !media.IsPlayableContentType(contentType) {
-		r.writeAPIError(w, nethttp.StatusBadGateway, "AUDIO_LOAD_FAILED", "Audio source is not playable")
-		return
-	}
-	prefix, err := media.ReadBodyPrefix(resp.Body)
-	if err != nil {
-		r.writeAPIError(w, nethttp.StatusBadGateway, "AUDIO_LOAD_FAILED", "Failed to load audio")
-		return
-	}
-	if media.LooksLikeNonPlayableBody(prefix) {
-		r.writeAPIError(w, nethttp.StatusBadGateway, "AUDIO_LOAD_FAILED", "Audio source is not playable")
-		return
-	}
-	resolvedContentType := media.PreferredPlayableContentType(contentType, prefix)
+	resp := audioResp.response
+	resolvedContentType := media.PreferredPlayableContentType(audioResp.contentType, audioResp.prefix)
 	if resolvedContentType != "" {
 		w.Header().Set("Content-Type", resolvedContentType)
 	}
@@ -1083,9 +1084,71 @@ func (r *Router) handleEpisodeAudio(w nethttp.ResponseWriter, req *nethttp.Reque
 	}
 	w.Header().Set("Cache-Control", "private, max-age=0")
 	w.WriteHeader(resp.StatusCode)
-	if _, err := io.Copy(w, io.MultiReader(bytes.NewReader(prefix), resp.Body)); err != nil {
+	if _, err := io.Copy(w, io.MultiReader(bytes.NewReader(audioResp.prefix), resp.Body)); err != nil {
 		r.logger.Printf("copy episode audio failed: %v", err)
 	}
+}
+
+type remoteEpisodeAudio struct {
+	response    *nethttp.Response
+	prefix      []byte
+	contentType string
+}
+
+func (r *Router) openRemoteEpisodeAudio(sourceReq *nethttp.Request, audioURL string, client *nethttp.Client) (*remoteEpisodeAudio, error) {
+	if client == nil {
+		return nil, errRemoteAudioLoad
+	}
+
+	audioReq, err := nethttp.NewRequestWithContext(sourceReq.Context(), nethttp.MethodGet, audioURL, nil)
+	if err != nil {
+		return nil, errRemoteAudioLoad
+	}
+	audioReq.Header.Set("User-Agent", audioProxyUserAgent)
+	audioReq.Header.Set("Accept", audioProxyAccept)
+
+	if rangeHeader := strings.TrimSpace(sourceReq.Header.Get("Range")); rangeHeader != "" {
+		audioReq.Header.Set("Range", rangeHeader)
+	}
+
+	resp, err := client.Do(audioReq)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", errRemoteAudioLoad, err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		resp.Body.Close()
+		return nil, fmt.Errorf("%w: upstream status %d", errRemoteAudioLoad, resp.StatusCode)
+	}
+
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if !media.IsPlayableContentType(contentType) {
+		resp.Body.Close()
+		return nil, fmt.Errorf("%w: content type %q", errRemoteAudioNotPlayable, contentType)
+	}
+	prefix, err := media.ReadBodyPrefix(resp.Body)
+	if err != nil {
+		resp.Body.Close()
+		return nil, fmt.Errorf("%w: %v", errRemoteAudioLoad, err)
+	}
+	if media.LooksLikeNonPlayableBody(prefix) {
+		resp.Body.Close()
+		return nil, errRemoteAudioNotPlayable
+	}
+
+	return &remoteEpisodeAudio{
+		response:    resp,
+		prefix:      prefix,
+		contentType: contentType,
+	}, nil
+}
+
+func (r *Router) shouldRetryAudioDirect(ctx context.Context) bool {
+	if r.directAudioClient == nil || r.directAudioClient == r.audioClient || r.settings == nil || r.config.SOCKS5Host == "" {
+		return false
+	}
+	enabled, err := r.settings.ProxyEnabled(ctx)
+	return err == nil && enabled
 }
 
 func (r *Router) handleSettingsGet(w nethttp.ResponseWriter, req *nethttp.Request) {

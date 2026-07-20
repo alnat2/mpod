@@ -437,6 +437,7 @@ Playback uses a backend audio endpoint instead of exposing storage paths to the 
 When a downloaded file exists locally, the backend serves that file.
 When no local file exists, the backend proxies the remote episode audio URL through the authenticated audio endpoint.
 Remote proxying must preserve playback needs such as Range requests so browser media controls can seek.
+When SOCKS5 proxy usage is enabled, playback streaming uses that proxy first. If that proxied response fails or is clearly not playable audio, the backend may make one direct retry for this playback request only, because public podcast CDNs can block individual proxy exits while still serving the same audio directly.
 This keeps file storage, authentication, and proxy-aware network behavior on the backend while still allowing streaming before download.
 
 ## Configuration Boundaries
