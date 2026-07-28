@@ -1565,7 +1565,6 @@ func TestPlaybackCompletionReturnsFallbackEpisodeForLastPlaylistItem(t *testing.
 	mustExecHTTP(t, db, `INSERT INTO playlist (episode_id, position) VALUES (2, 2)`)
 	mustExecHTTP(t, db, `INSERT INTO playlist (episode_id, position) VALUES (3, 3)`)
 	mustExecHTTP(t, db, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (1, 120, CURRENT_TIMESTAMP)`)
-	mustExecHTTP(t, db, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (2, 590, CURRENT_TIMESTAMP)`)
 
 	req := httptest.NewRequest(nethttp.MethodPost, "/api/playback", bytes.NewReader([]byte(`{"episodeId":3,"positionSeconds":600,"durationSeconds":600,"completed":true}`)))
 	req.AddCookie(cookie)
@@ -1585,8 +1584,8 @@ func TestPlaybackCompletionReturnsFallbackEpisodeForLastPlaylistItem(t *testing.
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("unmarshal playback response: %v", err)
 	}
-	if payload.NextEpisodeID == nil || *payload.NextEpisodeID != 1 {
-		t.Fatalf("expected fallback episode 1, got %+v", payload.NextEpisodeID)
+	if payload.NextEpisodeID == nil || *payload.NextEpisodeID != 2 {
+		t.Fatalf("expected fallback episode 2, got %+v", payload.NextEpisodeID)
 	}
 }
 

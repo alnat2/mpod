@@ -333,7 +333,7 @@ When playback reaches completion:
 - the episode is removed from playlist
 - downloaded file cleanup follows approved backend behavior
 - playback advances to the next playlist item if one exists
-- if completion finishes the last playlist item, the backend may return an earlier in-progress playlist episode as `nextEpisodeId`
+- if completion finishes the last playlist item, the backend may return an earlier unlistened playlist episode as `nextEpisodeId`
 
 Design intent:
 - listening should not trap the user in a separate player-only screen

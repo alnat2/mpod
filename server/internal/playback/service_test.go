@@ -185,6 +185,7 @@ func TestUpdateCompletionAppliesSideEffects(t *testing.T) {
 		EpisodeID:       1,
 		PositionSeconds: 2390,
 		DurationSeconds: 2400,
+		Completed:       true,
 	})
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
@@ -223,6 +224,62 @@ func TestUpdateCompletionAppliesSideEffects(t *testing.T) {
 
 	if _, err := os.Stat(downloadPath); !os.IsNotExist(err) {
 		t.Fatalf("expected file to be deleted, stat err=%v", err)
+	}
+}
+
+func TestUpdateNearEndProgressDoesNotCompleteEpisode(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	downloadPath := filepath.Join(downloadDir, "1", "episode.mp3")
+	if err := os.MkdirAll(filepath.Dir(downloadPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(downloadPath, []byte("audio"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path, is_listened) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3', ?, 0)`, downloadPath)
+	mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, downloadDir)), playlist.NewService(db.SQL))
+	service.now = func() time.Time { return time.Date(2026, 7, 28, 10, 0, 0, 0, time.UTC) }
+
+	result, err := service.Update(context.Background(), UpdateInput{
+		EpisodeID:       1,
+		PositionSeconds: 2390,
+		DurationSeconds: 2400,
+		Completed:       false,
+	})
+	if err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+	if result.Playback.PositionSeconds != 2390 {
+		t.Fatalf("expected near-end progress to be stored as-is, got %d", result.Playback.PositionSeconds)
+	}
+	if result.NextEpisodeID != nil {
+		t.Fatalf("expected no fallback episode, got %d", *result.NextEpisodeID)
+	}
+
+	var listened bool
+	if err := db.SQL.QueryRow(`SELECT is_listened FROM episodes WHERE id = 1`).Scan(&listened); err != nil {
+		t.Fatalf("query listened state: %v", err)
+	}
+	if listened {
+		t.Fatalf("expected episode to remain unlistened")
+	}
+
+	var playlistCount int
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM playlist WHERE episode_id = 1`).Scan(&playlistCount); err != nil {
+		t.Fatalf("query playlist count: %v", err)
+	}
+	if playlistCount != 1 {
+		t.Fatalf("expected episode to remain in playlist")
+	}
+	if _, err := os.Stat(downloadPath); err != nil {
+		t.Fatalf("expected file to remain, stat err=%v", err)
 	}
 }
 
@@ -412,7 +469,7 @@ func TestUpdateIgnoresBackwardDriftWithoutSeek(t *testing.T) {
 	}
 }
 
-func TestUpdateCompletionSelectsHighestEarlierIncompleteEpisodeWhenFinishingLastPlaylistItem(t *testing.T) {
+func TestUpdateCompletionSelectsNearestEarlierUnlistenedEpisodeWhenFinishingLastPlaylistItem(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
@@ -432,8 +489,6 @@ func TestUpdateCompletionSelectsHighestEarlierIncompleteEpisodeWhenFinishingLast
 	mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
 	mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (2, 2)`)
 	mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (3, 3)`)
-	mustExec(t, db.SQL, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (1, 120, CURRENT_TIMESTAMP)`)
-	mustExec(t, db.SQL, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (2, 585, CURRENT_TIMESTAMP)`)
 
 	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, downloadDir)), playlist.NewService(db.SQL))
 	service.now = func() time.Time { return time.Date(2026, 7, 10, 10, 0, 0, 0, time.UTC) }
@@ -448,12 +503,12 @@ func TestUpdateCompletionSelectsHighestEarlierIncompleteEpisodeWhenFinishingLast
 		t.Fatalf("Update returned error: %v", err)
 	}
 
-	if result.NextEpisodeID == nil || *result.NextEpisodeID != 1 {
-		t.Fatalf("expected fallback episode 1, got %v", result.NextEpisodeID)
+	if result.NextEpisodeID == nil || *result.NextEpisodeID != 2 {
+		t.Fatalf("expected fallback episode 2, got %v", result.NextEpisodeID)
 	}
 
 	var playlistCount int
-	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM playlist WHERE episode_id = 1`).Scan(&playlistCount); err != nil {
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM playlist WHERE episode_id = 2`).Scan(&playlistCount); err != nil {
 		t.Fatalf("query playlist count: %v", err)
 	}
 	if playlistCount != 1 {
@@ -461,19 +516,19 @@ func TestUpdateCompletionSelectsHighestEarlierIncompleteEpisodeWhenFinishingLast
 	}
 
 	var listened bool
-	if err := db.SQL.QueryRow(`SELECT is_listened FROM episodes WHERE id = 1`).Scan(&listened); err != nil {
+	if err := db.SQL.QueryRow(`SELECT is_listened FROM episodes WHERE id = 2`).Scan(&listened); err != nil {
 		t.Fatalf("query listened state: %v", err)
 	}
 	if listened {
 		t.Fatalf("expected fallback episode to remain unlistened")
 	}
 
-	var position int64
-	if err := db.SQL.QueryRow(`SELECT position_seconds FROM playback WHERE episode_id = 1`).Scan(&position); err != nil {
-		t.Fatalf("query playback position: %v", err)
+	var playbackCount int
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM playback WHERE episode_id = 2`).Scan(&playbackCount); err != nil {
+		t.Fatalf("query playback count: %v", err)
 	}
-	if position != 120 {
-		t.Fatalf("expected fallback episode playback position to remain 120, got %d", position)
+	if playbackCount != 0 {
+		t.Fatalf("expected fallback selection not to create playback record, got %d", playbackCount)
 	}
 }
 

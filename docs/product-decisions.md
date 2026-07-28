@@ -756,19 +756,17 @@ Active playback request fields:
 
 ### Completion Rules
 - If `completed = true`, the episode is treated as finished immediately.
-- If `positionSeconds >= durationSeconds - 15`, the episode is also treated as finished.
+- Progress position alone must not mark an episode finished. Near-end playback progress is stored as progress only unless the client explicitly sends `completed = true`.
 - When an episode is finished:
   - it is marked as listened
   - playback position is stored as full duration or final reported position
   - any file and playlist side effects follow file lifecycle rules
 - Before removing the finished episode from the playlist, the backend checks whether it was the last item in the pre-removal playlist order.
-- If the finished episode was the last playlist item, the backend looks upward through earlier playlist items and selects the highest eligible fallback episode.
+- If the finished episode was the last playlist item, the backend looks upward through earlier playlist items and selects the nearest eligible fallback episode.
 - An eligible fallback episode must:
   - still be in the playlist after the finished episode cleanup
   - be unlistened
-  - have a playback record
-  - have `positionSeconds > 0`
-  - not already count as completed under the same playback completion rules
+- The selected fallback episode may have no playback record yet; in that case clients should start it from `0:00`.
 - If no eligible earlier episode exists, the backend returns `nextEpisodeId = null`.
 - The selected fallback episode must not be marked listened, removed, reordered, or have its files changed as part of the finished episode cleanup.
 
@@ -799,7 +797,7 @@ If an update is ignored because it is stale or invalid for sync purposes, the AP
 `nextEpisodeId` rules:
 - For ordinary progress updates and ignored stale updates, `nextEpisodeId` is `null`.
 - If playback completion finishes a non-last playlist item, `nextEpisodeId` is `null`; normal sequential playback remains a frontend concern.
-- If playback completion finishes the last playlist item and an eligible earlier in-progress playlist item exists, `nextEpisodeId` contains that episode ID.
+- If playback completion finishes the last playlist item and an eligible earlier unlistened playlist item exists, `nextEpisodeId` contains that episode ID.
 
 ### Read Behavior
 `GET /api/playback/:episodeId` returns:

@@ -271,7 +271,7 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 		position = input.DurationSeconds
 	}
 
-	if input.Completed || isCompleted(position, input.DurationSeconds) {
+	if input.Completed {
 		if input.DurationSeconds > 0 {
 			position = input.DurationSeconds
 		}
@@ -354,10 +354,9 @@ func (s *Service) applyCompletionSideEffects(ctx context.Context, episodeID int6
 
 func (s *Service) findCompletionFallback(ctx context.Context, completedEpisodeID int64) (*int64, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT playlist.episode_id, episodes.is_listened, playback.position_seconds, episodes.duration
+		SELECT playlist.episode_id, episodes.is_listened
 		FROM playlist
 		JOIN episodes ON episodes.id = playlist.episode_id
-		LEFT JOIN playback ON playback.episode_id = playlist.episode_id
 		ORDER BY playlist.position ASC, playlist.id ASC
 	`)
 	if err != nil {
@@ -368,15 +367,13 @@ func (s *Service) findCompletionFallback(ctx context.Context, completedEpisodeID
 	type candidate struct {
 		episodeID int64
 		listened  bool
-		position  sql.NullInt64
-		duration  sql.NullInt64
 	}
 
 	var items []candidate
 	currentIndex := -1
 	for rows.Next() {
 		var item candidate
-		if err := rows.Scan(&item.episodeID, &item.listened, &item.position, &item.duration); err != nil {
+		if err := rows.Scan(&item.episodeID, &item.listened); err != nil {
 			return nil, fmt.Errorf("scan completion fallback candidate: %w", err)
 		}
 		if item.episodeID == completedEpisodeID {
@@ -394,15 +391,7 @@ func (s *Service) findCompletionFallback(ctx context.Context, completedEpisodeID
 
 	for i := currentIndex - 1; i >= 0; i-- {
 		item := items[i]
-		if item.listened || !item.position.Valid || item.position.Int64 <= 0 {
-			continue
-		}
-
-		duration := int64(0)
-		if item.duration.Valid {
-			duration = item.duration.Int64
-		}
-		if isCompleted(item.position.Int64, duration) {
+		if item.listened {
 			continue
 		}
 
@@ -411,11 +400,4 @@ func (s *Service) findCompletionFallback(ctx context.Context, completedEpisodeID
 	}
 
 	return nil, nil
-}
-
-func isCompleted(position, duration int64) bool {
-	if duration <= 0 {
-		return false
-	}
-	return position >= duration-15
 }
