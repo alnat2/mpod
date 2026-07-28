@@ -17,6 +17,33 @@ test("shows the expected episode actions and opens show notes", async ({
     });
   });
 
+  await page.route("**/api/settings", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        settings: {
+          dailyRefreshTime: "03:00",
+          playbackSpeed: "Speed 1.3x",
+          proxyEnabled: false,
+          proxyConfigured: true,
+          appBuild: "test-build",
+        },
+      }),
+    });
+  });
+
+  await page.route("**/api/playback/queue", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        queue: [],
+        activePlayback: null,
+      }),
+    });
+  });
+
   await page.route("**/api/podcasts", async (route) => {
     await route.fulfill({
       status: 200,
@@ -47,7 +74,7 @@ test("shows the expected episode actions and opens show notes", async ({
     });
   });
 
-  await page.route("**/api/podcasts/1/episodes", async (route) => {
+  await page.route("**/api/episodes", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -58,6 +85,8 @@ test("shows the expected episode actions and opens show notes", async ({
             podcastId: 1,
             title: "QA reorder third",
             description: "Episode notes from Playwright",
+            showNotes:
+              "Episode notes from Playwright\nhttps://example.com/episode-notes.",
             audioUrl: "https://example.com/audio.mp3",
             duration: 900,
             downloaded: false,
@@ -85,6 +114,9 @@ test("shows the expected episode actions and opens show notes", async ({
     page.getByText("Build Your SaaS - QA reorder third")
   ).toBeVisible();
   await expect(page.getByText("Episode notes from Playwright")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "https://example.com/episode-notes" })
+  ).toHaveAttribute("href", "https://example.com/episode-notes");
 });
 
 test("mobile subscriptions can scroll to the last shown episode", async ({
