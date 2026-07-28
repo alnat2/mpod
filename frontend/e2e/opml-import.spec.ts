@@ -114,7 +114,7 @@ test("imports OPML from the empty subscriptions state", async ({ page }) => {
     mimeType: "text/x-opml",
     buffer: Buffer.from("<opml />"),
   });
-  await page.getByRole("button", { name: "Import file" }).click();
+  await page.getByRole("button", { name: "Add Feed" }).click();
 
   await expect.poll(() => importRequested).toBe(true);
   await expect(

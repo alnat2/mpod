@@ -16,6 +16,12 @@ describe("FileDropzone", () => {
     expect(input).not.toHaveClass("hidden");
     expect(input).not.toHaveClass("sr-only");
     expect(input).not.toHaveClass("opacity-0");
+    expect(
+      screen
+        .getAllByText("Click to browse", { exact: false })
+        .some((element) => element.classList.contains("md:hidden"))
+    ).toBe(true);
+    expect(screen.getByText("Browse files")).toBeInTheDocument();
 
     const file = new File(["<opml />"], "feeds.opml", {
       type: "text/x-opml",

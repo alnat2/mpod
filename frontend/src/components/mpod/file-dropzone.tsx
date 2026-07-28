@@ -35,7 +35,7 @@ export function FileDropzone({
   return (
     <div
       className={cn(
-        "flex min-h-[232px] w-full flex-col items-center justify-center gap-4 overflow-hidden rounded-lg border border-dashed border-primary bg-background p-6 transition-colors",
+        "flex min-h-[132px] w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-lg border border-dashed border-primary bg-background p-6 transition-colors md:min-h-[232px] md:gap-4",
         dragActive && "bg-primary/5",
         className
       )}
@@ -73,15 +73,20 @@ export function FileDropzone({
       }}
     >
       <div className="flex flex-col items-center justify-center gap-2">
-        <p className="text-center text-sm leading-5 font-medium text-foreground">
+        <p className="text-center text-sm leading-5 font-medium text-foreground md:hidden">
+          Click to browse
+          <br />
+          from your computer
+        </p>
+        <p className="hidden text-center text-sm leading-5 font-medium text-foreground md:block">
           Drag and drop your file
         </p>
         <HugeiconsIcon
           icon={FileUploadIcon}
-          className="size-20 text-primary"
+          className="hidden size-20 text-primary md:block"
           aria-hidden="true"
         />
-        <p className="text-center text-xs leading-4 text-muted-foreground">
+        <p className="hidden text-center text-xs leading-4 text-muted-foreground md:block">
           or click to browse from your computer
         </p>
         {fileName ? (
@@ -90,18 +95,28 @@ export function FileDropzone({
           </p>
         ) : null}
       </div>
-      <input
+      <div
         className={cn(
-          "block h-9 w-[132px] cursor-pointer overflow-hidden text-sm text-transparent file:mr-0 file:h-9 file:w-[132px] file:cursor-pointer file:rounded-md file:border-0 file:bg-transparent file:px-4 file:text-sm file:font-medium file:text-primary file:underline-offset-4 file:hover:underline",
+          "relative h-9 w-[132px]",
           disabled && "pointer-events-none opacity-50"
         )}
-        type="file"
-        disabled={disabled}
-        aria-label="Browse files"
-        onChange={(event) => {
-          onFileChange?.(event.target.files?.[0] ?? null);
-        }}
-      />
+      >
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 flex items-center justify-center px-4 text-sm leading-5 font-medium text-primary"
+        >
+          Browse files
+        </span>
+        <input
+          className="absolute inset-0 block h-9 w-[132px] cursor-pointer overflow-hidden text-sm text-transparent file:mr-0 file:h-9 file:w-[132px] file:cursor-pointer file:rounded-md file:border-0 file:bg-transparent file:px-4 file:text-sm file:font-medium file:text-transparent"
+          type="file"
+          disabled={disabled}
+          aria-label="Browse files"
+          onChange={(event) => {
+            onFileChange?.(event.target.files?.[0] ?? null);
+          }}
+        />
+      </div>
     </div>
   );
 }

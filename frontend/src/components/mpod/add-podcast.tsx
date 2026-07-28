@@ -84,7 +84,7 @@ export function AddPodcast({
   return (
     <Card
       className={cn(
-        "w-full max-w-[320px] items-start gap-0 rounded-lg py-0 shadow-sm md:max-w-[720px]",
+        "w-full max-w-[320px] items-start gap-0 rounded-lg px-4 py-3 !pb-3 shadow-sm md:max-w-[720px] md:px-0 md:py-0 md:!pb-0",
         className
       )}
     >
@@ -95,7 +95,7 @@ export function AddPodcast({
           </CardTitle>
           <Button
             aria-label="Close"
-            className="size-8 md:size-10"
+            className="size-6 md:size-10"
             size="icon-sm"
             variant="ghost"
             type="button"
@@ -104,7 +104,7 @@ export function AddPodcast({
           >
             <HugeiconsIcon
               icon={MultiplicationSignIcon}
-              className="size-4"
+              className="size-6 md:size-4"
               aria-hidden="true"
             />
           </Button>
@@ -184,7 +184,7 @@ export function AddPodcast({
                 {isOpml ? "Importing..." : "Adding..."}
               </>
             ) : isOpml ? (
-              "Import file"
+              "Add Feed"
             ) : (
               "Add Feed"
             )}
