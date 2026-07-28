@@ -5,13 +5,15 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
 import {
   ArrowDown01Icon,
-  GoBackward10SecIcon,
-  GoForward15SecIcon,
+  GoBackward15SecIcon,
+  GoForward30SecIcon,
   NoteIcon,
   PauseIcon,
   PlayIcon,
 } from "@hugeicons/core-free-icons";
 
+import playerBackwardIcon from "@/assets/player-backward.svg";
+import playerSpeedIcon from "@/assets/player-speed.svg";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -101,6 +103,84 @@ function compactSpeedLabel(speedLabel: PlaybackSpeedLabel) {
   return speedLabel.replace(/^Speed\s/, "").replace(/x$/, "");
 }
 
+function PlayerAssetIcon({
+  src,
+  name,
+  className,
+  assetClassName,
+}: {
+  src: string;
+  name: "backward" | "forward" | "speed";
+  className: string;
+  assetClassName: string;
+}) {
+  return (
+    <span
+      className={cn("relative block shrink-0", className)}
+      data-player-icon={name}
+      aria-hidden="true"
+    >
+      <span
+        className={cn("absolute bg-current", assetClassName)}
+        style={{
+          maskImage: `url("${src}")`,
+          maskPosition: "center",
+          maskRepeat: "no-repeat",
+          maskSize: "100% 100%",
+          WebkitMaskImage: `url("${src}")`,
+          WebkitMaskPosition: "center",
+          WebkitMaskRepeat: "no-repeat",
+          WebkitMaskSize: "100% 100%",
+        }}
+      />
+    </span>
+  );
+}
+
+function MobileLabeledControl({
+  label,
+  caption,
+  align,
+  mirrored,
+  onClick,
+}: {
+  label: string;
+  caption: string;
+  align: "center" | "end";
+  mirrored?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          aria-label={label}
+          className={cn(
+            "inline-flex size-14 shrink-0 flex-col justify-end rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+            align === "end" ? "items-end" : "items-center"
+          )}
+          type="button"
+          onClick={onClick}
+        >
+          <span className="flex flex-col items-center justify-end gap-0.5">
+            <PlayerAssetIcon
+              src={playerBackwardIcon}
+              name={mirrored ? "forward" : "backward"}
+              className="h-5 w-[33px]"
+              assetClassName={cn(
+                "inset-[-3.75%_-2.27%]",
+                mirrored && "-scale-x-100"
+              )}
+            />
+            <span className="text-xs leading-4 font-semibold">{caption}</span>
+          </span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function Player({
   className,
   title,
@@ -148,7 +228,7 @@ export function Player({
   return (
     <section
       className={cn(
-        "flex w-full flex-col items-center justify-center gap-4 rounded-2xl border border-border bg-card px-6 py-4 text-center text-card-foreground shadow-xs md:max-w-[480px] md:px-12 md:py-5",
+        "flex w-full max-w-80 flex-col items-center justify-center gap-3 rounded-2xl bg-card px-6 pt-6 pb-4 text-center text-card-foreground shadow-xs ring-1 ring-border ring-inset md:max-w-[480px] md:gap-4 md:px-12 md:py-5",
         className
       )}
     >
@@ -166,143 +246,154 @@ export function Player({
           {podcastTitle}
         </p>
       </div>
-      <div className="flex w-full flex-col gap-2">
-        <Progress
-          aria-label="Seek playback position"
-          className={cn(
-            "h-4 bg-primary/20 md:h-2",
-            onProgressSeek && "cursor-pointer"
-          )}
-          value={progressValue}
-          onPointerDown={handleProgressPointerDown}
-        />
-        <div className="flex h-[18px] w-full items-center justify-between text-xs leading-4 text-muted-foreground">
-          <span>{elapsedLabel}</span>
-          <span>{durationLabel}</span>
+      <div className="flex w-full flex-col gap-3 md:contents">
+        <div className="flex w-full flex-col gap-2 md:contents">
+          <div className="flex w-full flex-col gap-2 pb-2 md:pb-0">
+            <Progress
+              aria-label="Seek playback position"
+              className={cn(
+                "order-last h-4 bg-muted shadow-lg md:order-first md:h-2 md:bg-primary/20 md:shadow-none",
+                onProgressSeek && "cursor-pointer"
+              )}
+              value={progressValue}
+              onPointerDown={handleProgressPointerDown}
+            />
+            <div className="order-first flex h-[18px] w-full items-center justify-between text-xs leading-4 text-muted-foreground md:order-last">
+              <span>{elapsedLabel}</span>
+              <span>{durationLabel}</span>
+            </div>
+          </div>
+          <div className="flex h-14 w-full items-center justify-between md:hidden">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={activeSpeedLabel}
+                  className="inline-flex size-14 shrink-0 flex-col items-start justify-end rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  <span className="flex flex-col items-center justify-end gap-0.5">
+                    <PlayerAssetIcon
+                      src={playerSpeedIcon}
+                      name="speed"
+                      className="h-5 w-[25px]"
+                      assetClassName="inset-[-3.75%_-3%]"
+                    />
+                    <span className="text-xs leading-4 font-semibold">
+                      {compactSpeedLabel(activeSpeedLabel)}
+                    </span>
+                  </span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuRadioGroup
+                  value={activeSpeedLabel}
+                  onValueChange={handleSpeedChange}
+                >
+                  {playbackSpeedOptions.map((option) => (
+                    <DropdownMenuRadioItem value={option} key={option}>
+                      {option}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <TransportButton
+              label={playing ? "Pause" : "Play"}
+              icon={playing ? PauseIcon : PlayIcon}
+              className="shadow-md md:shadow-2xs"
+              iconClassName="size-9 md:size-8"
+              onClick={onPlay}
+              primary
+            />
+            <MobileLabeledControl
+              label="Go back 15 seconds"
+              caption="-15"
+              align="center"
+              onClick={onBack}
+            />
+            <MobileLabeledControl
+              label="Go forward 30 seconds"
+              caption="+30"
+              align="end"
+              mirrored
+              onClick={onForward}
+            />
+          </div>
+          <div className="hidden items-center justify-center gap-4 md:flex">
+            <TransportButton
+              label="Go back 15 seconds"
+              icon={GoBackward15SecIcon}
+              onClick={onBack}
+            />
+            <TransportButton
+              label={playing ? "Pause" : "Play"}
+              icon={playing ? PauseIcon : PlayIcon}
+              onClick={onPlay}
+              primary
+            />
+            <TransportButton
+              label="Go forward 30 seconds"
+              icon={GoForward30SecIcon}
+              onClick={onForward}
+            />
+          </div>
         </div>
-      </div>
-      <div className="hidden items-center justify-center gap-4 md:flex">
-        <TransportButton
-          label="Go back 10 seconds"
-          icon={GoBackward10SecIcon}
-          onClick={onBack}
-        />
-        <TransportButton
-          label={playing ? "Pause" : "Play"}
-          icon={playing ? PauseIcon : PlayIcon}
-          onClick={onPlay}
-          primary
-        />
-        <TransportButton
-          label="Go forward 15 seconds"
-          icon={GoForward15SecIcon}
-          onClick={onForward}
-        />
-      </div>
-      <div className="flex w-full items-center justify-between md:hidden">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              aria-label={activeSpeedLabel}
-              className="inline-flex size-9 shrink-0 items-center justify-center rounded-[10px] border-2 border-primary bg-card text-sm leading-5 font-semibold text-primary shadow-xs outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            >
-              {compactSpeedLabel(activeSpeedLabel)}
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuRadioGroup
-              value={activeSpeedLabel}
-              onValueChange={handleSpeedChange}
-            >
-              {playbackSpeedOptions.map((option) => (
-                <DropdownMenuRadioItem value={option} key={option}>
-                  {option}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <TransportButton
-          label="Go back 10 seconds"
-          icon={GoBackward10SecIcon}
-          className="size-10 hover:bg-transparent"
-          iconClassName="size-10"
-          onClick={onBack}
-        />
-        <TransportButton
-          label={playing ? "Pause" : "Play"}
-          icon={playing ? PauseIcon : PlayIcon}
-          onClick={onPlay}
-          primary
-        />
-        <TransportButton
-          label="Go forward 15 seconds"
-          icon={GoForward15SecIcon}
-          className="size-10 hover:bg-transparent"
-          iconClassName="size-10"
-          onClick={onForward}
-        />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              aria-label="Notes"
-              disabled={notesDisabled}
-              className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-primary outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:text-muted-foreground disabled:opacity-50"
-              onClick={onNotes}
-            >
-              <HugeiconsIcon
-                icon={NoteIcon}
-                className="size-9"
-                aria-hidden="true"
-              />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Notes</TooltipContent>
-        </Tooltip>
-      </div>
-      <div className="hidden items-center justify-center gap-3 md:flex">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button className="h-9 shadow-xs" variant="outline" type="button">
-              {activeSpeedLabel}
-              <HugeiconsIcon
-                icon={ArrowDown01Icon}
-                className="size-4"
-                data-icon="inline-end"
-                aria-hidden="true"
-              />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuRadioGroup
-              value={activeSpeedLabel}
-              onValueChange={handleSpeedChange}
-            >
-              {playbackSpeedOptions.map((option) => (
-                <DropdownMenuRadioItem value={option} key={option}>
-                  {option}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Button
-          className="h-9 rounded-[10px] px-2.5 shadow-xs"
-          variant="outline"
+        <button
           type="button"
+          aria-label="Show notes"
           disabled={notesDisabled}
+          className="inline-flex h-5 items-center justify-center gap-1 self-center rounded-sm text-sm leading-5 font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 md:hidden"
           onClick={onNotes}
         >
           <HugeiconsIcon
             icon={NoteIcon}
-            className="size-4"
-            data-icon="inline-start"
+            className="size-5 text-primary"
             aria-hidden="true"
           />
-          Notes
-        </Button>
+          Show notes
+        </button>
+        <div className="hidden items-center justify-center gap-3 md:flex">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="h-9 shadow-xs" variant="outline" type="button">
+                {activeSpeedLabel}
+                <HugeiconsIcon
+                  icon={ArrowDown01Icon}
+                  className="size-4"
+                  data-icon="inline-end"
+                  aria-hidden="true"
+                />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuRadioGroup
+                value={activeSpeedLabel}
+                onValueChange={handleSpeedChange}
+              >
+                {playbackSpeedOptions.map((option) => (
+                  <DropdownMenuRadioItem value={option} key={option}>
+                    {option}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            className="h-9 rounded-[10px] px-2.5 shadow-xs"
+            variant="outline"
+            type="button"
+            disabled={notesDisabled}
+            onClick={onNotes}
+          >
+            <HugeiconsIcon
+              icon={NoteIcon}
+              className="size-4"
+              data-icon="inline-start"
+              aria-hidden="true"
+            />
+            Notes
+          </Button>
+        </div>
       </div>
     </section>
   );

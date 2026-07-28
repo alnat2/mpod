@@ -740,7 +740,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const seekForward = useCallback(() => {
     if (!audioRef.current || !currentEpisode) return;
     const nextPos = clampPosition(
-      audioRef.current.currentTime + 15,
+      audioRef.current.currentTime + 30,
       currentEpisodeDuration
     );
     if (setAudioPosition(audioRef.current, nextPos)) {
@@ -752,7 +752,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const seekBackward = useCallback(() => {
     if (!audioRef.current || !currentEpisode) return;
     const nextPos = clampPosition(
-      audioRef.current.currentTime - 10,
+      audioRef.current.currentTime - 15,
       currentEpisodeDuration
     );
     if (setAudioPosition(audioRef.current, nextPos)) {

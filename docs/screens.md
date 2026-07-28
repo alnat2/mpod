@@ -253,7 +253,7 @@ Content:
 - podcast name
 - play or pause
 - progress display and seek affordance
-- skip backward and forward
+- skip backward by 15 seconds and forward by 30 seconds
 - playback speed control using the canonical options in [frontend-decisions.md](frontend-decisions.md#playback-speed-control)
 - optional entry point to expanded controls if later approved
 

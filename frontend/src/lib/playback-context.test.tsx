@@ -597,10 +597,10 @@ describe("PlaybackProvider", () => {
     audio.currentTime = 120;
 
     await user.click(screen.getByRole("button", { name: "Forward" }));
-    expect(audio.currentTime).toBe(135);
+    expect(audio.currentTime).toBe(150);
 
     await user.click(screen.getByRole("button", { name: "Backward" }));
-    expect(audio.currentTime).toBe(125);
+    expect(audio.currentTime).toBe(135);
 
     await user.click(screen.getByRole("button", { name: "Seek exact" }));
     expect(audio.currentTime).toBe(333);

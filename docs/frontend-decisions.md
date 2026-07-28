@@ -221,6 +221,16 @@ Rules:
 - backend playback progress remains stored in seconds and should not depend on the selected speed label
 - do not add extra speed options unless the product decision changes
 
+### Playback Seek Controls
+
+Decision:
+- the player seeks backward by 15 seconds
+- the player seeks forward by 30 seconds
+
+Rules:
+- mobile and desktop player controls must display intervals that match the actual seek behavior
+- seeking must continue to synchronize the resulting playback position with `didSeek: true`
+
 ### Playback Completion Contract
 
 Decision:
