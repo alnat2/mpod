@@ -1,6 +1,6 @@
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  Home04Icon,
+  Playlist02Icon,
   PlusSignSquareIcon,
   RssIcon,
   Settings05Icon,
@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 
 type BottomNavItem = {
   href?: string;
-  icon: typeof Home04Icon;
+  icon: typeof Playlist02Icon;
   label: string;
   onClick?: () => void;
 };
@@ -23,14 +23,14 @@ type BottomNavProps = {
 };
 
 const defaultItems: BottomNavItem[] = [
-  { href: "/home", icon: Home04Icon, label: "Home" },
+  { href: "/home", icon: Playlist02Icon, label: "Player" },
   { href: "/subscriptions", icon: RssIcon, label: "Subscriptions" },
   { href: "/settings", icon: Settings05Icon, label: "Settings" },
   { icon: PlusSignSquareIcon, label: "Add podcast" },
 ];
 
 export function BottomNav({
-  activeItem = "Home",
+  activeItem = "Player",
   className,
   onAdd,
 }: BottomNavProps) {
@@ -42,7 +42,7 @@ export function BottomNav({
         className
       )}
     >
-      <div className="flex h-[65px] w-full min-w-0 items-center justify-center">
+      <div className="flex h-[65px] w-full min-w-0 items-center justify-center gap-4">
         {defaultItems.map((item) => {
           const isActive = item.label === activeItem;
           const content = (
@@ -51,7 +51,7 @@ export function BottomNav({
                 <HugeiconsIcon
                   icon={item.icon}
                   className={cn(
-                    "size-5",
+                    "size-7",
                     isActive ? "text-primary" : "text-muted-foreground"
                   )}
                   aria-hidden="true"
@@ -59,7 +59,7 @@ export function BottomNav({
               </span>
               <span
                 className={cn(
-                  "w-full truncate text-center text-xs leading-4 font-medium tracking-normal",
+                  "whitespace-nowrap text-center text-xs leading-4 font-medium tracking-normal",
                   isActive ? "text-primary" : "text-muted-foreground"
                 )}
               >
@@ -73,7 +73,7 @@ export function BottomNav({
               <Link
                 key={item.label}
                 to={item.href}
-                className="flex h-14 min-w-0 flex-1 flex-col items-center justify-center gap-[3px] py-[3px]"
+                className="flex h-14 shrink-0 flex-col items-center justify-center gap-[3px] py-[3px]"
               >
                 {content}
               </Link>
@@ -84,7 +84,7 @@ export function BottomNav({
             <button
               key={item.label}
               type="button"
-              className="flex h-14 min-w-0 flex-1 flex-col items-center justify-center gap-[3px] py-[3px]"
+              className="flex h-14 shrink-0 flex-col items-center justify-center gap-[3px] py-[3px]"
               onClick={item.onClick ?? onAdd}
             >
               {content}

@@ -5,6 +5,29 @@ import { describe, expect, it } from "vitest";
 import { AppShell } from "./app-shell";
 
 describe("AppShell", () => {
+  it("uses Player as the mobile and desktop label for the home route", () => {
+    render(
+      <MemoryRouter>
+        <AppShell activeNavItem="Player" pageTitle="Player">
+          <div>Content</div>
+        </AppShell>
+      </MemoryRouter>
+    );
+
+    const playerLinks = screen.getAllByRole("link", { name: "Player" });
+
+    expect(playerLinks).toHaveLength(2);
+    for (const link of playerLinks) {
+      expect(link).toHaveAttribute("href", "/home");
+    }
+
+    const mobilePlayerLink = playerLinks.find((link) =>
+      link.closest("nav")?.classList.contains("md:hidden")
+    );
+    expect(mobilePlayerLink?.querySelector("svg")).toHaveClass("size-7");
+    expect(screen.queryByRole("link", { name: "Home" })).not.toBeInTheDocument();
+  });
+
   it("keeps the mobile bottom navigation fixed to the viewport bottom", () => {
     render(
       <MemoryRouter>

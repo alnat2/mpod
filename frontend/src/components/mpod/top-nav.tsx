@@ -20,13 +20,13 @@ type TopNavProps = {
 };
 
 const defaultNavItems: NavItem[] = [
-  { label: "Home", href: "/home" },
+  { label: "Player", href: "/home" },
   { label: "Subscriptions", href: "/subscriptions" },
   { label: "Settings", href: "/settings" },
 ];
 
 export function TopNav({
-  activeItem = "Home",
+  activeItem = "Player",
   className,
   navItems = defaultNavItems,
   onAdd,

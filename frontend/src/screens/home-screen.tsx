@@ -223,7 +223,7 @@ export function HomeScreen() {
   return (
     <>
       <AppShell
-        activeNavItem="Home"
+        activeNavItem="Player"
         onAddPodcast={() => setModal("rss")}
         pageTitle="Now playing"
         pageSubtitle=""

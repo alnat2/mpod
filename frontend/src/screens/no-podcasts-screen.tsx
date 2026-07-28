@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 export function NoPodcastsScreen() {
   return (
     <AppShell
-      activeNavItem="Home"
+      activeNavItem="Player"
       pageTitle="No podcasts"
       pageSubtitle="Start with one RSS feed or import subscriptions from another app."
       pageActions={[]}
