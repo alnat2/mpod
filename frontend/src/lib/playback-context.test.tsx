@@ -608,6 +608,7 @@ describe("PlaybackProvider", () => {
     expect(updateSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         episodeId: 1,
+        completed: false,
         didSeek: true,
       })
     );
@@ -637,6 +638,7 @@ describe("PlaybackProvider", () => {
       expect.objectContaining({
         episodeId: 1,
         positionSeconds: 222,
+        completed: false,
       })
     );
   });
@@ -868,6 +870,44 @@ describe("PlaybackProvider", () => {
         completed: true,
       })
     );
+  });
+
+  it("starts a backend-selected fallback at zero without playback state", async () => {
+    const user = userEvent.setup();
+    playback.set(1, null);
+    vi.spyOn(api.playback, "update").mockImplementation(async (payload) => ({
+      playback: {
+        episodeId: payload.episodeId,
+        positionSeconds: payload.positionSeconds,
+        lastUpdated: "2026-05-22T09:00:00Z",
+      },
+      nextEpisodeId:
+        payload.episodeId === 2 && payload.completed ? 1 : null,
+    }));
+
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Play second" }));
+
+    const audio = FakeAudio.instances[0];
+    audio.currentTime = 2400;
+    audio.emit("ended");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent(
+        "First queued episode"
+      );
+    });
+
+    expect(audio.src).toContain("/api/episodes/1/audio");
+    expect(audio.currentTime).toBe(0);
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
   });
 
   it("does not rerender dispatch-only consumers on audio time updates", async () => {

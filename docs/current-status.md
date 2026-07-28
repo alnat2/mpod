@@ -59,7 +59,7 @@ The Go backend scaffold is now in place with:
 - episode detail
 - playlist list/add/remove/reorder
 - episode download, download deletion, and authenticated audio playback delivery
-- playback get/update with sync conflict rules
+- playback get/update with sync conflict rules, explicit client-reported completion, and backend-selected completion fallback
 - episode listened/unlistened patch endpoint
 - shared outbound HTTP client with optional SOCKS5 support; proxy enabled routes backend outbound network traffic through the proxy, proxy disabled uses direct network access, with a playback-streaming-only direct retry when a proxied audio response is failed or non-playable
 - settings get/update for `daily_refresh_time`

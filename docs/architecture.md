@@ -379,11 +379,14 @@ sequenceDiagram
   participant B as Backend
   participant D as Database
 
-  F->>B: POST /api/playback
-  B->>B: Apply sync rules
-  B->>B: Decide completion fallback if the finished item was last in playlist
+  F->>B: POST /api/playback completed=false
+  B->>B: Store progress without completion side effects
+  B-->>F: Return stored playback + nextEpisodeId=null
+  F->>B: POST /api/playback completed=true after audio ended
+  B->>B: Apply completion and choose fallback if finished item was last
   B->>D: Update playback state
   B-->>F: Return stored playback + nextEpisodeId
+  F->>F: Start fallback at stored position or 0:00 when playback is null
 ```
 
 ## Session and Auth Flow

@@ -329,11 +329,13 @@ Playback speed:
 - backend playback progress remains stored in seconds
 
 When playback reaches completion:
+- the client sends `POST /api/playback` with `completed: true` only after the audio engine reports actual completion
 - the episode is marked listened
 - the episode is removed from playlist
 - downloaded file cleanup follows approved backend behavior
 - playback advances to the next playlist item if one exists
 - if completion finishes the last playlist item, the backend may return an earlier unlistened playlist episode as `nextEpisodeId`
+- if that fallback has no playback state, playback starts from `0:00`
 
 Design intent:
 - listening should not trap the user in a separate player-only screen
@@ -347,7 +349,8 @@ Backend rules:
 - if no local download exists, playback should stream through the backend
 - playback sync logic and conflict resolution belong to the backend
 - playback progress is persisted by the backend
-- an episode is marked listened when playback reaches 100 percent
+- near-end position sync does not mark an episode listened or remove it from playlist
+- only a request with `completed: true`, sent after actual audio completion, triggers completion side effects
 - the frontend should not invent its own long-term playback authority
 
 ## Cross-Device Resume Flow
@@ -390,8 +393,10 @@ Mark unlistened behavior:
 
 Automatic completion behavior:
 1. User listens until playback reaches completion.
-2. Backend marks the episode listened according to approved playback rules.
-3. Playlist and file side effects are reflected in the UI through refreshed backend state.
+2. Client sends `POST /api/playback` with `completed: true`.
+3. Backend marks the episode listened and returns any `nextEpisodeId`.
+4. Client starts that episode at its stored playback position, or at `0:00` when no playback state exists.
+5. Playlist and file side effects are reflected in the UI through refreshed backend state.
 
 Design intent:
 - completion should feel automatic and predictable

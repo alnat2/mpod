@@ -562,9 +562,12 @@ Success response:
 
 Rules:
 - Conflict resolution rules belong to the playback sync section
-- If playback completion marks the episode listened, that behavior must be applied here
+- Clients must set `completed = true` only after the audio engine reports actual completion.
+- Near-end or full-duration progress with `completed = false` only updates position and must not trigger listened, playlist, or file side effects.
+- If explicit playback completion marks the episode listened, that behavior must be applied here
 - `nextEpisodeId` is backend-owned playback guidance for what to play next after a completion update
 - For non-completion updates, `nextEpisodeId` is `null`
+- When `nextEpisodeId` identifies an episode with no playback record, clients start it from `0:00`.
 
 ### Settings Endpoints
 
@@ -756,6 +759,7 @@ Active playback request fields:
 
 ### Completion Rules
 - If `completed = true`, the episode is treated as finished immediately.
+- Clients send `completed = true` only in response to actual audio completion, not from a position threshold.
 - Progress position alone must not mark an episode finished. Near-end playback progress is stored as progress only unless the client explicitly sends `completed = true`.
 - When an episode is finished:
   - it is marked as listened

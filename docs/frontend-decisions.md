@@ -221,6 +221,19 @@ Rules:
 - backend playback progress remains stored in seconds and should not depend on the selected speed label
 - do not add extra speed options unless the product decision changes
 
+### Playback Completion Contract
+
+Decision:
+- completion is an explicit client signal, separate from periodic progress synchronization
+
+Rules:
+- send `completed: true` only when the browser audio element reports the `ended` event
+- pause, seek, unload/beacon, and periodic progress updates always send `completed: false`, including at or near the duration
+- handle `nextEpisodeId` from the explicit completion response
+- if the selected fallback episode has playback state, resume from its stored position
+- if it has no playback state, start from `0:00`
+- ordinary progress responses must not be treated as completion and must not trigger playlist or file-side reconciliation
+
 ## Guidance For Frontend Implementation
 
 - keep the frontend simple and maintainable

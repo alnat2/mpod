@@ -58,7 +58,7 @@ Needs:
 - Download episodes
 - Add/remove from playlist
 - Mark as listened/unlistened
-- Episode is marked as listened when playback reaches 100 percent
+- Episode is marked as listened only after a client reports actual audio completion
 
 ---
 
@@ -84,6 +84,8 @@ Needs:
 
 - Save playback position periodically
 - Resume on another device
+- Treat ordinary progress updates, including near-end progress, as position sync only
+- Send explicit completion separately from progress sync
 
 ---
 
