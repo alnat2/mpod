@@ -156,6 +156,18 @@ Rules:
 - when manual `Mark listened` or `Mark all listened` commits, backend lifecycle behavior deletes downloaded files as appropriate and removes affected episodes from playlist
 - marking unlistened should not imply that a file deleted by an already committed action will be restored
 
+### Episode Action Presentation
+
+Decision:
+- mobile episode overflow actions open in the Figma-approved bottom Drawer
+- desktop episode actions remain inline icon buttons
+
+Rules:
+- the Drawer header shows the episode title and podcast title
+- the mobile Subscriptions action order is playlist state, show notes, download state, listened state
+- the mobile playlist action order is play or pause, then remove from playlist
+- action availability and labels continue to reflect the current episode state
+
 ### Subscription List Defaults
 
 Decision:

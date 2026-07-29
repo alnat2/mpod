@@ -18,12 +18,6 @@ import {
 
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -31,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { Artwork } from "./artwork";
+import { BottomSheet } from "./bottom-sheet";
 
 type EpisodeRowAction = {
   disabled?: boolean;
@@ -69,6 +64,7 @@ type EpisodeRowProps = {
   onMouseEnter?: MouseEventHandler<HTMLDivElement>;
   onMouseUp?: MouseEventHandler<HTMLDivElement>;
   actions?: EpisodeRowAction[];
+  mobileActions?: EpisodeRowAction[];
   children?: ReactNode;
 };
 
@@ -99,16 +95,23 @@ function EpisodeIconButton({ action }: { action: EpisodeRowAction }) {
   );
 }
 
-function EpisodeActionsMenu({
+function EpisodeActionsSheet({
   action,
   items,
+  podcastTitle,
+  title,
 }: {
   action: EpisodeRowAction;
   items: EpisodeRowAction[];
+  podcastTitle?: string;
+  title: string;
 }) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <BottomSheet
+      actions={items}
+      subtitle={podcastTitle}
+      title={title}
+      trigger={
         <Button
           aria-label={action.label}
           className="rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary"
@@ -125,24 +128,8 @@ function EpisodeActionsMenu({
             aria-hidden="true"
           />
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" sideOffset={8}>
-        {items.map((item) => (
-          <DropdownMenuItem
-            key={item.label}
-            disabled={item.disabled}
-            onSelect={() => item.onClick?.()}
-          >
-            <HugeiconsIcon
-              icon={item.icon}
-              className={cn("size-4", item.iconClassName)}
-              aria-hidden="true"
-            />
-            {item.label}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      }
+    />
   );
 }
 
@@ -175,6 +162,7 @@ export function EpisodeRow({
   onMouseEnter,
   onMouseUp,
   actions,
+  mobileActions,
   children,
 }: EpisodeRowProps) {
   const isMobile = layout === "mobile";
@@ -295,9 +283,11 @@ export function EpisodeRow({
           isMobile ? "flex" : isDesktop ? "hidden" : "flex md:hidden"
         )}
       >
-        <EpisodeActionsMenu
+        <EpisodeActionsSheet
           action={resolvedMobileMenuAction}
-          items={resolvedActions}
+          items={mobileActions ?? resolvedActions}
+          podcastTitle={podcastTitle}
+          title={title}
         />
       </div>
       <div

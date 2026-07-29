@@ -4,6 +4,7 @@ export { Artwork } from "./artwork";
 export { AuthCard } from "./auth-card";
 export { AuthShell } from "./auth-shell";
 export { BottomNav } from "./bottom-nav";
+export { BottomSheet } from "./bottom-sheet";
 export { EpisodeRow } from "./episode-row";
 export { FileDropzone } from "./file-dropzone";
 export { Logo } from "./logo";

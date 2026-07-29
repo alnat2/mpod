@@ -33,6 +33,11 @@ class IntersectionObserverMock {
 globalThis.ResizeObserver = ResizeObserverMock;
 globalThis.IntersectionObserver =
   IntersectionObserverMock as unknown as typeof IntersectionObserver;
+if (!HTMLElement.prototype.setPointerCapture) {
+  HTMLElement.prototype.setPointerCapture = () => {};
+  HTMLElement.prototype.releasePointerCapture = () => {};
+  HTMLElement.prototype.hasPointerCapture = () => false;
+}
 globalThis.matchMedia =
   globalThis.matchMedia ??
   ((query: string) => ({

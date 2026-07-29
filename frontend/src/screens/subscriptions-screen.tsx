@@ -797,6 +797,58 @@ export function SubscriptionsScreen() {
                           : episode.inPlaylist
                             ? "In playlist"
                             : undefined;
+                        const downloadAction = {
+                          label: downloading
+                            ? "Downloading"
+                            : episode.downloaded
+                              ? "Downloaded"
+                              : "Download",
+                          icon: downloading
+                            ? Loading02Icon
+                            : episode.downloaded
+                              ? DownloadSquare02Icon
+                              : DownloadSquare01Icon,
+                          iconClassName: downloading
+                            ? "animate-spin"
+                            : episode.downloaded
+                              ? "text-muted-foreground"
+                              : undefined,
+                          disabled: downloading,
+                          onClick:
+                            episode.downloaded || downloading
+                              ? undefined
+                              : () => void downloadFromSubscription(episode.id),
+                        };
+                        const playlistAction = {
+                          label: episode.inPlaylist
+                            ? "Remove from playlist"
+                            : "Add to playlist",
+                          icon: episode.inPlaylist
+                            ? PlayListRemoveIcon
+                            : PlayListAddIcon,
+                          onClick: () =>
+                            episode.inPlaylist
+                              ? void removeFromPlaylist(episode)
+                              : void runAction(() => api.playlist.add(episode.id)),
+                        };
+                        const notesAction = {
+                          label: "Show notes",
+                          icon: NoteIcon,
+                          onClick: () => {
+                            setShowNotesEpisodeId(episode.id);
+                            setModal("show-notes");
+                          },
+                        };
+                        const listenedAction = {
+                          label: episode.isListened
+                            ? "Mark as unlistened"
+                            : "Mark as listened",
+                          icon: episode.isListened ? ViewOffIcon : ViewIcon,
+                          onClick: () =>
+                            episode.isListened
+                              ? void markListened([episode], false)
+                              : void markListened([episode], true),
+                        };
 
                         return (
                           <div
@@ -807,6 +859,7 @@ export function SubscriptionsScreen() {
                             <EpisodeRow
                               layout={isMobile ? "mobile" : "desktop"}
                               title={episode.title}
+                              podcastTitle={selectedPodcast.title}
                               subtitle={subtitle}
                               dateLabel={publishedAt || undefined}
                               durationLabel={duration || undefined}
@@ -817,57 +870,16 @@ export function SubscriptionsScreen() {
                               }
                               thumbnailAlt={`${selectedPodcast.title} artwork`}
                               actions={[
-                                {
-                                  label: downloading
-                                    ? "Downloading"
-                                    : episode.downloaded
-                                      ? "Downloaded"
-                                      : "Download",
-                                  icon: downloading
-                                    ? Loading02Icon
-                                    : episode.downloaded
-                                      ? DownloadSquare02Icon
-                                      : DownloadSquare01Icon,
-                                  iconClassName: downloading
-                                    ? "animate-spin"
-                                    : episode.downloaded
-                                      ? "text-muted-foreground"
-                                      : undefined,
-                                  disabled: downloading,
-                                  onClick: episode.downloaded || downloading
-                                    ? undefined
-                                    : () => void downloadFromSubscription(episode.id),
-                                },
-                                {
-                                  label: episode.inPlaylist
-                                    ? "Remove from playlist"
-                                    : "Add to playlist",
-                                  icon: episode.inPlaylist
-                                    ? PlayListRemoveIcon
-                                    : PlayListAddIcon,
-                                  onClick: () =>
-                                    episode.inPlaylist
-                                      ? void removeFromPlaylist(episode)
-                                      : void runAction(() => api.playlist.add(episode.id)),
-                                },
-                                {
-                                  label: "Show notes",
-                                  icon: NoteIcon,
-                                  onClick: () => {
-                                    setShowNotesEpisodeId(episode.id);
-                                    setModal("show-notes");
-                                  },
-                                },
-                                {
-                                  label: episode.isListened
-                                    ? "Mark as unlistened"
-                                    : "Mark as listened",
-                                  icon: episode.isListened ? ViewOffIcon : ViewIcon,
-                                  onClick: () =>
-                                    episode.isListened
-                                      ? void markListened([episode], false)
-                                      : void markListened([episode], true),
-                                },
+                                downloadAction,
+                                playlistAction,
+                                notesAction,
+                                listenedAction,
+                              ]}
+                              mobileActions={[
+                                playlistAction,
+                                notesAction,
+                                downloadAction,
+                                listenedAction,
                               ]}
                             />
                           </div>

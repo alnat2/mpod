@@ -189,6 +189,53 @@ export function MobilePodcastColumn({
               : episode.inPlaylist
                 ? "In playlist"
                 : undefined;
+            const downloadAction = {
+              label: downloading
+                ? "Downloading"
+                : episode.downloaded
+                  ? "Downloaded"
+                  : "Download",
+              icon: downloading
+                ? Loading02Icon
+                : episode.downloaded
+                  ? DownloadSquare02Icon
+                  : DownloadSquare01Icon,
+              iconClassName: downloading
+                ? "animate-spin"
+                : episode.downloaded
+                  ? "text-muted-foreground"
+                  : undefined,
+              disabled: downloading,
+              onClick:
+                episode.downloaded || downloading
+                  ? undefined
+                  : () => onDownload(episode.id),
+            };
+            const playlistAction = {
+              label: episode.inPlaylist
+                ? "Remove from playlist"
+                : "Add to playlist",
+              icon: episode.inPlaylist
+                ? PlayListRemoveIcon
+                : PlayListAddIcon,
+              onClick: () =>
+                episode.inPlaylist
+                  ? onRemoveFromPlaylist(episode)
+                  : onAddToPlaylist(episode.id),
+            };
+            const notesAction = {
+              label: "Show notes",
+              icon: NoteIcon,
+              onClick: () => onShowNotes(episode.id),
+            };
+            const listenedAction = {
+              label: episode.isListened
+                ? "Mark as unlistened"
+                : "Mark as listened",
+              icon: episode.isListened ? ViewOffIcon : ViewIcon,
+              onClick: () =>
+                onMarkListened([episode], !episode.isListened),
+            };
 
             return (
               <div
@@ -199,6 +246,7 @@ export function MobilePodcastColumn({
                 <EpisodeRow
                   layout="mobile"
                   title={episode.title}
+                  podcastTitle={podcast.title}
                   subtitle={subtitle}
                   dateLabel={publishedAt || undefined}
                   durationLabel={duration || undefined}
@@ -209,53 +257,16 @@ export function MobilePodcastColumn({
                   }
                   thumbnailAlt={`${podcast.title} artwork`}
                   actions={[
-                    {
-                      label: downloading
-                        ? "Downloading"
-                        : episode.downloaded
-                          ? "Downloaded"
-                          : "Download",
-                      icon: downloading
-                        ? Loading02Icon
-                        : episode.downloaded
-                          ? DownloadSquare02Icon
-                          : DownloadSquare01Icon,
-                      iconClassName: downloading
-                        ? "animate-spin"
-                        : episode.downloaded
-                          ? "text-muted-foreground"
-                          : undefined,
-                      disabled: downloading,
-                      onClick:
-                        episode.downloaded || downloading
-                          ? undefined
-                          : () => onDownload(episode.id),
-                    },
-                    {
-                      label: episode.inPlaylist
-                        ? "Remove from playlist"
-                        : "Add to playlist",
-                      icon: episode.inPlaylist
-                        ? PlayListRemoveIcon
-                        : PlayListAddIcon,
-                      onClick: () =>
-                        episode.inPlaylist
-                          ? onRemoveFromPlaylist(episode)
-                          : onAddToPlaylist(episode.id),
-                    },
-                    {
-                      label: "Show notes",
-                      icon: NoteIcon,
-                      onClick: () => onShowNotes(episode.id),
-                    },
-                    {
-                      label: episode.isListened
-                        ? "Mark as unlistened"
-                        : "Mark as listened",
-                      icon: episode.isListened ? ViewOffIcon : ViewIcon,
-                      onClick: () =>
-                        onMarkListened([episode], !episode.isListened),
-                    },
+                    downloadAction,
+                    playlistAction,
+                    notesAction,
+                    listenedAction,
+                  ]}
+                  mobileActions={[
+                    playlistAction,
+                    notesAction,
+                    downloadAction,
+                    listenedAction,
                   ]}
                 />
               </div>
