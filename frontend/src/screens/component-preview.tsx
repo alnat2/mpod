@@ -16,13 +16,13 @@ import {
 import { Button } from "@/components/ui/button";
 
 const featuredEpisode = {
-  title: "Mock Episode Title",
-  podcastTitle: "Mock Podcast Title",
+  title: "Why store loyalty cards became a UX minefield",
+  podcastTitle: "Decoder Ring",
   artworkUrl: undefined,
   artworkAlt: "Artwork",
-  elapsedLabel: "10:00",
-  durationLabel: "45:00",
-  progressValue: 22,
+  elapsedLabel: "23:14",
+  durationLabel: "14:03",
+  progressValue: 49,
 };
 
 const queueEpisodes = [
@@ -95,15 +95,19 @@ export function ComponentPreview() {
       </PreviewSection>
 
       <PreviewSection title="Playback">
-        <Player
-          title={featuredEpisode.title}
-          podcastTitle={featuredEpisode.podcastTitle}
-          artworkUrl={featuredEpisode.artworkUrl}
-          artworkAlt={featuredEpisode.artworkAlt}
-          elapsedLabel={featuredEpisode.elapsedLabel}
-          durationLabel={featuredEpisode.durationLabel}
-          progressValue={featuredEpisode.progressValue}
-        />
+        <div id="player-preview">
+          <Player
+            title={featuredEpisode.title}
+            podcastTitle={featuredEpisode.podcastTitle}
+            artworkUrl={featuredEpisode.artworkUrl}
+            artworkAlt={featuredEpisode.artworkAlt}
+            elapsedLabel={featuredEpisode.elapsedLabel}
+            durationLabel={featuredEpisode.durationLabel}
+            progressValue={featuredEpisode.progressValue}
+            speedLabel="Speed 1.5x"
+            notesDisabled={false}
+          />
+        </div>
         <PlaylistQueue summary="3 episodes · 2h 13m" className="max-w-[1040px]">
           {queueEpisodes.map((episode) => (
             <EpisodeRow
