@@ -389,8 +389,19 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     };
 
     const onPlaying = () => {
+      playingRef.current = true;
+      setPlaying(true);
       userInitiatedPlayRef.current = false;
       setPlaybackError(null);
+    };
+
+    const onPause = () => {
+      const shouldCommitPlayback = playingRef.current;
+      playingRef.current = false;
+      setPlaying(false);
+      if (shouldCommitPlayback) {
+        commitCurrentPlayback();
+      }
     };
 
     const startQueuedEpisode = (episode: QueueEpisode) => {
@@ -451,6 +462,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       if (nextEpisode) {
         startQueuedEpisode(nextEpisode);
       } else {
+        playingRef.current = false;
         setPlaying(false);
       }
 
@@ -466,6 +478,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
     const onError = () => {
       sourceReadyRef.current = false;
+      playingRef.current = false;
       setPlaying(false);
       if (!userInitiatedPlayRef.current) {
         return;
@@ -486,6 +499,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     audio.addEventListener("loadedmetadata", onDurationAvailable);
     audio.addEventListener("durationchange", onDurationAvailable);
     audio.addEventListener("playing", onPlaying);
+    audio.addEventListener("pause", onPause);
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("error", onError);
 
@@ -494,6 +508,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       audio.removeEventListener("loadedmetadata", onDurationAvailable);
       audio.removeEventListener("durationchange", onDurationAvailable);
       audio.removeEventListener("playing", onPlaying);
+      audio.removeEventListener("pause", onPause);
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
       audio.pause();
@@ -501,7 +516,13 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       sourcePrimedRef.current = false;
       sourceReadyRef.current = false;
     };
-  }, [commitPlayback, loadQueue, refreshPlaybackState]);
+  }, [
+    commitActivePlayback,
+    commitCurrentPlayback,
+    commitPlayback,
+    loadQueue,
+    refreshPlaybackState,
+  ]);
 
   // Initial load
   useEffect(() => {
@@ -651,6 +672,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     const audio = audioRef.current;
 
     if (playing) {
+      playingRef.current = false;
       commitCurrentPlayback();
       setPlaying(false);
       return;
@@ -780,6 +802,81 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const clearPlaybackError = useCallback(() => {
     setPlaybackError(null);
   }, []);
+
+  useEffect(() => {
+    if (
+      typeof navigator === "undefined" ||
+      !("mediaSession" in navigator) ||
+      !navigator.mediaSession
+    ) {
+      return;
+    }
+
+    const mediaSession = navigator.mediaSession;
+    const handlePlay = () => {
+      const audio = audioRef.current;
+      if (!audio || !currentEpisodeRef.current || !audio.src) {
+        return;
+      }
+
+      userInitiatedPlayRef.current = true;
+      setPlaybackError(null);
+      void attemptAudioPlay(audio, (error) => {
+        playingRef.current = false;
+        setPlaying(false);
+        setPlaybackError(describeAudioError(error));
+      });
+    };
+    const handlePause = () => {
+      audioRef.current?.pause();
+    };
+
+    const registeredActions: MediaSessionAction[] = [];
+    const registerAction = (
+      action: MediaSessionAction,
+      handler: MediaSessionActionHandler
+    ) => {
+      try {
+        mediaSession.setActionHandler(action, handler);
+        registeredActions.push(action);
+      } catch {
+        // Ignore individual actions unsupported by this browser.
+      }
+    };
+
+    registerAction("play", handlePlay);
+    registerAction("pause", handlePause);
+
+    return () => {
+      for (const action of registeredActions) {
+        try {
+          mediaSession.setActionHandler(action, null);
+        } catch {
+          // The browser may remove Media Session support while the page is inactive.
+        }
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (
+      typeof navigator === "undefined" ||
+      !("mediaSession" in navigator) ||
+      !navigator.mediaSession
+    ) {
+      return;
+    }
+
+    try {
+      navigator.mediaSession.playbackState = currentEpisode
+        ? playing
+          ? "playing"
+          : "paused"
+        : "none";
+    } catch {
+      // Playback still works when the browser exposes only partial Media Session support.
+    }
+  }, [currentEpisode, playing]);
 
   const stateValue = useMemo(
     () => ({

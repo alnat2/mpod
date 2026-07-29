@@ -80,6 +80,27 @@ class FakeAudio {
   }
 }
 
+class FakeMediaSession {
+  playbackState: MediaSessionPlaybackState = "none";
+  handlers = new Map<
+    MediaSessionAction,
+    MediaSessionActionHandler | null
+  >();
+
+  setActionHandler = vi.fn(
+    (
+      action: MediaSessionAction,
+      handler: MediaSessionActionHandler | null
+    ) => {
+      this.handlers.set(action, handler);
+    }
+  );
+
+  invoke(action: MediaSessionAction) {
+    this.handlers.get(action)?.({ action } as MediaSessionActionDetails);
+  }
+}
+
 const playlistItems = [
   {
     episodeId: 1,
@@ -205,6 +226,7 @@ const playback = new Map<number, PlaybackState | null>([
 ]);
 
 let activePlaybackEpisodeId: number | null = null;
+let mediaSession: FakeMediaSession;
 
 function Harness() {
   const {
@@ -294,6 +316,11 @@ describe("PlaybackProvider", () => {
       MEDIA_ERR_NETWORK: 2,
       MEDIA_ERR_DECODE: 3,
       MEDIA_ERR_SRC_NOT_SUPPORTED: 4,
+    });
+    mediaSession = new FakeMediaSession();
+    Object.defineProperty(navigator, "mediaSession", {
+      configurable: true,
+      value: mediaSession,
     });
     episodes.set(1, {
       ...episodes.get(1)!,
@@ -658,6 +685,49 @@ describe("PlaybackProvider", () => {
         completed: false,
       })
     );
+  });
+
+  it("keeps system media controls and player state in sync after pausing", async () => {
+    const user = userEvent.setup();
+    const updateSpy = vi.spyOn(api.playback, "update");
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+
+    const audio = FakeAudio.instances[0];
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+      expect(mediaSession.playbackState).toBe("playing");
+    });
+
+    audio.currentTime = 222;
+    mediaSession.invoke("pause");
+    audio.emit("pause");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("no");
+      expect(mediaSession.playbackState).toBe("paused");
+    });
+    expect(updateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        episodeId: 1,
+        positionSeconds: 222,
+        completed: false,
+      })
+    );
+
+    mediaSession.invoke("play");
+    audio.emit("playing");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+      expect(mediaSession.playbackState).toBe("playing");
+    });
+    expect(audio.playImpl).toHaveBeenCalledTimes(2);
   });
 
   it("refreshes stale backend playback before resuming a paused episode", async () => {
