@@ -7,6 +7,7 @@ import { BrowserRouter, useLocation } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthShell } from "@/components/mpod";
 import { api, type AuthSession } from "@/lib/api";
+import { SubscriptionsCacheProvider } from "@/lib/subscriptions-cache-provider";
 
 const AuthenticatedPlaybackProvider = lazy(async () => {
   const module = await import("@/lib/playback-context");
@@ -226,7 +227,9 @@ function AppRoutes() {
   return (
     <Suspense fallback={<LoadingScreen />}>
       {authenticated ? (
-        <AuthenticatedPlaybackProvider>{routes}</AuthenticatedPlaybackProvider>
+        <AuthenticatedPlaybackProvider>
+          <SubscriptionsCacheProvider>{routes}</SubscriptionsCacheProvider>
+        </AuthenticatedPlaybackProvider>
       ) : (
         routes
       )}

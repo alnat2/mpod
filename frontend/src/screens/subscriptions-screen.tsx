@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -29,6 +29,10 @@ import {
 } from "@/components/ui/carousel";
 import { api, type Episode, type Podcast } from "@/lib/api";
 import { usePlaybackDispatch } from "@/lib/playback-context";
+import {
+  type CachedSubscriptionPodcast,
+  useSubscriptionsCache,
+} from "@/lib/subscriptions-cache";
 import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
@@ -55,10 +59,6 @@ import { useAudioMetadataDurations } from "./use-audio-metadata-durations";
 import { useDelayedActions } from "./use-delayed-actions";
 import { cn } from "@/lib/utils";
 
-type PodcastWithEpisodes = Podcast & {
-  episodes: Array<Episode & { inPlaylist: boolean }>;
-};
-
 const EPISODE_ROW_HEIGHT = 70;
 const MOBILE_EPISODE_ROW_HEIGHT = 76;
 const EPISODE_ROW_GAP = 4;
@@ -83,11 +83,18 @@ function isVisibleByDefault(episode: { inPlaylist: boolean; isListened: boolean 
 export function SubscriptionsScreen() {
   const isMobile = useIsMobileViewport();
   const { reloadQueue } = usePlaybackDispatch();
-  const [showAll, setShowAll] = useState(false);
-  const [selectedPodcastId, setSelectedPodcastId] = useState<number | null>(null);
+  const {
+    hasLoaded,
+    markLoaded,
+    podcasts,
+    selectedPodcastId,
+    setPodcasts,
+    setSelectedPodcastId,
+    setShowAll,
+    showAll,
+  } = useSubscriptionsCache();
   const [modal, setModal] = useState<AddPodcastModalMode | "show-notes">(null);
   const [showNotesEpisodeId, setShowNotesEpisodeId] = useState<number | null>(null);
-  const [podcasts, setPodcasts] = useState<PodcastWithEpisodes[]>([]);
   const [downloadingEpisodeIds, setDownloadingEpisodeIds] = useState<Set<number>>(
     () => new Set()
   );
@@ -95,7 +102,7 @@ export function SubscriptionsScreen() {
     () => new Set()
   );
   const [refreshingAll, setRefreshingAll] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!hasLoaded);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -107,7 +114,7 @@ export function SubscriptionsScreen() {
     DEFAULT_EPISODE_VIEWPORT_HEIGHT
   );
   const episodeListRef = useRef<HTMLDivElement | null>(null);
-  const loadedOnceRef = useRef(false);
+  const loadedOnceRef = useRef(hasLoaded);
   const podcastExitTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(
     new Set()
   );
@@ -148,18 +155,36 @@ export function SubscriptionsScreen() {
         const playlistEpisodeIds = new Set(
           playlistItems.map((item) => item.episodeId)
         );
-        const nextPodcasts = podcastItems.map((podcast) => ({
-          ...podcast,
-          episodes: (episodesByPodcast.get(podcast.id) ?? []).map((episode) => ({
-            ...episode,
-            inPlaylist: playlistEpisodeIds.has(episode.id),
-          })),
-        }));
+        const nextPodcasts: CachedSubscriptionPodcast[] = podcastItems.map(
+          (podcast) => ({
+            ...podcast,
+            episodes: (episodesByPodcast.get(podcast.id) ?? []).map(
+              (episode) => ({
+                ...episode,
+                inPlaylist: playlistEpisodeIds.has(episode.id),
+              })
+            ),
+          })
+        );
 
         if (!cancelled) {
+          const applySubscriptions = () => {
+            setPodcasts(nextPodcasts);
+            setSelectedPodcastId((current) =>
+              current !== null &&
+              nextPodcasts.some((podcast) => podcast.id === current)
+                ? current
+                : nextPodcasts[0]?.id ?? null
+            );
+            markLoaded();
+          };
+
+          if (showLoadingState) {
+            applySubscriptions();
+          } else {
+            startTransition(applySubscriptions);
+          }
           loadedOnceRef.current = true;
-          setPodcasts(nextPodcasts);
-          setSelectedPodcastId((current) => current ?? nextPodcasts[0]?.id ?? null);
         }
       } catch (caught) {
         if (!cancelled) {
@@ -177,7 +202,7 @@ export function SubscriptionsScreen() {
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [markLoaded, reloadKey, setPodcasts, setSelectedPodcastId]);
 
   useEffect(() => {
     return () => {
@@ -309,14 +334,18 @@ export function SubscriptionsScreen() {
   const selectedPodcastTotalEpisodeCount = selectedPodcast?.episodes.length ?? 0;
   const selectedPodcastUnlistenedEpisodeCount =
     selectedPodcast?.episodes.filter((episode) => !episode.isListened).length ?? 0;
-  const pageTitle = hasSubscriptions
-    ? noVisibleUnlistenedPodcasts
-      ? "No unlistened podcasts"
-      : "Subscriptions"
-    : "No podcasts";
-  const pageSubtitle = hasSubscriptions
-    ? podcastCountLabel(podcastsWithPending.length)
-    : "Start with one RSS feed or import subscriptions from another app.";
+  const pageTitle = !hasLoaded
+    ? "Subscriptions"
+    : hasSubscriptions
+      ? noVisibleUnlistenedPodcasts
+        ? "No unlistened podcasts"
+        : "Subscriptions"
+      : "No podcasts";
+  const pageSubtitle = !hasLoaded
+    ? "Loading your podcast library."
+    : hasSubscriptions
+      ? podcastCountLabel(podcastsWithPending.length)
+      : "Start with one RSS feed or import subscriptions from another app.";
   const pageActions: SubscriptionsPageAction[] =
     hasSubscriptions
       ? [
@@ -594,7 +623,7 @@ export function SubscriptionsScreen() {
     }
   }
 
-  function renderPodcastCard(podcast: PodcastWithEpisodes) {
+  function renderPodcastCard(podcast: CachedSubscriptionPodcast) {
     return (
       <PodcastCard
         selected={podcast.id === selectedPodcast?.id}

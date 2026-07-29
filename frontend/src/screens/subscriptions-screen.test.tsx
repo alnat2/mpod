@@ -1,9 +1,10 @@
-import type { ReactNode, Ref, UIEventHandler } from "react";
+import { useState, type ReactNode, type Ref, type UIEventHandler } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api, type Episode, type Podcast } from "@/lib/api";
+import { SubscriptionsCacheProvider } from "@/lib/subscriptions-cache-provider";
 
 import { SubscriptionsScreen } from "./subscriptions-screen";
 
@@ -197,6 +198,23 @@ vi.mock("@/components/mpod", () => ({
   ),
 }));
 
+function renderSubscriptionsScreen() {
+  return render(
+    <SubscriptionsCacheProvider>
+      <SubscriptionsScreen />
+    </SubscriptionsCacheProvider>
+  );
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+
+  return { promise, resolve };
+}
+
 describe("SubscriptionsScreen", () => {
   const podcast: Podcast = {
     id: 1,
@@ -237,10 +255,110 @@ describe("SubscriptionsScreen", () => {
     vi.spyOn(api.playlist, "list").mockResolvedValue({ items: [] });
   });
 
+  it("does not show an empty-library heading during the first load", async () => {
+    const podcastsRequest = deferred<Awaited<ReturnType<typeof api.podcasts.list>>>();
+    const episodesRequest = deferred<Awaited<ReturnType<typeof api.episodes.list>>>();
+    const playlistRequest = deferred<Awaited<ReturnType<typeof api.playlist.list>>>();
+    vi.spyOn(api.podcasts, "list").mockReturnValue(podcastsRequest.promise);
+    vi.spyOn(api.episodes, "list").mockReturnValue(episodesRequest.promise);
+    vi.spyOn(api.playlist, "list").mockReturnValue(playlistRequest.promise);
+
+    renderSubscriptionsScreen();
+
+    expect(screen.getByText("Subscriptions")).toBeInTheDocument();
+    expect(screen.getByText("Loading your podcast library.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Loading subscriptions")).toBeInTheDocument();
+    expect(screen.queryByText("No podcasts")).not.toBeInTheDocument();
+    expect(screen.queryByText("No podcasts yet")).not.toBeInTheDocument();
+
+    await act(async () => {
+      podcastsRequest.resolve({ podcasts: [podcast] });
+      episodesRequest.resolve({ episodes: [baseEpisode] });
+      playlistRequest.resolve({ items: [] });
+    });
+
+    expect(await screen.findByText("1 podcast")).toBeInTheDocument();
+  });
+
+  it("shows cached subscriptions immediately while remount revalidates them", async () => {
+    const podcastsRequest = deferred<Awaited<ReturnType<typeof api.podcasts.list>>>();
+    const episodesRequest = deferred<Awaited<ReturnType<typeof api.episodes.list>>>();
+    const playlistRequest = deferred<Awaited<ReturnType<typeof api.playlist.list>>>();
+    vi.spyOn(api.podcasts, "list")
+      .mockResolvedValueOnce({ podcasts: [podcast] })
+      .mockReturnValue(podcastsRequest.promise);
+    vi.spyOn(api.episodes, "list")
+      .mockResolvedValueOnce({
+        episodes: [{ ...baseEpisode, isListened: true }],
+      })
+      .mockReturnValue(episodesRequest.promise);
+    vi.spyOn(api.playlist, "list")
+      .mockResolvedValueOnce({ items: [] })
+      .mockReturnValue(playlistRequest.promise);
+
+    function CacheHarness() {
+      const [visible, setVisible] = useState(true);
+
+      return (
+        <>
+          <button type="button" onClick={() => setVisible((current) => !current)}>
+            Toggle subscriptions
+          </button>
+          {visible ? <SubscriptionsScreen /> : null}
+        </>
+      );
+    }
+
+    const user = userEvent.setup();
+    render(
+      <SubscriptionsCacheProvider>
+        <CacheHarness />
+      </SubscriptionsCacheProvider>
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "Show all" })
+    );
+    expect(
+      await screen.findByTestId("episode-row-QA reorder third")
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Toggle subscriptions" })
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Toggle subscriptions" })
+    );
+
+    expect(screen.getByTestId("episode-row-QA reorder third")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show unlistened" })
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Loading subscriptions")).not.toBeInTheDocument();
+    expect(screen.queryByText("No podcasts")).not.toBeInTheDocument();
+
+    await act(async () => {
+      podcastsRequest.resolve({
+        podcasts: [{ ...podcast, title: "Updated Build Your SaaS" }],
+      });
+      episodesRequest.resolve({
+        episodes: [
+          { ...baseEpisode, title: "Updated episode", isListened: true },
+        ],
+      });
+      playlistRequest.resolve({ items: [] });
+    });
+
+    expect(await screen.findByText("Updated Build Your SaaS")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("episode-row-Updated episode")
+    ).toBeInTheDocument();
+  });
+
   it("renders the agreed action order for a plain episode", async () => {
     const perPodcastEpisodesSpy = vi.spyOn(api.podcasts, "episodes");
 
-    render(<SubscriptionsScreen />);
+    renderSubscriptionsScreen();
 
     const row = await screen.findByTestId("episode-row-QA reorder third");
     const buttons = Array.from(row.querySelectorAll("button")).map((button) =>
@@ -279,7 +397,7 @@ describe("SubscriptionsScreen", () => {
       ],
     });
 
-    render(<SubscriptionsScreen />);
+    renderSubscriptionsScreen();
 
     expect(await screen.findByText("2 podcasts")).toBeInTheDocument();
     expect(screen.getByText("2 / 1 episodes")).toBeInTheDocument();
@@ -337,7 +455,7 @@ describe("SubscriptionsScreen", () => {
       ],
     });
 
-    render(<SubscriptionsScreen />);
+    renderSubscriptionsScreen();
 
     expect(await screen.findByText("Build Your SaaS")).toBeInTheDocument();
     expect(screen.getByText("Second Show")).toBeInTheDocument();
@@ -372,7 +490,7 @@ describe("SubscriptionsScreen", () => {
       ],
     });
 
-    render(<SubscriptionsScreen />);
+    renderSubscriptionsScreen();
     await userEvent.setup().click(
       await screen.findByRole("button", { name: "Show all" })
     );
@@ -392,7 +510,7 @@ describe("SubscriptionsScreen", () => {
 
   it("opens the show notes modal from the row action", async () => {
     const user = userEvent.setup();
-    render(<SubscriptionsScreen />);
+    renderSubscriptionsScreen();
 
     await user.click(await screen.findByRole("button", { name: "Show notes" }));
 
@@ -431,7 +549,7 @@ describe("SubscriptionsScreen", () => {
       episodes: [baseEpisode, secondEpisode],
     });
 
-    render(<SubscriptionsScreen />);
+    renderSubscriptionsScreen();
 
     const secondRow = await screen.findByTestId("episode-row-Second episode");
     await user.click(
@@ -455,7 +573,7 @@ describe("SubscriptionsScreen", () => {
       episodes: manyEpisodes,
     });
 
-    render(<SubscriptionsScreen />);
+    renderSubscriptionsScreen();
 
     expect(await screen.findByTestId("episode-row-Episode 1")).toBeInTheDocument();
     expect(screen.getByTestId("episode-row-Episode 13")).toBeInTheDocument();
@@ -476,7 +594,7 @@ describe("SubscriptionsScreen", () => {
   });
 
   it("keeps the mobile episode list vertically scrollable above the bottom nav", async () => {
-    render(<SubscriptionsScreen />);
+    renderSubscriptionsScreen();
 
     const body = await screen.findByTestId("playlist-queue-body");
 
@@ -488,7 +606,7 @@ describe("SubscriptionsScreen", () => {
     const user = userEvent.setup();
     const addSpy = vi.spyOn(api.playlist, "add").mockResolvedValue({ success: true });
 
-    render(<SubscriptionsScreen />);
+    renderSubscriptionsScreen();
 
     await user.click(await screen.findByRole("button", { name: "Add to playlist" }));
 
@@ -529,7 +647,7 @@ describe("SubscriptionsScreen", () => {
       },
     });
 
-    render(<SubscriptionsScreen />);
+    renderSubscriptionsScreen();
 
     await user.click(await screen.findByRole("button", { name: "Show all" }));
     const row = await screen.findByTestId("episode-row-QA reorder third");
@@ -569,7 +687,7 @@ describe("SubscriptionsScreen", () => {
       },
     });
 
-    render(<SubscriptionsScreen />);
+    renderSubscriptionsScreen();
 
     await user.click(await screen.findByRole("button", { name: "Mark as listened" }));
 
@@ -588,7 +706,7 @@ describe("SubscriptionsScreen", () => {
     vi.spyOn(api.podcasts, "list").mockResolvedValue({ podcasts: [] });
     const episodesSpy = vi.spyOn(api.episodes, "list");
 
-    render(<SubscriptionsScreen />);
+    renderSubscriptionsScreen();
 
     expect(await screen.findByText("No podcasts")).toBeInTheDocument();
     expect(screen.getByText("No podcasts yet")).toBeInTheDocument();
@@ -605,7 +723,7 @@ describe("SubscriptionsScreen", () => {
       episodes: [{ ...baseEpisode, isListened: true }],
     });
 
-    render(<SubscriptionsScreen />);
+    renderSubscriptionsScreen();
 
     expect(await screen.findByText("No unlistened podcasts")).toBeInTheDocument();
     expect(screen.getByText("1 podcast")).toBeInTheDocument();
@@ -628,7 +746,7 @@ describe("SubscriptionsScreen", () => {
       .spyOn(api.podcasts, "refreshAll")
       .mockReturnValue(refreshPromise);
 
-    render(<SubscriptionsScreen />);
+    renderSubscriptionsScreen();
 
     const refreshButton = await screen.findByRole("button", {
       name: "Refresh all",
@@ -678,7 +796,7 @@ describe("SubscriptionsScreen", () => {
         },
       });
 
-    render(<SubscriptionsScreen />);
+    renderSubscriptionsScreen();
 
     const refreshButton = await screen.findByRole("button", {
       name: "Refresh all",
@@ -729,7 +847,7 @@ describe("SubscriptionsScreen", () => {
         }))
       );
 
-    render(<SubscriptionsScreen />);
+    renderSubscriptionsScreen();
 
     const refreshButton = await screen.findByRole("button", {
       name: "Refresh Build Your SaaS",
