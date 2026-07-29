@@ -156,6 +156,20 @@ const episodes = new Map<number, Episode>([
     },
   ],
   [
+    3,
+    {
+      id: 3,
+      podcastId: 22,
+      title: "Third queued episode",
+      description: "Third notes",
+      audioUrl: "https://example.com/3.mp3",
+      duration: 2700,
+      downloaded: false,
+      isListened: false,
+      publishedAt: "2026-05-12T10:00:00Z",
+    },
+  ],
+  [
     999,
     {
       id: 999,
@@ -224,6 +238,9 @@ function Harness() {
       <div data-testid="playback-error">{playbackError ?? "none"}</div>
       <button type="button" onClick={() => playEpisode(2)}>
         Play second
+      </button>
+      <button type="button" onClick={() => playEpisode(3)}>
+        Play third
       </button>
       <button type="button" onClick={() => playEpisode(999)}>
         Play queued later
@@ -870,6 +887,71 @@ describe("PlaybackProvider", () => {
         completed: true,
       })
     );
+  });
+
+  it("uses the topmost backend-selected fallback instead of the nearest previous item", async () => {
+    const user = userEvent.setup();
+    const threeItemPlaylist = [
+      ...playlistItems,
+      {
+        episodeId: 3,
+        position: 3,
+        episode: {
+          id: 3,
+          title: "Third queued episode",
+          podcastId: 22,
+          isListened: false,
+          downloaded: false,
+        },
+      },
+    ];
+
+    vi.spyOn(api.playback, "queue").mockImplementation(async () => ({
+      queue: threeItemPlaylist.map((item) => {
+        const episode = episodes.get(item.episodeId)!;
+        const podcast = podcasts.find(
+          (candidate) => candidate.id === episode.podcastId
+        )!;
+        return {
+          ...episode,
+          podcastTitle: podcast.title,
+          podcastImageUrl: null,
+          playback: playback.get(episode.id) ?? null,
+        };
+      }),
+      activePlayback: null,
+    }));
+    vi.spyOn(api.playback, "update").mockImplementation(async (payload) => ({
+      playback: {
+        episodeId: payload.episodeId,
+        positionSeconds: payload.positionSeconds,
+        lastUpdated: "2026-05-22T09:00:00Z",
+      },
+      nextEpisodeId:
+        payload.episodeId === 3 && payload.completed ? 1 : null,
+    }));
+
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("queue-size")).toHaveTextContent("3");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Play third" }));
+
+    const audio = FakeAudio.instances[0];
+    audio.currentTime = 2700;
+    audio.emit("ended");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent(
+        "First queued episode"
+      );
+    });
+
+    expect(audio.src).toContain("/api/episodes/1/audio");
+    expect(audio.src).not.toContain("/api/episodes/2/audio");
+    expect(audio.currentTime).toBe(15);
   });
 
   it("starts a backend-selected fallback at zero without playback state", async () => {
