@@ -240,6 +240,7 @@ Rules:
 - send `completed: true` only when the browser audio element reports the `ended` event
 - pause, seek, unload/beacon, and periodic progress updates always send `completed: false`, including at or near the duration
 - handle `nextEpisodeId` from the explicit completion response
+- if completion finishes the last playlist item, backend chooses the topmost earlier unlistened playlist episode, not the nearest previous row
 - if the selected fallback episode has playback state, resume from its stored position
 - if it has no playback state, start from `0:00`
 - ordinary progress responses must not be treated as completion and must not trigger playlist or file-side reconciliation

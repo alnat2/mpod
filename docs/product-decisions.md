@@ -766,7 +766,7 @@ Active playback request fields:
   - playback position is stored as full duration or final reported position
   - any file and playlist side effects follow file lifecycle rules
 - Before removing the finished episode from the playlist, the backend checks whether it was the last item in the pre-removal playlist order.
-- If the finished episode was the last playlist item, the backend looks upward through earlier playlist items and selects the nearest eligible fallback episode.
+- If the finished episode was the last playlist item, the backend looks at earlier playlist items and selects the topmost eligible fallback episode in playlist order.
 - An eligible fallback episode must:
   - still be in the playlist after the finished episode cleanup
   - be unlistened
@@ -801,7 +801,7 @@ If an update is ignored because it is stale or invalid for sync purposes, the AP
 `nextEpisodeId` rules:
 - For ordinary progress updates and ignored stale updates, `nextEpisodeId` is `null`.
 - If playback completion finishes a non-last playlist item, `nextEpisodeId` is `null`; normal sequential playback remains a frontend concern.
-- If playback completion finishes the last playlist item and an eligible earlier unlistened playlist item exists, `nextEpisodeId` contains that episode ID.
+- If playback completion finishes the last playlist item and an eligible earlier unlistened playlist item exists, `nextEpisodeId` contains the topmost eligible episode ID in playlist order.
 
 ### Read Behavior
 `GET /api/playback/:episodeId` returns:

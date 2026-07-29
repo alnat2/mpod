@@ -334,7 +334,7 @@ When playback reaches completion:
 - the episode is removed from playlist
 - downloaded file cleanup follows approved backend behavior
 - playback advances to the next playlist item if one exists
-- if completion finishes the last playlist item, the backend may return an earlier unlistened playlist episode as `nextEpisodeId`
+- if completion finishes the last playlist item, the backend may return the topmost earlier unlistened playlist episode as `nextEpisodeId`
 - if that fallback has no playback state, playback starts from `0:00`
 
 Design intent:
