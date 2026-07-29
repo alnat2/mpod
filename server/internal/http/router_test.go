@@ -1584,8 +1584,8 @@ func TestPlaybackCompletionReturnsFallbackEpisodeForLastPlaylistItem(t *testing.
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("unmarshal playback response: %v", err)
 	}
-	if payload.NextEpisodeID == nil || *payload.NextEpisodeID != 2 {
-		t.Fatalf("expected fallback episode 2, got %+v", payload.NextEpisodeID)
+	if payload.NextEpisodeID == nil || *payload.NextEpisodeID != 1 {
+		t.Fatalf("expected fallback episode 1, got %+v", payload.NextEpisodeID)
 	}
 }
 

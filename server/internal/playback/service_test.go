@@ -469,7 +469,7 @@ func TestUpdateIgnoresBackwardDriftWithoutSeek(t *testing.T) {
 	}
 }
 
-func TestUpdateCompletionSelectsNearestEarlierUnlistenedEpisodeWhenFinishingLastPlaylistItem(t *testing.T) {
+func TestUpdateCompletionSelectsTopmostEarlierUnlistenedEpisodeWhenFinishingLastPlaylistItem(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
@@ -503,12 +503,12 @@ func TestUpdateCompletionSelectsNearestEarlierUnlistenedEpisodeWhenFinishingLast
 		t.Fatalf("Update returned error: %v", err)
 	}
 
-	if result.NextEpisodeID == nil || *result.NextEpisodeID != 2 {
-		t.Fatalf("expected fallback episode 2, got %v", result.NextEpisodeID)
+	if result.NextEpisodeID == nil || *result.NextEpisodeID != 1 {
+		t.Fatalf("expected fallback episode 1, got %v", result.NextEpisodeID)
 	}
 
 	var playlistCount int
-	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM playlist WHERE episode_id = 2`).Scan(&playlistCount); err != nil {
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM playlist WHERE episode_id = 1`).Scan(&playlistCount); err != nil {
 		t.Fatalf("query playlist count: %v", err)
 	}
 	if playlistCount != 1 {
@@ -516,7 +516,7 @@ func TestUpdateCompletionSelectsNearestEarlierUnlistenedEpisodeWhenFinishingLast
 	}
 
 	var listened bool
-	if err := db.SQL.QueryRow(`SELECT is_listened FROM episodes WHERE id = 2`).Scan(&listened); err != nil {
+	if err := db.SQL.QueryRow(`SELECT is_listened FROM episodes WHERE id = 1`).Scan(&listened); err != nil {
 		t.Fatalf("query listened state: %v", err)
 	}
 	if listened {
@@ -524,7 +524,7 @@ func TestUpdateCompletionSelectsNearestEarlierUnlistenedEpisodeWhenFinishingLast
 	}
 
 	var playbackCount int
-	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM playback WHERE episode_id = 2`).Scan(&playbackCount); err != nil {
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM playback WHERE episode_id = 1`).Scan(&playbackCount); err != nil {
 		t.Fatalf("query playback count: %v", err)
 	}
 	if playbackCount != 0 {

@@ -389,7 +389,7 @@ func (s *Service) findCompletionFallback(ctx context.Context, completedEpisodeID
 		return nil, nil
 	}
 
-	for i := currentIndex - 1; i >= 0; i-- {
+	for i := 0; i < currentIndex; i++ {
 		item := items[i]
 		if item.listened {
 			continue
