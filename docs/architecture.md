@@ -32,6 +32,7 @@ At runtime:
 - the backend reads and writes SQLite data
 - the backend stores downloaded media files on disk
 - the backend performs scheduled RSS refresh jobs
+- `SIGTERM` and `SIGINT` stop the scheduler, allow active HTTP requests up to 10 seconds to finish, and then close SQLite
 
 ## System Diagram
 

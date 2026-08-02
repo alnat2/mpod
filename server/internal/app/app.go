@@ -2,9 +2,13 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/cross/mpod/server/internal/config"
@@ -14,13 +18,20 @@ import (
 	"github.com/cross/mpod/server/internal/storage"
 )
 
+const defaultShutdownTimeout = 10 * time.Second
+
 type App struct {
-	config    config.Config
-	logger    *log.Logger
-	server    *http.Server
-	db        *storage.DB
-	cancel    context.CancelFunc
-	scheduler *scheduler.Service
+	config          config.Config
+	logger          *log.Logger
+	server          *http.Server
+	db              io.Closer
+	cancel          context.CancelFunc
+	scheduler       *scheduler.Service
+	listen          func(network, address string) (net.Listener, error)
+	shutdownTimeout time.Duration
+	stopOnce        sync.Once
+	closeOnce       sync.Once
+	closeErr        error
 }
 
 func New(logger *log.Logger) (*App, error) {
@@ -65,28 +76,83 @@ func New(logger *log.Logger) (*App, error) {
 	}
 
 	return &App{
-		config:    cfg,
-		logger:    logger,
-		server:    server,
-		db:        db,
-		cancel:    cancel,
-		scheduler: schedulerService,
+		config:          cfg,
+		logger:          logger,
+		server:          server,
+		db:              db,
+		cancel:          cancel,
+		scheduler:       schedulerService,
+		listen:          net.Listen,
+		shutdownTimeout: defaultShutdownTimeout,
 	}, nil
 }
 
-func (a *App) Run() error {
+func (a *App) Run(ctx context.Context) error {
 	a.logger.Printf("mpod backend listening on :%s", a.config.Port)
-	defer func() {
-		a.cancel()
-		_ = a.db.Close()
+
+	listener, err := a.listen("tcp", a.server.Addr)
+	if err != nil {
+		return errors.Join(fmt.Errorf("listen for HTTP requests: %w", err), a.closeResources())
+	}
+
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- a.server.Serve(listener)
 	}()
-	return a.server.ListenAndServe()
+
+	select {
+	case err := <-serveErr:
+		return errors.Join(normalizeServeError(err), a.closeResources())
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), a.shutdownTimeout)
+		defer cancel()
+
+		shutdownErr := a.Shutdown(shutdownCtx)
+		return errors.Join(shutdownErr, normalizeServeError(<-serveErr))
+	}
 }
 
 func (a *App) Shutdown(ctx context.Context) error {
-	a.cancel()
+	a.stopBackground()
 	if err := a.server.Shutdown(ctx); err != nil {
-		return err
+		closeErr := a.server.Close()
+		return errors.Join(
+			fmt.Errorf("gracefully shut down HTTP server: %w", err),
+			wrapError("force close HTTP server", closeErr),
+			a.closeResources(),
+		)
 	}
-	return a.db.Close()
+	return a.closeResources()
+}
+
+func (a *App) closeResources() error {
+	a.closeOnce.Do(func() {
+		a.stopBackground()
+		if a.db != nil {
+			a.closeErr = wrapError("close database", a.db.Close())
+		}
+	})
+	return a.closeErr
+}
+
+func (a *App) stopBackground() {
+	a.stopOnce.Do(func() {
+		if a.cancel != nil {
+			a.cancel()
+		}
+	})
+}
+
+func normalizeServeError(err error) error {
+	if err == nil || errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return fmt.Errorf("serve HTTP requests: %w", err)
+}
+
+func wrapError(operation string, err error) error {
+	if err == nil || errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }
