@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cross/mpod/server/internal/remote"
 	"github.com/mmcdole/gofeed"
 )
 
@@ -662,9 +663,10 @@ func nullableStringValue(value string) any {
 func normalizeFeedURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+	if err != nil || remote.ValidateHTTPURL(parsed) != nil {
 		return "", ErrInvalidFeedURL
 	}
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
 	parsed.Fragment = ""
 	return parsed.String(), nil
 }

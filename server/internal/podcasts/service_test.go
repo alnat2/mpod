@@ -1,11 +1,37 @@
 package podcasts
 
 import (
+	"context"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/mmcdole/gofeed"
 )
+
+func TestCreateFromFeedRejectsNonHTTPAndCredentialURLsBeforeFetch(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	requestCount := 0
+	service := NewService(db.SQL, newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+		requestCount++
+		return nil, nil
+	}))
+
+	for _, rawURL := range []string{
+		"file:///etc/passwd",
+		"ftp://example.com/feed.xml",
+		"https://user:secret@example.com/feed.xml",
+	} {
+		if _, err := service.CreateFromFeed(context.Background(), rawURL); err != ErrInvalidFeedURL {
+			t.Fatalf("expected ErrInvalidFeedURL for %q, got %v", rawURL, err)
+		}
+	}
+	if requestCount != 0 {
+		t.Fatalf("expected invalid URLs not to be fetched, got %d requests", requestCount)
+	}
+}
 
 func TestCollectFeedURLsDeduplicatesNestedOutlines(t *testing.T) {
 	outlines := []opmlOutline{

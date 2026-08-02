@@ -18,8 +18,8 @@ func TestNewHTTPClientUsesDefaultTimeout(t *testing.T) {
 	if client.Timeout != defaultClientTimeout {
 		t.Fatalf("expected 30s timeout, got %v", client.Timeout)
 	}
-	if _, ok := client.Transport.(*http.Transport); !ok {
-		t.Fatalf("expected *http.Transport, got %T", client.Transport)
+	if _, ok := policyTransportNext(t, client).(*http.Transport); !ok {
+		t.Fatalf("expected policy-wrapped *http.Transport, got %T", policyTransportNext(t, client))
 	}
 }
 
@@ -48,8 +48,8 @@ func TestNewHTTPClientWithProxyConfiguredBuildsProxyTransport(t *testing.T) {
 	if client.Timeout != defaultClientTimeout {
 		t.Fatalf("expected 30s timeout, got %v", client.Timeout)
 	}
-	if _, ok := client.Transport.(*http.Transport); !ok {
-		t.Fatalf("expected proxy client to use *http.Transport, got %T", client.Transport)
+	if _, ok := policyTransportNext(t, client).(*http.Transport); !ok {
+		t.Fatalf("expected proxy client to use policy-wrapped *http.Transport, got %T", policyTransportNext(t, client))
 	}
 }
 
@@ -66,8 +66,8 @@ func TestNewHTTPClientWithProxyDeciderWrapsTransportSelection(t *testing.T) {
 	if client.Timeout != defaultClientTimeout {
 		t.Fatalf("expected 30s timeout, got %v", client.Timeout)
 	}
-	if _, ok := client.Transport.(roundTripperFunc); !ok {
-		t.Fatalf("expected decider client to wrap transport selection, got %T", client.Transport)
+	if _, ok := policyTransportNext(t, client).(roundTripperFunc); !ok {
+		t.Fatalf("expected policy to wrap transport selection, got %T", policyTransportNext(t, client))
 	}
 }
 
@@ -81,8 +81,8 @@ func TestNewHTTPClientWithProxyDeciderWithoutProxyConfigUsesDirectTransport(t *t
 	if client.Timeout != defaultClientTimeout {
 		t.Fatalf("expected 30s timeout, got %v", client.Timeout)
 	}
-	if _, ok := client.Transport.(*http.Transport); !ok {
-		t.Fatalf("expected direct transport without proxy config, got %T", client.Transport)
+	if _, ok := policyTransportNext(t, client).(*http.Transport); !ok {
+		t.Fatalf("expected policy-wrapped direct transport without proxy config, got %T", policyTransportNext(t, client))
 	}
 }
 
@@ -99,8 +99,8 @@ func TestNewStreamingHTTPClientWithProxyDeciderDisablesClientTimeout(t *testing.
 	if client.Timeout != 0 {
 		t.Fatalf("expected no client timeout, got %v", client.Timeout)
 	}
-	if _, ok := client.Transport.(roundTripperFunc); !ok {
-		t.Fatalf("expected decider client to wrap transport selection, got %T", client.Transport)
+	if _, ok := policyTransportNext(t, client).(roundTripperFunc); !ok {
+		t.Fatalf("expected policy to wrap transport selection, got %T", policyTransportNext(t, client))
 	}
 }
 
@@ -172,4 +172,13 @@ func TestNewClientWithRoundTrippersUsesDirectWhenProxyDisabled(t *testing.T) {
 	if directCalls != 1 || proxyCalls != 0 {
 		t.Fatalf("expected direct path only, got direct=%d proxy=%d", directCalls, proxyCalls)
 	}
+}
+
+func policyTransportNext(t *testing.T, client *http.Client) http.RoundTripper {
+	t.Helper()
+	transport, ok := client.Transport.(policyRoundTripper)
+	if !ok {
+		t.Fatalf("expected policyRoundTripper, got %T", client.Transport)
+	}
+	return transport.next
 }

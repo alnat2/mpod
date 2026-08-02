@@ -267,7 +267,7 @@ Responsible for:
 - verify file existence when needed
 - keep `downloaded_path` aligned with disk state
 
-This module should use one shared HTTP client configuration path so proxy-aware network behavior is consistent across all outbound backend network operations, including RSS fetching, scheduled refreshes, media downloads, audio proxying, image proxying, and proxy identity lookup.
+This module should use one shared HTTP client configuration path so proxy-aware network behavior and outbound URL validation are consistent across all backend network operations, including RSS fetching, scheduled refreshes, media downloads, audio proxying, image proxying, and proxy identity lookup. The shared transport accepts only HTTP(S) targets without embedded credentials and revalidates every redirect. Private and loopback HTTP(S) targets remain valid for trusted local-network podcast sources.
 
 ### Scheduler Module
 

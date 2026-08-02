@@ -73,6 +73,7 @@ func newClientWithRoundTrippers(direct, proxy http.RoundTripper, proxyEnabled fu
 			return direct.RoundTrip(req)
 		})
 	}
+	transport = policyRoundTripper{next: transport}
 
 	return &http.Client{
 		Timeout:   timeout,

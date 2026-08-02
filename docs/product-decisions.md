@@ -1143,6 +1143,10 @@ Deployment note:
 - Runtime must fail clearly if `SESSION_SECRET` is missing.
 
 ### Proxy Behavior
+- Backend outbound targets sourced from user input or podcast feeds must use `http` or `https` and must not contain embedded URL credentials.
+- The same outbound URL policy must be applied to the initial request and every redirect target, whether proxy usage is enabled or disabled.
+- Private, loopback, and link-local HTTP(S) targets remain allowed because mpod is a trusted single-user self-hosted application and may consume feeds or media hosted on the local network.
+- Endpoints that cause backend fetches remain session-authenticated; the authenticated user is allowed to intentionally access local-network podcast sources through mpod.
 - SOCKS5 proxy configuration is optional.
 - Default proxy runtime values are `SOCKS5_HOST=192.168.0.222` and `SOCKS5_PORT=1080`.
 - If proxy variables are provided and proxy usage is enabled in Settings, they are used for:
