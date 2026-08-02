@@ -443,9 +443,13 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("loading")).toHaveTextContent("no");
     });
 
-    expect(screen.getByTestId("current-title")).toHaveTextContent("Second queued episode");
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent(
+        "Second queued episode"
+      );
+      expect(screen.getByTestId("position")).toHaveTextContent("42");
+    });
     expect(screen.getByTestId("playing")).toHaveTextContent("no");
-    expect(screen.getByTestId("position")).toHaveTextContent("42");
 
     const audio = FakeAudio.instances[0];
     expect(audio.src).toBe("");
@@ -1040,6 +1044,71 @@ describe("PlaybackProvider", () => {
         completed: true,
       })
     );
+  });
+
+  it("starts a backend fallback from the refreshed queue when the loaded queue is stale", async () => {
+    const user = userEvent.setup();
+    const firstEpisode = episodes.get(1)!;
+    const secondEpisode = episodes.get(2)!;
+    const queueSpy = vi.mocked(api.playback.queue);
+    queueSpy
+      .mockResolvedValueOnce({
+        queue: [
+          {
+            ...secondEpisode,
+            podcastTitle: "Second Podcast",
+            podcastImageUrl: null,
+            playback: playback.get(2) ?? null,
+          },
+        ],
+        activePlayback: {
+          episodeId: 2,
+          lastUpdated: "2026-05-22T09:05:00Z",
+        },
+      })
+      .mockResolvedValueOnce({
+        queue: [
+          {
+            ...firstEpisode,
+            podcastTitle: "First Podcast",
+            podcastImageUrl: null,
+            playback: playback.get(1) ?? null,
+          },
+        ],
+        activePlayback: null,
+      });
+    vi.mocked(api.playback.update).mockImplementation(async (payload) => ({
+      playback: {
+        episodeId: payload.episodeId,
+        positionSeconds: payload.positionSeconds,
+        lastUpdated: "2026-05-22T09:10:00Z",
+      },
+      nextEpisodeId:
+        payload.episodeId === 2 && payload.completed ? 1 : null,
+    }));
+
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent(
+        "Second queued episode"
+      );
+    });
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+
+    const audio = FakeAudio.instances[0];
+    audio.currentTime = 2400;
+    audio.emit("ended");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent(
+        "First queued episode"
+      );
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+    expect(queueSpy).toHaveBeenCalledTimes(2);
+    expect(audio.src).toContain("/api/episodes/1/audio");
+    expect(audio.currentTime).toBe(15);
   });
 
   it("uses the topmost backend-selected fallback instead of the nearest previous item", async () => {

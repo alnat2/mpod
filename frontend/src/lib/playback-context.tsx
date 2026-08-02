@@ -299,12 +299,18 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
           ? nextActiveEpisodeId
           : null
       );
+      return response;
     } catch (err) {
       console.error("Failed to load queue", err);
+      return null;
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const reloadQueue = useCallback(async () => {
+    await loadQueue();
+  }, [loadQueue]);
 
   useEffect(() => {
     queueRef.current = queue;
@@ -438,20 +444,23 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       response: PlaybackUpdateResponse | null
     ) => {
       if (response?.nextEpisodeId == null) {
+        await loadQueue();
         return;
       }
 
-      const fallbackEpisode = queueRef.current.find(
-        (episode) => episode.id === response.nextEpisodeId
-      );
+      const refreshedQueue = await loadQueue();
+      const fallbackEpisode =
+        refreshedQueue?.queue.find(
+          (episode) => episode.id === response.nextEpisodeId
+        ) ??
+        queueRef.current.find(
+          (episode) => episode.id === response.nextEpisodeId
+        );
       if (!fallbackEpisode) {
         return;
       }
 
-      const syncedEpisode = await refreshPlaybackState(fallbackEpisode, {
-        applyEvenIfNotNewer: true,
-      });
-      startQueuedEpisode(syncedEpisode);
+      startQueuedEpisode(fallbackEpisode);
     };
 
     const onEnded = () => {
@@ -474,6 +483,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         async (response) => {
           if (!nextEpisode) {
             await startBackendFallbackEpisode(response);
+            return;
           }
           await loadQueue();
         }
@@ -915,11 +925,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       seekTo,
       seekForward,
       seekBackward,
-      reloadQueue: loadQueue,
+      reloadQueue,
       updateQueue: setQueue,
     }),
     [
-      loadQueue,
+      reloadQueue,
       updateSpeedLabel,
       clearPlaybackError,
       playToggle,
