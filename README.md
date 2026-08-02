@@ -111,6 +111,11 @@ Current backend capabilities include:
 Backend test/bootstrap notes:
 - see [server/TESTING.md](/Users/cross/Documents/mpod/server/TESTING.md)
 
+Frontend checks run from `frontend/`:
+- `npm test` runs the Vitest suite
+- `npm run test:coverage` prints coverage and writes HTML plus JSON summary reports to `frontend/coverage/`
+- coverage is reported as a baseline without an arbitrary pass/fail threshold; bug fixes still require focused regression tests
+
 The next expected additions are:
 - continued frontend/backend integration polish
 - broader end-to-end QA
