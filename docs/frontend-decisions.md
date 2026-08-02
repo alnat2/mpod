@@ -172,7 +172,7 @@ Rules:
 
 Decision:
 - subscription browsing should show podcasts with unlistened episodes by default
-- the Subscriptions page header metadata should display the current number of subscribed podcasts and how many of those podcasts contain at least one unlistened episode, using the format `12 podcasts · 2 with unlistened`; count each podcast at most once and do not display the latest refresh time
+- the Subscriptions page header metadata should display the current number of subscribed podcasts and how many of those podcasts contain at least one unlistened episode, using the format `12 podcasts · 2 unlistened`; count each podcast at most once and do not display the latest refresh time
 - by default, the selected podcast episode list should also show only unlistened episodes
 - the selected podcast episode-list header summary should display total episode count and unlistened episode count for that podcast, for example `123 / 2 episodes`, instead of repeating the selected podcast name
 - podcast cards may expose a manual refresh control for refreshing a single subscription

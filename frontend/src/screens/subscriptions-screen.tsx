@@ -55,7 +55,7 @@ function subscriptionSummaryLabel(
   podcastCount: number,
   podcastsWithUnlistenedCount: number
 ) {
-  return `${podcastCountLabel(podcastCount)} · ${podcastsWithUnlistenedCount} with unlistened`;
+  return `${podcastCountLabel(podcastCount)} · ${podcastsWithUnlistenedCount} unlistened`;
 }
 
 function isVisibleByDefault(episode: {

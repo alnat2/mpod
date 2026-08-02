@@ -278,7 +278,7 @@ describe("SubscriptionsScreen", () => {
     });
 
     expect(
-      await screen.findByText("1 podcast · 1 with unlistened")
+      await screen.findByText("1 podcast · 1 unlistened")
     ).toBeInTheDocument();
   });
 
@@ -377,7 +377,7 @@ describe("SubscriptionsScreen", () => {
     expect(row).not.toHaveTextContent("Build Your SaaS");
     expect(row).not.toHaveTextContent(podcast.title);
     expect(
-      screen.getByText("1 podcast · 1 with unlistened")
+      screen.getByText("1 podcast · 1 unlistened")
     ).toBeInTheDocument();
     expect(screen.getByText("1 / 1 episodes")).toBeInTheDocument();
     expect(perPodcastEpisodesSpy).not.toHaveBeenCalled();
@@ -410,7 +410,7 @@ describe("SubscriptionsScreen", () => {
     renderSubscriptionsScreen();
 
     expect(
-      await screen.findByText("2 podcasts · 1 with unlistened")
+      await screen.findByText("2 podcasts · 1 unlistened")
     ).toBeInTheDocument();
     expect(screen.getByText("2 / 1 episodes")).toBeInTheDocument();
     expect(screen.queryByText("Build Your SaaS episodes")).not.toBeInTheDocument();
@@ -739,7 +739,7 @@ describe("SubscriptionsScreen", () => {
 
     expect(await screen.findByText("No unlistened podcasts")).toBeInTheDocument();
     expect(
-      screen.getByText("1 podcast · 0 with unlistened")
+      screen.getByText("1 podcast · 0 unlistened")
     ).toBeInTheDocument();
     expect(screen.getByText("All caught up")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add RSS feed" })).toBeInTheDocument();

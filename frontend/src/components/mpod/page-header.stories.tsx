@@ -10,7 +10,7 @@ const meta = {
   tags: ["autodocs"],
   args: {
     title: "Subscriptions",
-    subtitle: "12 podcasts · 2 with unlistened",
+    subtitle: "12 podcasts · 2 unlistened",
     actions: [
       {
         label: "Refresh all",
