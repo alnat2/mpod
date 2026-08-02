@@ -126,6 +126,9 @@ func (s *Service) Login(ctx context.Context, username, password string) (User, s
 	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)); err != nil {
 		return User{}, "", ErrInvalidCredentials
 	}
+	if _, err := s.CleanupExpiredSessions(ctx); err != nil {
+		return User{}, "", err
+	}
 
 	sessionID, expiresAt, err := newSessionID(s.now(), s.sessionTTL)
 	if err != nil {
@@ -152,6 +155,18 @@ func (s *Service) Logout(ctx context.Context, sessionID string) error {
 	return nil
 }
 
+func (s *Service) CleanupExpiredSessions(ctx context.Context) (int64, error) {
+	result, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at <= ?`, s.now().UTC())
+	if err != nil {
+		return 0, fmt.Errorf("delete expired sessions: %w", err)
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("count deleted expired sessions: %w", err)
+	}
+	return deleted, nil
+}
+
 func (s *Service) CurrentUser(ctx context.Context, sessionID string) (*User, error) {
 	if sessionID == "" {
 		return nil, nil
@@ -172,7 +187,7 @@ func (s *Service) CurrentUser(ctx context.Context, sessionID string) (*User, err
 		return nil, fmt.Errorf("load current user: %w", err)
 	}
 
-	if expiresAt.Before(s.now().UTC()) {
+	if !expiresAt.After(s.now().UTC()) {
 		if err := s.Logout(ctx, sessionID); err != nil {
 			return nil, err
 		}

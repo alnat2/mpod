@@ -60,6 +60,10 @@ func New(logger *log.Logger) (*App, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if _, err := routerServices.Auth.CleanupExpiredSessions(context.Background()); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("cleanup expired sessions: %w", err)
+	}
 	schedulerService, err := scheduler.NewService(db.SQL, logger, routerServices.Settings, routerServices.Podcasts.RefreshAll, cfg.TZ)
 	if err != nil {
 		_ = db.Close()

@@ -7,12 +7,84 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/cross/mpod/server/internal/config"
+	"github.com/cross/mpod/server/internal/storage"
 )
+
+func TestNewCleansExpiredSessionsAtStartup(t *testing.T) {
+	dataDir := t.TempDir()
+	dbPath := filepath.Join(dataDir, "mpod.sqlite")
+	downloadsDir := filepath.Join(dataDir, "downloads")
+	db, err := storage.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open seed database: %v", err)
+	}
+	if err := storage.Migrate(db.SQL, "../../migrations"); err != nil {
+		t.Fatalf("migrate seed database: %v", err)
+	}
+	if _, err := db.SQL.Exec(`
+		INSERT INTO users (id, username, password_hash) VALUES (1, 'admin', 'unused');
+		INSERT INTO sessions (id, user_id, expires_at) VALUES
+			('expired', 1, '2000-01-01T00:00:00Z'),
+			('active', 1, '2100-01-01T00:00:00Z');
+	`); err != nil {
+		t.Fatalf("seed sessions: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close seed database: %v", err)
+	}
+	originalWorkingDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get working directory: %v", err)
+	}
+	if err := os.Chdir("../.."); err != nil {
+		t.Fatalf("change to server working directory: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(originalWorkingDir); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	})
+
+	t.Setenv("SESSION_SECRET", "test-secret")
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("DB_PATH", dbPath)
+	t.Setenv("DATA_DIR", dataDir)
+	t.Setenv("DOWNLOADS_DIR", downloadsDir)
+	t.Setenv("SOCKS5_HOST", "")
+	t.Setenv("SOCKS5_PORT", "")
+
+	application, err := New(log.New(io.Discard, "", 0))
+	if err != nil {
+		t.Fatalf("New failed: %v", err)
+	}
+	if err := application.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown failed: %v", err)
+	}
+
+	verificationDB, err := storage.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open verification database: %v", err)
+	}
+	defer verificationDB.Close()
+
+	var expiredCount, activeCount int
+	if err := verificationDB.SQL.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id = 'expired'`).Scan(&expiredCount); err != nil {
+		t.Fatalf("query expired session: %v", err)
+	}
+	if err := verificationDB.SQL.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id = 'active'`).Scan(&activeCount); err != nil {
+		t.Fatalf("query active session: %v", err)
+	}
+	if expiredCount != 0 || activeCount != 1 {
+		t.Fatalf("expected startup cleanup to remove only expired session, expired=%d active=%d", expiredCount, activeCount)
+	}
+}
 
 func TestRunGracefullyDrainsActiveRequest(t *testing.T) {
 	requestStarted := make(chan struct{})

@@ -395,6 +395,8 @@ sequenceDiagram
 
 Auth uses server-side sessions with cookies.
 
+Session records expire after 30 days. The backend removes all expired session rows at startup and before creating a new login session; an expired session presented by a client is also deleted immediately. A session is invalid once its expiration timestamp is reached.
+
 Expected flow:
 - if no user exists, frontend shows setup flow
 - first registration creates user and starts session
