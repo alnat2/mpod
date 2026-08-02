@@ -445,6 +445,10 @@ describe("PlaybackProvider", () => {
 
     expect(screen.getByTestId("current-title")).toHaveTextContent("Second queued episode");
     expect(screen.getByTestId("playing")).toHaveTextContent("no");
+    expect(screen.getByTestId("position")).toHaveTextContent("42");
+
+    const audio = FakeAudio.instances[0];
+    expect(audio.src).toBe("");
   });
 
   it("loads the queue through one aggregated API request", async () => {

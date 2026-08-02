@@ -592,8 +592,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       pendingEpisodeId !== null || playing || sourcePrimedRef.current;
 
     if (!currentSrc.includes(targetSrc)) {
-      const initialPos = currentEpisode.playback?.positionSeconds ?? 0;
+      const initialPos = clampPosition(
+        currentEpisode.playback?.positionSeconds ?? 0,
+        currentEpisodeDuration
+      );
       if (!shouldPrimeSource) {
+        setPositionSeconds(initialPos);
         setPlaybackError(null);
         return;
       }
@@ -620,7 +624,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       );
     }
 
-  }, [commitActivePlayback, currentEpisode, playing]);
+  }, [commitActivePlayback, currentEpisode, currentEpisodeDuration, playing]);
 
   // Sync playing state to audio element
   useEffect(() => {
