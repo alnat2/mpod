@@ -182,13 +182,6 @@ export function MobilePodcastColumn({
             const duration = formatDuration(durationForEpisode(episode));
             const publishedAt = formatEpisodeDate(episode.publishedAt);
             const downloading = downloadingEpisodeIds.has(episode.id);
-            const subtitle = episode.downloaded
-              ? episode.inPlaylist
-                ? "Downloaded · In playlist"
-                : "Downloaded"
-              : episode.inPlaylist
-                ? "In playlist"
-                : undefined;
             const downloadAction = {
               label: downloading
                 ? "Downloading"
@@ -247,7 +240,8 @@ export function MobilePodcastColumn({
                   layout="mobile"
                   title={episode.title}
                   podcastTitle={podcast.title}
-                  subtitle={subtitle}
+                  downloaded={episode.downloaded}
+                  inPlaylist={episode.inPlaylist}
                   dateLabel={publishedAt || undefined}
                   durationLabel={duration || undefined}
                   thumbnailUrl={

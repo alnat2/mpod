@@ -16,6 +16,8 @@ import {
   ViewIcon,
 } from "@hugeicons/core-free-icons";
 
+import downloadedStatusIcon from "@/assets/episode-downloaded-status.svg";
+import inPlaylistStatusIcon from "@/assets/episode-in-playlist-status.svg";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -38,6 +40,8 @@ type EpisodeRowAction = {
 type EpisodeRowProps = {
   className?: string;
   current?: boolean;
+  downloaded?: boolean;
+  inPlaylist?: boolean;
   layout?: "auto" | "desktop" | "mobile";
   title: string;
   podcastTitle?: string;
@@ -67,6 +71,38 @@ type EpisodeRowProps = {
   mobileActions?: EpisodeRowAction[];
   children?: ReactNode;
 };
+
+function EpisodeStatusIcon({
+  className,
+  name,
+  src,
+}: {
+  className?: string;
+  name: "downloaded" | "in-playlist";
+  src: string;
+}) {
+  return (
+    <span
+      className="flex size-4 shrink-0 items-center justify-center"
+      data-episode-status-icon={name}
+      aria-hidden="true"
+    >
+      <span
+        className={cn("block bg-current", className)}
+        style={{
+          maskImage: `url("${src}")`,
+          maskPosition: "center",
+          maskRepeat: "no-repeat",
+          maskSize: "100% 100%",
+          WebkitMaskImage: `url("${src}")`,
+          WebkitMaskPosition: "center",
+          WebkitMaskRepeat: "no-repeat",
+          WebkitMaskSize: "100% 100%",
+        }}
+      />
+    </span>
+  );
+}
 
 function EpisodeIconButton({ action }: { action: EpisodeRowAction }) {
   return (
@@ -136,6 +172,8 @@ function EpisodeActionsSheet({
 export function EpisodeRow({
   className,
   current,
+  downloaded = false,
+  inPlaylist = false,
   layout = "auto",
   title,
   podcastTitle,
@@ -167,6 +205,13 @@ export function EpisodeRow({
 }: EpisodeRowProps) {
   const isMobile = layout === "mobile";
   const isDesktop = layout === "desktop";
+  const showMobileStatusIcons = isMobile && (downloaded || inPlaylist);
+  const mobileStatusLabel = [
+    downloaded ? "Downloaded" : null,
+    inPlaylist ? "In playlist" : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
   const resolvedActions =
     actions ??
     [
@@ -251,7 +296,29 @@ export function EpisodeRow({
         >
           {title}
         </p>
-        {resolvedSubtitle ? (
+        {showMobileStatusIcons ? (
+          <div
+            aria-label={mobileStatusLabel}
+            className="flex h-4 items-center gap-1 text-chart-5"
+            data-episode-status="true"
+            role="img"
+          >
+            {downloaded ? (
+              <EpisodeStatusIcon
+                className="size-[13.6667px]"
+                name="downloaded"
+                src={downloadedStatusIcon}
+              />
+            ) : null}
+            {inPlaylist ? (
+              <EpisodeStatusIcon
+                className="size-4"
+                name="in-playlist"
+                src={inPlaylistStatusIcon}
+              />
+            ) : null}
+          </div>
+        ) : resolvedSubtitle ? (
           <p
             className={cn(
               isMobile

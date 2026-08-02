@@ -29,7 +29,7 @@ const queue = [
     showNotes: "First sanitized notes",
     audioUrl: "https://example.com/1.mp3",
     duration: 1800,
-    downloaded: false,
+    downloaded: true,
     isListened: false,
     publishedAt: "2026-05-10T10:00:00Z",
     podcastTitle: "Queue Podcast",
@@ -142,15 +142,24 @@ vi.mock("@/components/mpod", () => ({
   EpisodeRow: ({
     title,
     current,
+    downloaded,
+    inPlaylist,
     showDragHandle,
     actions = [],
   }: {
     title: string;
     current?: boolean;
+    downloaded?: boolean;
+    inPlaylist?: boolean;
     showDragHandle?: boolean;
     actions?: Array<{ label: string; onClick?: () => void }>;
   }) => (
-    <div data-testid={`episode-row-${title}`} data-current={current ? "yes" : "no"}>
+    <div
+      data-testid={`episode-row-${title}`}
+      data-current={current ? "yes" : "no"}
+      data-downloaded={downloaded ? "yes" : "no"}
+      data-in-playlist={inPlaylist ? "yes" : "no"}
+    >
       {showDragHandle ? <span data-testid={`drag-handle-${title}`} /> : null}
       <span>{title}</span>
       {actions.map((action) => (
@@ -217,6 +226,18 @@ describe("HomeScreen", () => {
       "no"
     );
     expect(screen.getByTestId("drag-handle-First queued episode")).toBeInTheDocument();
+  });
+
+  it("shows download state without a redundant playlist state in player rows", async () => {
+    render(<HomeScreen />);
+
+    expect(
+      await screen.findByTestId("episode-row-First queued episode")
+    ).toHaveAttribute("data-downloaded", "yes");
+    expect(screen.getByTestId("episode-row-First queued episode")).toHaveAttribute(
+      "data-in-playlist",
+      "no"
+    );
   });
 
   it("does not reload the queue when the playback provider has already loaded it", async () => {

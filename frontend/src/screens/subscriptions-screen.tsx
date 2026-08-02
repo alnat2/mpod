@@ -861,6 +861,8 @@ export function SubscriptionsScreen() {
                               title={episode.title}
                               podcastTitle={selectedPodcast.title}
                               subtitle={subtitle}
+                              downloaded={episode.downloaded}
+                              inPlaylist={episode.inPlaylist}
                               dateLabel={publishedAt || undefined}
                               durationLabel={duration || undefined}
                               thumbnailUrl={

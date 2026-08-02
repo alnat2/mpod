@@ -32,6 +32,57 @@ describe("EpisodeRow", () => {
     expect(screen.getByText("22m").parentElement).toHaveClass("w-12");
   });
 
+  it("replaces mobile status text with the exact downloaded and playlist icons", () => {
+    const { container } = render(
+      <TooltipProvider>
+        <EpisodeRow
+          downloaded
+          inPlaylist
+          layout="mobile"
+          title="Why store loyalty cards became a UX minefield"
+          podcastTitle="Decoder Ring"
+          subtitle="Downloaded · In playlist"
+          dateLabel="31.03.26"
+          durationLabel="54m"
+          showArtwork={false}
+          showDragHandle
+        />
+      </TooltipProvider>
+    );
+
+    expect(
+      screen.queryByText("Downloaded · In playlist")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Downloaded, In playlist" })
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector('[data-episode-status-icon="downloaded"]')
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector('[data-episode-status-icon="in-playlist"]')
+    ).toBeInTheDocument();
+  });
+
+  it("keeps status text on desktop rows", () => {
+    render(
+      <TooltipProvider>
+        <EpisodeRow
+          downloaded
+          inPlaylist
+          layout="desktop"
+          title="Why store loyalty cards became a UX minefield"
+          subtitle="Downloaded · In playlist"
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText("Downloaded · In playlist")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("img", { name: "Downloaded, In playlist" })
+    ).not.toBeInTheDocument();
+  });
+
   it("opens mobile episode actions in the designed bottom sheet order", async () => {
     const user = userEvent.setup();
     const onShowNotes = vi.fn();

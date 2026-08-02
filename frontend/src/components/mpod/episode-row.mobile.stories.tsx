@@ -23,6 +23,7 @@ const meta = {
     dateLabel: "31.03.26",
     durationLabel: "54m",
     showArtwork: false,
+    showDragHandle: true,
     mobileMenuAction: {
       label: "More actions",
       icon: MoreVerticalIcon,
@@ -48,5 +49,24 @@ export const Default: Story = {};
 export const Current: Story = {
   args: {
     current: true,
+  },
+};
+
+export const Downloaded: Story = {
+  args: {
+    downloaded: true,
+  },
+};
+
+export const InPlaylist: Story = {
+  args: {
+    inPlaylist: true,
+  },
+};
+
+export const DownloadedAndInPlaylist: Story = {
+  args: {
+    downloaded: true,
+    inPlaylist: true,
   },
 };

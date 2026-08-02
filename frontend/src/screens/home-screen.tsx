@@ -295,6 +295,7 @@ export function HomeScreen() {
                       layout={isMobile ? "mobile" : "desktop"}
                       showDragHandle
                       current={isCurrentEpisode}
+                      downloaded={episode.downloaded}
                       title={episode.title}
                       podcastTitle={episode.podcastTitle}
                       dateLabel={
