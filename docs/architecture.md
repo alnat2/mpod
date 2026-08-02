@@ -223,6 +223,7 @@ Responsible for:
 - deduplicating episodes
 - updating existing episode metadata
 - returning structured results to the podcast service
+- keeping OPML feed fetching sequential, limiting an import to 1,000 unique feed URLs, and rejecting overlapping OPML import jobs
 
 This module should encapsulate all external feed quirks so the rest of the app works with normalized data.
 

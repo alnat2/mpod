@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -3173,6 +3174,59 @@ func TestImportOPMLRejectsFileAboveSizeLimit(t *testing.T) {
 	assertErrorCode(t, rec.Body.Bytes(), "OPML_TOO_LARGE")
 }
 
+func TestImportOPMLRejectsTooManyFeeds(t *testing.T) {
+	requestCount := 0
+	client := newRouterTestClient(func(*nethttp.Request) (*nethttp.Response, error) {
+		requestCount++
+		return nil, nil
+	})
+	handler, _ := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	rec := performOPMLImport(t, handler, cookie, testOPMLWithFeedCount(podcasts.MaxOPMLFeedURLs+1))
+	assertAPIError(t, rec, nethttp.StatusBadRequest, "OPML_TOO_MANY_FEEDS")
+	if requestCount != 0 {
+		t.Fatalf("expected feed limit rejection before fetch, got %d requests", requestCount)
+	}
+}
+
+func TestImportOPMLRejectsConcurrentRequest(t *testing.T) {
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	var startOnce sync.Once
+	client := newRouterTestClient(func(*nethttp.Request) (*nethttp.Response, error) {
+		startOnce.Do(func() { close(requestStarted) })
+		<-releaseRequest
+		return routerXMLResponse(testRouterRSSFeed("Podcast", "Episode", "guid-1", "https://cdn.example.com/1.mp3")), nil
+	})
+	handler, _ := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+	opml := testOPMLWithFeedCount(1)
+
+	firstReq := newOPMLImportRequest(t, cookie, opml)
+	firstRec := httptest.NewRecorder()
+	firstDone := make(chan struct{})
+	go func() {
+		handler.ServeHTTP(firstRec, firstReq)
+		close(firstDone)
+	}()
+	<-requestStarted
+
+	secondRec := performOPMLImport(t, handler, cookie, opml)
+	assertAPIError(t, secondRec, nethttp.StatusConflict, "OPML_IMPORT_ALREADY_RUNNING")
+	close(releaseRequest)
+	<-firstDone
+	if firstRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected first import to succeed, got %d body=%s", firstRec.Code, firstRec.Body.String())
+	}
+}
+
 func TestImportOPMLImportsFeeds(t *testing.T) {
 	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
 		switch req.URL.Path {
@@ -3334,6 +3388,48 @@ func newAuthedRouter(t *testing.T) (nethttp.Handler, *nethttp.Cookie) {
 
 	handler, _ := newTestRouter(t)
 	return handler, register(t, handler, "admin", "secret")
+}
+
+func performOPMLImport(t *testing.T, handler nethttp.Handler, cookie *nethttp.Cookie, opml string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := newOPMLImportRequest(t, cookie, opml)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func newOPMLImportRequest(t *testing.T, cookie *nethttp.Cookie, opml string) *nethttp.Request {
+	t.Helper()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	fileWriter, err := writer.CreateFormFile("file", "subscriptions.opml")
+	if err != nil {
+		t.Fatalf("CreateFormFile failed: %v", err)
+	}
+	if _, err := io.WriteString(fileWriter, opml); err != nil {
+		t.Fatalf("write OPML failed: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close multipart writer failed: %v", err)
+	}
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts/import-opml", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.AddCookie(cookie)
+	return req
+}
+
+func testOPMLWithFeedCount(count int) string {
+	var opml strings.Builder
+	opml.WriteString(`<?xml version="1.0" encoding="UTF-8"?><opml version="2.0"><body>`)
+	for i := 0; i < count; i++ {
+		opml.WriteString(`<outline xmlUrl="https://example.com/feed-`)
+		opml.WriteString(strconv.Itoa(i))
+		opml.WriteString(`.xml"/>`)
+	}
+	opml.WriteString(`</body></opml>`)
+	return opml.String()
 }
 
 func newTestRouter(t *testing.T) (nethttp.Handler, *storage.DB) {

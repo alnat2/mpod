@@ -23,19 +23,22 @@ import (
 )
 
 var (
-	ErrInvalidFeedURL          = errors.New("invalid feed url")
-	ErrDuplicateSubscription   = errors.New("podcast already exists")
-	ErrFeedFetchFailed         = errors.New("failed to fetch feed")
-	ErrFeedParseFailed         = errors.New("failed to parse feed")
-	ErrNoPlayableEpisodesFound = errors.New("feed contains no playable episodes")
-	ErrInvalidOPML             = errors.New("invalid opml")
-	ErrPodcastNotFound         = errors.New("podcast not found")
-	ErrRefreshAlreadyRunning   = errors.New("podcast refresh already running")
+	ErrInvalidFeedURL           = errors.New("invalid feed url")
+	ErrDuplicateSubscription    = errors.New("podcast already exists")
+	ErrFeedFetchFailed          = errors.New("failed to fetch feed")
+	ErrFeedParseFailed          = errors.New("failed to parse feed")
+	ErrNoPlayableEpisodesFound  = errors.New("feed contains no playable episodes")
+	ErrInvalidOPML              = errors.New("invalid opml")
+	ErrOPMLImportAlreadyRunning = errors.New("opml import already running")
+	ErrOPMLTooManyFeeds         = errors.New("opml contains too many feeds")
+	ErrPodcastNotFound          = errors.New("podcast not found")
+	ErrRefreshAlreadyRunning    = errors.New("podcast refresh already running")
 )
 
 const (
-	feedUserAgent = "mpod/1.0 (+self-hosted podcast client)"
-	feedAccept    = "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.1"
+	feedUserAgent   = "mpod/1.0 (+self-hosted podcast client)"
+	feedAccept      = "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.1"
+	MaxOPMLFeedURLs = 1000
 )
 
 var unsupportedFeedURIAttrPattern = regexp.MustCompile(`\buri="at://[^"]*"`)
@@ -48,6 +51,8 @@ type Service struct {
 	sleep       func(context.Context, time.Duration) error
 	refreshMu   sync.Mutex
 	refreshing  map[int64]struct{}
+	importMu    sync.Mutex
+	importing   bool
 }
 
 type Podcast struct {
@@ -417,6 +422,11 @@ type ImportResult struct {
 }
 
 func (s *Service) ImportOPML(ctx context.Context, reader io.Reader) (ImportResult, error) {
+	if !s.beginOPMLImport() {
+		return ImportResult{}, ErrOPMLImportAlreadyRunning
+	}
+	defer s.endOPMLImport()
+
 	var document opmlDocument
 	if err := xml.NewDecoder(reader).Decode(&document); err != nil {
 		return ImportResult{}, ErrInvalidOPML
@@ -425,6 +435,9 @@ func (s *Service) ImportOPML(ctx context.Context, reader io.Reader) (ImportResul
 	feedURLs := collectFeedURLs(document.Body.Outlines, make(map[string]struct{}))
 	if len(feedURLs) == 0 {
 		return ImportResult{}, ErrInvalidOPML
+	}
+	if err := validateOPMLFeedCount(feedURLs); err != nil {
+		return ImportResult{}, err
 	}
 
 	result := ImportResult{}
@@ -446,6 +459,29 @@ func (s *Service) ImportOPML(ctx context.Context, reader io.Reader) (ImportResul
 	}
 
 	return result, nil
+}
+
+func (s *Service) beginOPMLImport() bool {
+	s.importMu.Lock()
+	defer s.importMu.Unlock()
+	if s.importing {
+		return false
+	}
+	s.importing = true
+	return true
+}
+
+func (s *Service) endOPMLImport() {
+	s.importMu.Lock()
+	defer s.importMu.Unlock()
+	s.importing = false
+}
+
+func validateOPMLFeedCount(feedURLs []string) error {
+	if len(feedURLs) > MaxOPMLFeedURLs {
+		return ErrOPMLTooManyFeeds
+	}
+	return nil
 }
 
 func (s *Service) ExportOPML(ctx context.Context) ([]byte, error) {

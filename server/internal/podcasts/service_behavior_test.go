@@ -11,7 +11,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -614,6 +616,86 @@ func TestImportOPMLWithRealFixturesImportsPlayableAndSkipsHTMLLandingPages(t *te
 
 	assertCount(t, db.SQL, `SELECT COUNT(*) FROM podcasts`, 1)
 	assertCount(t, db.SQL, `SELECT COUNT(*) FROM episodes`, 1)
+}
+
+func TestImportOPMLRejectsConcurrentImport(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	requestStarted := make(chan struct{})
+	releaseRequest := make(chan struct{})
+	var startOnce sync.Once
+	service := NewService(db.SQL, newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+		startOnce.Do(func() { close(requestStarted) })
+		<-releaseRequest
+		return xmlResponse(testRSSFeed("Podcast", "Episode", "guid-1", "https://cdn.example.com/1.mp3")), nil
+	}))
+	opml := `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0"><body><outline xmlUrl="https://example.com/feed.xml"/></body></opml>`
+
+	firstErr := make(chan error, 1)
+	go func() {
+		_, err := service.ImportOPML(context.Background(), strings.NewReader(opml))
+		firstErr <- err
+	}()
+	<-requestStarted
+
+	if _, err := service.ImportOPML(context.Background(), strings.NewReader(opml)); err != ErrOPMLImportAlreadyRunning {
+		t.Fatalf("expected ErrOPMLImportAlreadyRunning, got %v", err)
+	}
+	close(releaseRequest)
+	if err := <-firstErr; err != nil {
+		t.Fatalf("first ImportOPML failed: %v", err)
+	}
+}
+
+func TestImportOPMLReleasesImportLockAfterValidationError(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	service := NewService(db.SQL, newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+		return xmlResponse(testRSSFeed("Podcast", "Episode", "guid-1", "https://cdn.example.com/1.mp3")), nil
+	}))
+	if _, err := service.ImportOPML(context.Background(), strings.NewReader("not-opml")); err != ErrInvalidOPML {
+		t.Fatalf("expected ErrInvalidOPML, got %v", err)
+	}
+
+	validOPML := `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0"><body><outline xmlUrl="https://example.com/feed.xml"/></body></opml>`
+	result, err := service.ImportOPML(context.Background(), strings.NewReader(validOPML))
+	if err != nil {
+		t.Fatalf("expected next import to proceed, got %v", err)
+	}
+	if result.Imported != 1 {
+		t.Fatalf("expected one imported podcast, got %+v", result)
+	}
+}
+
+func TestImportOPMLRejectsTooManyFeedsBeforeFetch(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	requestCount := 0
+	service := NewService(db.SQL, newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+		requestCount++
+		return nil, nil
+	}))
+
+	var opml strings.Builder
+	opml.WriteString(`<?xml version="1.0" encoding="UTF-8"?><opml version="2.0"><body>`)
+	for i := 0; i <= MaxOPMLFeedURLs; i++ {
+		opml.WriteString(`<outline xmlUrl="https://example.com/feed-`)
+		opml.WriteString(strconv.Itoa(i))
+		opml.WriteString(`.xml"/>`)
+	}
+	opml.WriteString(`</body></opml>`)
+
+	if _, err := service.ImportOPML(context.Background(), strings.NewReader(opml.String())); err != ErrOPMLTooManyFeeds {
+		t.Fatalf("expected ErrOPMLTooManyFeeds, got %v", err)
+	}
+	if requestCount != 0 {
+		t.Fatalf("expected feed limit rejection before fetch, got %d requests", requestCount)
+	}
 }
 
 func newBehaviorTestDB(t *testing.T) *storage.DB {

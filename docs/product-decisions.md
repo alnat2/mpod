@@ -276,6 +276,8 @@ Request is `multipart/form-data` with one OPML file.
 
 The uploaded OPML file must be at most `5,000,000` bytes. Larger files return `413 Request Entity Too Large` with error code `OPML_TOO_LARGE`.
 
+An OPML file may contain at most `1,000` unique normalized feed URLs. Files above that limit return `400 Bad Request` with error code `OPML_TOO_MANY_FEEDS` before any feed is fetched. Only one OPML import may run at a time; a concurrent request returns `409 Conflict` with error code `OPML_IMPORT_ALREADY_RUNNING`.
+
 Response:
 ```json
 {

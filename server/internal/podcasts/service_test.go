@@ -53,6 +53,17 @@ func TestCollectFeedURLsDeduplicatesNestedOutlines(t *testing.T) {
 	}
 }
 
+func TestValidateOPMLFeedCountAllowsLimitAndRejectsAboveLimit(t *testing.T) {
+	feedURLs := make([]string, MaxOPMLFeedURLs)
+	if err := validateOPMLFeedCount(feedURLs); err != nil {
+		t.Fatalf("expected %d feeds to be allowed, got %v", MaxOPMLFeedURLs, err)
+	}
+	feedURLs = append(feedURLs, "https://example.com/overflow.xml")
+	if err := validateOPMLFeedCount(feedURLs); err != ErrOPMLTooManyFeeds {
+		t.Fatalf("expected ErrOPMLTooManyFeeds above limit, got %v", err)
+	}
+}
+
 func TestEpisodeFromItemIdentityPriority(t *testing.T) {
 	now := time.Date(2026, 4, 22, 9, 0, 0, 0, time.UTC)
 	item := &gofeed.Item{
