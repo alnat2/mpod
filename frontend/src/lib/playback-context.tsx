@@ -327,7 +327,14 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   }, [currentEpisodeDuration]);
 
   useEffect(() => {
-    const syncVisiblePlaybackState = () => {
+    const syncVisiblePlaybackState = (event: Event) => {
+      if (
+        event.type === "pageshow" &&
+        !(event as PageTransitionEvent).persisted
+      ) {
+        return;
+      }
+
       if (document.visibilityState !== "visible") {
         return;
       }
@@ -338,22 +345,19 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const episode = currentEpisodeRef.current;
-      if (!episode) {
-        return;
-      }
-
-      void refreshPlaybackState(episode);
+      void loadQueue();
     };
 
     window.addEventListener("focus", syncVisiblePlaybackState);
+    window.addEventListener("pageshow", syncVisiblePlaybackState);
     document.addEventListener("visibilitychange", syncVisiblePlaybackState);
 
     return () => {
       window.removeEventListener("focus", syncVisiblePlaybackState);
+      window.removeEventListener("pageshow", syncVisiblePlaybackState);
       document.removeEventListener("visibilitychange", syncVisiblePlaybackState);
     };
-  }, [loadPlaybackSettings, refreshPlaybackState]);
+  }, [loadPlaybackSettings, loadQueue]);
 
   useEffect(() => {
     const pendingEpisodeId = pendingPlayEpisodeIdRef.current;

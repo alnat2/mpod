@@ -781,6 +781,85 @@ describe("PlaybackProvider", () => {
     });
   });
 
+  it("reloads the queue and active episode when an iOS-restored page is shown", async () => {
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    const thirdEpisode = episodes.get(3)!;
+    vi.mocked(api.playback.queue).mockResolvedValueOnce({
+      queue: [
+        ...playlistItems.map((item) => {
+          const episode = episodes.get(item.episodeId)!;
+          const podcast = podcasts.find(
+            (candidate) => candidate.id === episode.podcastId
+          )!;
+          return {
+            ...episode,
+            podcastTitle: podcast.title,
+            podcastImageUrl: null,
+            playback: playback.get(episode.id) ?? null,
+          };
+        }),
+        {
+          ...thirdEpisode,
+          podcastTitle: "Second Podcast",
+          podcastImageUrl: null,
+          playback: null,
+        },
+      ],
+      activePlayback: {
+        episodeId: thirdEpisode.id,
+        lastUpdated: "2026-05-22T10:00:00Z",
+      },
+    });
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+
+    window.dispatchEvent(
+      Object.assign(new Event("pageshow"), { persisted: true })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("queue-size")).toHaveTextContent("3");
+      expect(screen.getByTestId("current-title")).toHaveTextContent(
+        "Third queued episode"
+      );
+    });
+    expect(screen.getByTestId("playing")).toHaveTextContent("no");
+  });
+
+  it("does not replace an episode that is actively playing during visibility sync", async () => {
+    const user = userEvent.setup();
+    const queueSpy = vi.mocked(api.playback.queue);
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+
+    activePlaybackEpisodeId = 2;
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(queueSpy).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("current-title")).toHaveTextContent(
+      "First queued episode"
+    );
+    expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+  });
+
   it("uses audio metadata duration when feed metadata is missing", async () => {
     episodes.set(1, {
       ...episodes.get(1)!,
