@@ -28,7 +28,11 @@ describe("api client", () => {
       })
     );
 
-    const [, request] = fetchMock.mock.calls[0];
+    const requestCall = fetchMock.mock.calls[0];
+    if (!requestCall) {
+      throw new Error("Expected a fetch call");
+    }
+    const [, request] = requestCall;
     const headers = request.headers as Headers;
     expect(headers.get("Content-Type")).toBe("application/json");
   });

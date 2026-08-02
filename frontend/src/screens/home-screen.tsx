@@ -149,6 +149,10 @@ export function HomeScreen() {
 
     const nextQueue = [...currentQueue];
     const [movedEpisode] = nextQueue.splice(sourceIndex, 1);
+    if (!movedEpisode) {
+      return currentQueue;
+    }
+
     nextQueue.splice(targetIndex, 0, movedEpisode);
     return nextQueue;
   }, []);

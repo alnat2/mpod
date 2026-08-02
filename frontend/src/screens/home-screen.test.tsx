@@ -254,7 +254,11 @@ describe("HomeScreen", () => {
     render(<HomeScreen />);
 
     const playButtons = await screen.findAllByRole("button", { name: "Play" });
-    await user.click(playButtons[0]);
+    const firstPlayButton = playButtons[0];
+    if (!firstPlayButton) {
+      throw new Error("Expected a playlist play button");
+    }
+    await user.click(firstPlayButton);
 
     expect(playEpisodeMock).toHaveBeenCalledWith(1);
   });
@@ -303,7 +307,11 @@ describe("HomeScreen", () => {
     const removeButtons = await screen.findAllByRole("button", {
       name: "Remove from playlist",
     });
-    await user.click(removeButtons[0]);
+    const firstRemoveButton = removeButtons[0];
+    if (!firstRemoveButton) {
+      throw new Error("Expected a remove-from-playlist button");
+    }
+    await user.click(firstRemoveButton);
 
     expect(updateQueueMock).toHaveBeenCalledWith([queue[1]]);
     await waitFor(() => {

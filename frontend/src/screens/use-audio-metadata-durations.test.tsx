@@ -10,6 +10,14 @@ type FakeAudioListener = () => void;
 class FakeAudio {
   static instances: FakeAudio[] = [];
 
+  static get first() {
+    const audio = FakeAudio.instances[0];
+    if (!audio) {
+      throw new Error("Expected an audio instance");
+    }
+    return audio;
+  }
+
   duration = 0;
   preload = "";
   src = "";
@@ -61,10 +69,10 @@ describe("useAudioMetadataDurations", () => {
 
     expect(screen.getByTestId("duration-42")).toHaveTextContent("missing");
     expect(FakeAudio.instances).toHaveLength(1);
-    expect(FakeAudio.instances[0].src).toBe("/api/episodes/42/audio");
+    expect(FakeAudio.first.src).toBe("/api/episodes/42/audio");
 
-    FakeAudio.instances[0].duration = 3390;
-    FakeAudio.instances[0].emit("loadedmetadata");
+    FakeAudio.first.duration = 3390;
+    FakeAudio.first.emit("loadedmetadata");
 
     await waitFor(() => {
       expect(screen.getByTestId("duration-42")).toHaveTextContent("3390");
@@ -81,7 +89,7 @@ describe("useAudioMetadataDurations", () => {
   it("silently ignores metadata probe errors", () => {
     render(<Harness episodes={[{ id: 42, duration: null }]} />);
 
-    FakeAudio.instances[0].emit("error");
+    FakeAudio.first.emit("error");
 
     expect(screen.getByTestId("duration-42")).toHaveTextContent("missing");
   });

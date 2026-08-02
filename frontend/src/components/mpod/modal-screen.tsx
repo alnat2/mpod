@@ -78,6 +78,10 @@ export function ModalScreen({
     }
 
     const touch = event.touches[0];
+    if (!touch) {
+      return;
+    }
+
     const bounds = event.currentTarget.getBoundingClientRect();
     swipeArmedRef.current = touch.clientY - bounds.top <= 72;
     swipeStartRef.current = { x: touch.clientX, y: touch.clientY };
@@ -91,6 +95,12 @@ export function ModalScreen({
     }
 
     const touch = event.changedTouches[0];
+    if (!touch) {
+      swipeStartRef.current = null;
+      swipeArmedRef.current = false;
+      return;
+    }
+
     const deltaX = touch.clientX - swipeStartRef.current.x;
     const deltaY = touch.clientY - swipeStartRef.current.y;
 

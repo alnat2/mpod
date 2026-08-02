@@ -18,6 +18,14 @@ type FakeMediaError = {
 class FakeAudio {
   static instances: FakeAudio[] = [];
 
+  static get first() {
+    const audio = FakeAudio.instances[0];
+    if (!audio) {
+      throw new Error("Expected an audio instance");
+    }
+    return audio;
+  }
+
   src = "";
   private currentTimeValue = 0;
   throwOnCurrentTimeSet = false;
@@ -518,7 +526,7 @@ describe("PlaybackProvider", () => {
     });
     expect(screen.getByTestId("playing")).toHaveTextContent("no");
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     expect(audio.src).toBe("");
   });
 
@@ -551,7 +559,7 @@ describe("PlaybackProvider", () => {
 
     await user.click(screen.getByRole("button", { name: "Play second" }));
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     expect(audio).toBeDefined();
     expect(audio.src).toContain("/api/episodes/2/audio");
     expect(audio.currentTime).toBe(42);
@@ -568,7 +576,7 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("loading")).toHaveTextContent("no");
     });
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     audio.readyState = 0;
     await user.click(screen.getByRole("button", { name: "Play second" }));
 
@@ -595,7 +603,7 @@ describe("PlaybackProvider", () => {
 
     await user.click(screen.getByRole("button", { name: "Play queued later" }));
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     expect(audio.src).toContain("/api/episodes/999/audio");
     expect(screen.getByTestId("playing")).toHaveTextContent("yes");
   });
@@ -608,7 +616,7 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("loading")).toHaveTextContent("no");
     });
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     audio.readyState = 0;
     await user.click(screen.getByRole("button", { name: "Play queued later" }));
 
@@ -632,7 +640,7 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("loading")).toHaveTextContent("no");
     });
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     audio.throwOnCurrentTimeSet = true;
     await user.click(screen.getByRole("button", { name: "Play second" }));
 
@@ -651,7 +659,7 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("loading")).toHaveTextContent("no");
     });
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     audio.playImpl.mockRejectedValueOnce(new Error("Playback was blocked"));
 
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
@@ -673,7 +681,7 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("loading")).toHaveTextContent("no");
     });
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     audio.error = { code: 4 };
     audio.emit("error");
 
@@ -689,7 +697,7 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("loading")).toHaveTextContent("no");
     });
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
 
     audio.error = { code: 4 };
@@ -712,7 +720,7 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("loading")).toHaveTextContent("no");
     });
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     audio.currentTime = 120;
 
     await user.click(screen.getByRole("button", { name: "Forward" }));
@@ -744,7 +752,7 @@ describe("PlaybackProvider", () => {
 
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     await waitFor(() => {
       expect(screen.getByTestId("playing")).toHaveTextContent("yes");
     });
@@ -773,7 +781,7 @@ describe("PlaybackProvider", () => {
 
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     await waitFor(() => {
       expect(screen.getByTestId("playing")).toHaveTextContent("yes");
       expect(mediaSession.playbackState).toBe("playing");
@@ -821,7 +829,7 @@ describe("PlaybackProvider", () => {
 
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     await waitFor(() => {
       expect(audio.currentTime).toBe(333);
     });
@@ -945,7 +953,7 @@ describe("PlaybackProvider", () => {
 
     expect(screen.getByTestId("duration")).toHaveTextContent("0");
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     audio.duration = 1500;
     audio.emit("loadedmetadata");
 
@@ -963,7 +971,7 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("loading")).toHaveTextContent("no");
     });
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     expect(audio.playbackRate).toBe(1.3);
 
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
@@ -1048,7 +1056,7 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("loading")).toHaveTextContent("no");
     });
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     audio.currentTime = 1800;
     audio.emit("ended");
 
@@ -1090,7 +1098,7 @@ describe("PlaybackProvider", () => {
 
     await user.click(screen.getByRole("button", { name: "Play second" }));
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     audio.currentTime = 2400;
     audio.emit("ended");
 
@@ -1163,7 +1171,7 @@ describe("PlaybackProvider", () => {
     });
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     audio.currentTime = 2400;
     audio.emit("ended");
 
@@ -1228,7 +1236,7 @@ describe("PlaybackProvider", () => {
 
     await user.click(screen.getByRole("button", { name: "Play third" }));
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     audio.currentTime = 2700;
     audio.emit("ended");
 
@@ -1264,7 +1272,7 @@ describe("PlaybackProvider", () => {
 
     await user.click(screen.getByRole("button", { name: "Play second" }));
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     audio.currentTime = 2400;
     audio.emit("ended");
 
@@ -1299,7 +1307,7 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("dispatch-render-count")).toHaveTextContent("ready");
     });
 
-    const audio = FakeAudio.instances[0];
+    const audio = FakeAudio.first;
     const commitsBeforeTimeUpdate = dispatchHarnessProfilerCommits;
 
     audio.currentTime = 123;

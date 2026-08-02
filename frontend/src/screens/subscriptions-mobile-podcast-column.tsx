@@ -70,7 +70,9 @@ export function MobilePodcastColumn({
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
-        setIsVisible(entry.isIntersecting);
+        if (entry) {
+          setIsVisible(entry.isIntersecting);
+        }
       },
       { rootMargin: "100% 0px" }
     );
