@@ -186,7 +186,7 @@ describe("AddPodcastModal", () => {
     );
     await user.click(screen.getByRole("button", { name: "Add Feed" }));
 
-    expect(await screen.findByText("Feed is invalid")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Feed is invalid");
     expect(onClose).not.toHaveBeenCalled();
   });
 });

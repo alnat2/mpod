@@ -29,7 +29,11 @@ export class ErrorBoundary extends Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="flex min-h-screen flex-col items-center justify-center bg-background p-6 text-center text-foreground">
+        <div
+          className="flex min-h-screen flex-col items-center justify-center bg-background p-6 text-center text-foreground"
+          role="alert"
+          aria-atomic="true"
+        >
           <div className="flex max-w-md flex-col gap-4">
             <h1 className="text-2xl font-bold">Something went wrong</h1>
             <p className="text-muted-foreground">

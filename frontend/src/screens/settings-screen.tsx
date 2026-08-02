@@ -105,6 +105,7 @@ function formatProxyDescription(
 type SettingsCardProps = {
   title: string;
   description: ReactNode;
+  descriptionIsStatus?: boolean;
   action?: ReactNode;
   children?: ReactNode;
   className?: string;
@@ -113,6 +114,7 @@ type SettingsCardProps = {
 function SettingsCard({
   title,
   description,
+  descriptionIsStatus,
   action,
   children,
   className,
@@ -126,7 +128,12 @@ function SettingsCard({
           <h2 className="text-base leading-6 font-semibold text-card-foreground">
             {title}
           </h2>
-          <p className="mt-1 text-sm leading-5 text-muted-foreground">
+          <p
+            className="mt-1 text-sm leading-5 text-muted-foreground"
+            role={descriptionIsStatus ? "status" : undefined}
+            aria-live={descriptionIsStatus ? "polite" : undefined}
+            aria-atomic={descriptionIsStatus ? "true" : undefined}
+          >
             {description}
           </p>
         </div>
@@ -326,7 +333,12 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                       Save time
                     </Button>
                   </div>
-                  <p className="mt-4 text-sm leading-5 font-medium text-secondary-foreground">
+                  <p
+                    className="mt-4 text-sm leading-5 font-medium text-secondary-foreground"
+                    role={!loading ? "status" : undefined}
+                    aria-live={!loading ? "polite" : undefined}
+                    aria-atomic={!loading ? "true" : undefined}
+                  >
                     {formatSchedulerRefresh(scheduler)}
                   </p>
                 </SettingsCard>
@@ -334,6 +346,7 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                 <div className="flex flex-col gap-4">
                   <SettingsCard
                     title="Use SOCKS5 proxy"
+                    descriptionIsStatus={!loading}
                     description={formatProxyDescription(
                       proxyConfigured,
                       settings,

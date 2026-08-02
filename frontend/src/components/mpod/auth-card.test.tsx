@@ -5,6 +5,14 @@ import { describe, expect, it } from "vitest";
 import { AuthCard } from "./auth-card";
 
 describe("AuthCard", () => {
+  it("announces authentication errors", () => {
+    render(<AuthCard error="Invalid username or password" />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Invalid username or password"
+    );
+  });
+
   it("keeps the password hidden by default and toggles visibility", async () => {
     const user = userEvent.setup();
 

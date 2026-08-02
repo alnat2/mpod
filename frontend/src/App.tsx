@@ -47,7 +47,12 @@ const SubscriptionsScreen = lazy(async () => {
 function LoadingScreen() {
   return (
     <AuthShell headline="Loading mpod">
-      <div className="text-sm leading-5 text-muted-foreground">
+      <div
+        className="text-sm leading-5 text-muted-foreground"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
         Checking session
       </div>
     </AuthShell>
@@ -57,13 +62,16 @@ function LoadingScreen() {
 function SessionErrorScreen({ onRetry }: { onRetry: () => void }) {
   return (
     <AuthShell headline="mpod is not reachable">
-      <button
-        className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
-        type="button"
-        onClick={onRetry}
-      >
-        Retry
-      </button>
+      <div role="alert" aria-atomic="true">
+        <span className="sr-only">mpod is not reachable.</span>
+        <button
+          className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+          type="button"
+          onClick={onRetry}
+        >
+          Retry
+        </button>
+      </div>
     </AuthShell>
   );
 }

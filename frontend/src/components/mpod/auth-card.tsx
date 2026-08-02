@@ -99,7 +99,13 @@ export function AuthCard({
             {submitLabel}
           </Button>
           {error ? (
-            <p className="text-sm leading-5 text-destructive">{error}</p>
+            <p
+              className="text-sm leading-5 text-destructive"
+              role="alert"
+              aria-atomic="true"
+            >
+              {error}
+            </p>
           ) : null}
         </form>
       </CardContent>

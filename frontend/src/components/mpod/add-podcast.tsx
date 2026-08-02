@@ -156,7 +156,13 @@ export function AddPodcast({
             </FieldGroup>
           )}
           {error ? (
-            <p className="pt-3 text-sm leading-5 text-destructive">{error}</p>
+            <p
+              className="pt-3 text-sm leading-5 text-destructive"
+              role="alert"
+              aria-atomic="true"
+            >
+              {error}
+            </p>
           ) : null}
         </CardContent>
         <CardFooter className="w-full justify-end gap-3 border-t-0 bg-card px-4 py-5 md:px-6">

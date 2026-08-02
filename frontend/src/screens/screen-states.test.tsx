@@ -2,7 +2,13 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { ErrorBanner, ScreenBannerStack, UndoBanner } from "./screen-states";
+import {
+  CenterLoadingState,
+  ErrorBanner,
+  ListLoadingState,
+  ScreenBannerStack,
+  UndoBanner,
+} from "./screen-states";
 
 describe("screen state helpers", () => {
   it("renders error banner content and dismisses it", async () => {
@@ -11,7 +17,9 @@ describe("screen state helpers", () => {
 
     render(<ErrorBanner onClose={onClose}>Failed to update episode</ErrorBanner>);
 
-    expect(screen.getByText("Failed to update episode")).toBeInTheDocument();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Failed to update episode");
+    expect(alert).toHaveAttribute("aria-atomic", "true");
     await user.click(screen.getByRole("button", { name: "Dismiss error" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -28,8 +36,16 @@ describe("screen state helpers", () => {
       />
     );
 
-    expect(screen.getByText(/Removed from playlist\./)).toBeInTheDocument();
     expect(screen.getByText(/Applying in \d+ sec\./)).toBeInTheDocument();
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent(
+      /Removed from playlist\. Undo available for \d+ seconds\./
+    );
+    expect(status).toHaveAttribute("aria-live", "polite");
+    expect(screen.getByText(/Applying in \d+ sec\./)).toHaveAttribute(
+      "aria-hidden",
+      "true"
+    );
 
     await user.click(screen.getByRole("button", { name: "Undo" }));
     expect(onUndo).toHaveBeenCalledTimes(1);
@@ -47,5 +63,22 @@ describe("screen state helpers", () => {
       "top-[56px]",
       "pointer-events-none"
     );
+  });
+
+  it("announces loading states politely", () => {
+    render(
+      <>
+        <ListLoadingState label="Loading subscriptions" />
+        <CenterLoadingState label="Loading playlist" />
+      </>
+    );
+
+    const statuses = screen.getAllByRole("status");
+    expect(statuses).toHaveLength(2);
+    for (const status of statuses) {
+      expect(status).toHaveAttribute("aria-live", "polite");
+      expect(status).toHaveAttribute("aria-busy", "true");
+      expect(status).toHaveAttribute("aria-atomic", "true");
+    }
   });
 });

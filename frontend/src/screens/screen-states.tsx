@@ -41,6 +41,8 @@ export function ErrorBanner({
 }) {
   return (
     <div
+      role="alert"
+      aria-atomic="true"
       className={cn(
         "pointer-events-auto flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm leading-5 text-destructive",
         className
@@ -73,6 +75,9 @@ export function UndoBanner({
   onUndo: () => void;
 }) {
   const [now, setNow] = useState(() => Date.now());
+  const [initialRemainingSeconds] = useState(() =>
+    getRemainingSeconds(expiresAt, Date.now())
+  );
   const remainingSeconds = getRemainingSeconds(expiresAt, now);
 
   useEffect(() => {
@@ -85,7 +90,15 @@ export function UndoBanner({
 
   return (
     <div className="pointer-events-auto flex min-h-10 w-full items-center gap-3 rounded-md border border-border bg-secondary px-3 py-2 text-sm leading-5 text-secondary-foreground">
-      <span className="min-w-0 flex-1 truncate">
+      <span
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {message} Undo available for {initialRemainingSeconds} seconds.
+      </span>
+      <span className="min-w-0 flex-1 truncate" aria-hidden="true">
         {message} Applying in {remainingSeconds} sec.
       </span>
       <Button variant="link" type="button" onClick={onUndo}>
@@ -144,6 +157,9 @@ export function ListLoadingState({
       )}
       aria-label={label}
       aria-busy="true"
+      aria-live="polite"
+      aria-atomic="true"
+      role="status"
     >
       <span className="sr-only">{label}</span>
       <div className="flex gap-4 overflow-hidden md:grid md:grid-cols-4 md:gap-5">
@@ -176,6 +192,9 @@ export function CenterLoadingState({
       )}
       aria-label={label}
       aria-busy="true"
+      aria-live="polite"
+      aria-atomic="true"
+      role="status"
     >
       <div className="flex w-full max-w-[480px] flex-col gap-4">
         <span className="sr-only">{label}</span>

@@ -123,6 +123,7 @@ describe("App routing", () => {
     render(<App />);
 
     expect(await screen.findByText("Loading mpod")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Checking session");
     expect(playbackProviderMock).not.toHaveBeenCalled();
 
     resolveSession!({
@@ -162,6 +163,7 @@ describe("App routing", () => {
     render(<App />);
 
     expect(await screen.findByText("mpod is not reachable")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("mpod is not reachable");
 
     await user.click(screen.getByRole("button", { name: "Retry" }));
 
