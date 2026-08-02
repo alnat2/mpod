@@ -49,7 +49,7 @@ export function AddPodcastModal({
   }
 
   return (
-    <ModalScreen onClose={onClose}>
+    <ModalScreen title="Add podcast" onClose={onClose}>
       <AddPodcast
         mode={mode}
         disabled={submitting}

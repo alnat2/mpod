@@ -934,6 +934,7 @@ export function SubscriptionsScreen() {
       </AppShell>
       {modal === "show-notes" && showNotesEpisode && showNotesPodcast ? (
         <ModalScreen
+          title="Show notes"
           onClose={() => {
             setModal(null);
             setShowNotesEpisodeId(null);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { ReactNode, TouchEvent } from "react";
+import { Dialog as DialogPrimitive } from "radix-ui";
 
 import { cn } from "@/lib/utils";
 
@@ -7,6 +8,7 @@ type ModalScreenProps = {
   className?: string;
   children?: ReactNode;
   onClose?: () => void;
+  title: string;
 };
 
 const SWIPE_CLOSE_DISTANCE = 72;
@@ -15,21 +17,22 @@ export function ModalScreen({
   className,
   children,
   onClose,
+  title,
 }: ModalScreenProps) {
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const swipeArmedRef = useRef(false);
-  const suppressNextPopRef = useRef(false);
+  const previouslyFocusedElementRef = useRef<HTMLElement | null>(
+    typeof document !== "undefined" && document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null
+  );
 
   const requestClose = useCallback(() => {
     if (!onClose) {
       return;
     }
 
-    suppressNextPopRef.current = true;
     onClose();
-    window.setTimeout(() => {
-      window.history.back();
-    }, 0);
   }, [onClose]);
 
   useEffect(() => {
@@ -45,17 +48,29 @@ export function ModalScreen({
     window.history.pushState(modalState, "", window.location.href);
 
     const handlePopState = () => {
-      if (suppressNextPopRef.current) {
-        suppressNextPopRef.current = false;
-        return;
-      }
-
       onClose();
     };
 
     window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      if (window.history.state?.__mpodModal) {
+        window.history.back();
+      }
+    };
   }, [onClose]);
+
+  useEffect(
+    () => () => {
+      const previouslyFocusedElement = previouslyFocusedElementRef.current;
+      window.setTimeout(() => {
+        if (previouslyFocusedElement?.isConnected) {
+          previouslyFocusedElement.focus();
+        }
+      }, 0);
+    },
+    []
+  );
 
   function handleTouchStart(event: TouchEvent<HTMLDivElement>) {
     if (!onClose) {
@@ -91,21 +106,40 @@ export function ModalScreen({
   }
 
   return (
-    <div
-      className={cn(
-        "fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-foreground/30 p-5 backdrop-blur-[2px] md:p-6",
-        className
-      )}
-      onClick={onClose ? requestClose : undefined}
+    <DialogPrimitive.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) {
+          requestClose();
+        }
+      }}
     >
-      <div
-        className="flex max-h-full max-w-full flex-col items-center overflow-hidden"
-        onClick={(event) => event.stopPropagation()}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-      >
-        {children}
-      </div>
-    </div>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay
+          className="fixed inset-0 z-50 bg-foreground/30 backdrop-blur-[2px]"
+        />
+        <DialogPrimitive.Content
+          aria-describedby={undefined}
+          aria-modal="true"
+          className={cn(
+            "fixed inset-0 z-50 flex items-center justify-center overflow-hidden p-5 outline-none md:p-6",
+            className
+          )}
+          onClick={onClose ? requestClose : undefined}
+        >
+          <DialogPrimitive.Title className="sr-only">
+            {title}
+          </DialogPrimitive.Title>
+          <div
+            className="flex max-h-full max-w-full flex-col items-center overflow-hidden"
+            onClick={(event) => event.stopPropagation()}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+          >
+            {children}
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }

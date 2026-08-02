@@ -353,6 +353,7 @@ export function HomeScreen() {
       </AppShell>
       {modal === "show-notes" && showNotesEpisode ? (
         <ModalScreen
+          title="Show notes"
           onClose={() => {
             setModal(null);
             setShowNotesEpisodeId(null);
