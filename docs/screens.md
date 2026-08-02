@@ -122,7 +122,7 @@ Podcast artwork fallback:
 Default podcast visibility:
 - follow the canonical rules in [frontend-decisions.md](frontend-decisions.md#subscription-list-defaults)
 - summary: show podcasts with unlistened episodes by default, provide `Show all` / `Show unlistened`, keep that state local to Subscriptions, and keep the selected episode list in the same visibility mode as the podcast carousel
-- page header metadata displays the current number of subscribed podcasts
+- page header metadata displays the current number of subscribed podcasts plus the number of those podcasts that contain at least one unlistened episode, for example `12 podcasts · 2 with unlistened`
 
 States:
 - empty state when no podcasts exist

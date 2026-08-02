@@ -18,7 +18,7 @@ const meta = {
   args: {
     layout: "mobile",
     title: "Subscriptions",
-    subtitle: "Short description",
+    subtitle: "12 podcasts · 2 with unlistened",
     actions: [
       {
         label: "Refresh all",

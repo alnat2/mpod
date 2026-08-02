@@ -72,6 +72,13 @@ function podcastCountLabel(count: number) {
   return `${count} ${count === 1 ? "podcast" : "podcasts"}`;
 }
 
+function subscriptionSummaryLabel(
+  podcastCount: number,
+  podcastsWithUnlistenedCount: number
+) {
+  return `${podcastCountLabel(podcastCount)} · ${podcastsWithUnlistenedCount} with unlistened`;
+}
+
 function episodeSummaryLabel(totalCount: number, unlistenedCount: number) {
   return `${totalCount} / ${unlistenedCount} episodes`;
 }
@@ -330,6 +337,9 @@ export function SubscriptionsScreen() {
   }, [episodeRowPitch, episodeScrollTop, episodeViewportHeight, visibleEpisodes]);
   const durationForEpisode = useAudioMetadataDurations(virtualEpisodeWindow.items);
   const hasSubscriptions = podcastsWithPending.length > 0;
+  const podcastsWithUnlistenedCount = podcastsWithPending.filter((podcast) =>
+    podcast.episodes.some((episode) => !episode.isListened)
+  ).length;
   const noVisibleUnlistenedPodcasts = hasSubscriptions && visiblePodcasts.length === 0;
   const selectedPodcastTotalEpisodeCount = selectedPodcast?.episodes.length ?? 0;
   const selectedPodcastUnlistenedEpisodeCount =
@@ -344,7 +354,10 @@ export function SubscriptionsScreen() {
   const pageSubtitle = !hasLoaded
     ? "Loading your podcast library."
     : hasSubscriptions
-      ? podcastCountLabel(podcastsWithPending.length)
+      ? subscriptionSummaryLabel(
+          podcastsWithPending.length,
+          podcastsWithUnlistenedCount
+        )
       : "Start with one RSS feed or import subscriptions from another app.";
   const pageActions: SubscriptionsPageAction[] =
     hasSubscriptions

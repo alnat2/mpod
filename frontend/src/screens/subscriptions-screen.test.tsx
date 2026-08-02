@@ -277,7 +277,9 @@ describe("SubscriptionsScreen", () => {
       playlistRequest.resolve({ items: [] });
     });
 
-    expect(await screen.findByText("1 podcast")).toBeInTheDocument();
+    expect(
+      await screen.findByText("1 podcast · 1 with unlistened")
+    ).toBeInTheDocument();
   });
 
   it("shows cached subscriptions immediately while remount revalidates them", async () => {
@@ -374,7 +376,9 @@ describe("SubscriptionsScreen", () => {
     expect(screen.queryByTestId("drag-handle-QA reorder third")).not.toBeInTheDocument();
     expect(row).not.toHaveTextContent("Build Your SaaS");
     expect(row).not.toHaveTextContent(podcast.title);
-    expect(screen.getByText("1 podcast")).toBeInTheDocument();
+    expect(
+      screen.getByText("1 podcast · 1 with unlistened")
+    ).toBeInTheDocument();
     expect(screen.getByText("1 / 1 episodes")).toBeInTheDocument();
     expect(perPodcastEpisodesSpy).not.toHaveBeenCalled();
   });
@@ -393,13 +397,21 @@ describe("SubscriptionsScreen", () => {
       episodes: [
         baseEpisode,
         { ...baseEpisode, id: 102, title: "Listened", isListened: true },
-        { ...baseEpisode, id: 201, podcastId: 2, title: "Second episode" },
+        {
+          ...baseEpisode,
+          id: 201,
+          podcastId: 2,
+          title: "Second episode",
+          isListened: true,
+        },
       ],
     });
 
     renderSubscriptionsScreen();
 
-    expect(await screen.findByText("2 podcasts")).toBeInTheDocument();
+    expect(
+      await screen.findByText("2 podcasts · 1 with unlistened")
+    ).toBeInTheDocument();
     expect(screen.getByText("2 / 1 episodes")).toBeInTheDocument();
     expect(screen.queryByText("Build Your SaaS episodes")).not.toBeInTheDocument();
   });
@@ -726,7 +738,9 @@ describe("SubscriptionsScreen", () => {
     renderSubscriptionsScreen();
 
     expect(await screen.findByText("No unlistened podcasts")).toBeInTheDocument();
-    expect(screen.getByText("1 podcast")).toBeInTheDocument();
+    expect(
+      screen.getByText("1 podcast · 0 with unlistened")
+    ).toBeInTheDocument();
     expect(screen.getByText("All caught up")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add RSS feed" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Import OPML" })).toBeInTheDocument();
