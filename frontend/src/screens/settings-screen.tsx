@@ -15,6 +15,7 @@ import {
   type SettingsValues,
 } from "@/lib/api";
 import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
+import { useLatestRequest } from "@/lib/use-latest-request";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
 import { ErrorBanner, ScreenBannerStack } from "./screen-states";
@@ -158,6 +159,7 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const statusPollRequests = useLatestRequest();
   const proxyConfigured = settings?.proxyConfigured || proxyStatus?.proxyConfigured || false;
 
   useEffect(() => {
@@ -202,12 +204,16 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
     let cancelled = false;
 
     async function refreshSchedulerStatus() {
+      const requestGeneration = statusPollRequests.beginRequest();
       try {
         const [{ scheduler: status }, { proxy }] = await Promise.all([
           api.jobs.status(),
           api.settings.proxyStatus(),
         ]);
-        if (!cancelled) {
+        if (
+          !cancelled &&
+          statusPollRequests.isLatestRequest(requestGeneration)
+        ) {
           setScheduler(status);
           setProxyStatus(proxy);
         }
@@ -225,7 +231,7 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [reloadKey]);
+  }, [reloadKey, statusPollRequests]);
 
   async function handleSaveRefreshTime() {
     setSaving(true);

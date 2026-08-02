@@ -1,5 +1,5 @@
 import { Profiler } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -297,6 +297,15 @@ function renderPlaybackProvider() {
   );
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+
+  return { promise, resolve };
+}
+
 let dispatchHarnessProfilerCommits = 0;
 
 function DispatchOnlyHarness() {
@@ -415,6 +424,64 @@ describe("PlaybackProvider", () => {
     expect(screen.getByTestId("current-title")).toHaveTextContent("First queued episode");
     expect(screen.getByTestId("current-podcast")).toHaveTextContent("First Podcast");
     expect(screen.getByTestId("speed")).toHaveTextContent("Speed 1.3x");
+  });
+
+  it("does not let an older queue response replace a newer one", async () => {
+    renderPlaybackProvider();
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    const queue = playlistItems.map((item) => {
+      const episode = episodes.get(item.episodeId)!;
+      const podcast = podcasts.find(
+        (candidate) => candidate.id === episode.podcastId
+      )!;
+      return {
+        ...episode,
+        podcastTitle: podcast.title,
+        podcastImageUrl: null,
+        playback: playback.get(episode.id) ?? null,
+      };
+    });
+    const olderRequest = deferred<
+      Awaited<ReturnType<typeof api.playback.queue>>
+    >();
+    const newerRequest = deferred<
+      Awaited<ReturnType<typeof api.playback.queue>>
+    >();
+    const queueSpy = vi.mocked(api.playback.queue);
+    queueSpy
+      .mockReturnValueOnce(olderRequest.promise)
+      .mockReturnValueOnce(newerRequest.promise);
+
+    window.dispatchEvent(new Event("focus"));
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => expect(queueSpy).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      newerRequest.resolve({
+        queue: queue.map((episode, index) =>
+          index === 0 ? { ...episode, title: "Newest queue" } : episode
+        ),
+        activePlayback: null,
+      });
+    });
+    expect(screen.getByTestId("current-title")).toHaveTextContent(
+      "Newest queue"
+    );
+
+    await act(async () => {
+      olderRequest.resolve({
+        queue: queue.map((episode, index) =>
+          index === 0 ? { ...episode, title: "Stale queue" } : episode
+        ),
+        activePlayback: null,
+      });
+    });
+    expect(screen.getByTestId("current-title")).toHaveTextContent(
+      "Newest queue"
+    );
   });
 
   it("uses backend active playback from the queue without autoplay", async () => {

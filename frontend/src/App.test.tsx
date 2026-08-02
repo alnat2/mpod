@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,10 +7,19 @@ import { api, type AuthSession } from "@/lib/api";
 
 import App from "./App";
 
-const setupScreenMock = vi.fn((props?: unknown) => {
-  void props;
-  return <div>Setup screen</div>;
-});
+const setupScreenMock = vi.fn(
+  (props?: { onAuthenticated?: () => void | Promise<void> }) => (
+    <div>
+      Setup screen
+      <button
+        type="button"
+        onClick={() => void props?.onAuthenticated?.()}
+      >
+        Reload session
+      </button>
+    </div>
+  )
+);
 const loginScreenMock = vi.fn((props?: unknown) => {
   void props;
   return <div>Login screen</div>;
@@ -51,7 +60,8 @@ vi.mock("@/components/mpod", () => ({
 }));
 
 vi.mock("@/screens/auth-screens", () => ({
-  SetupScreen: (props: unknown) => setupScreenMock(props),
+  SetupScreen: (props: { onAuthenticated?: () => void | Promise<void> }) =>
+    setupScreenMock(props),
   LoginScreen: (props: unknown) => loginScreenMock(props),
 }));
 
@@ -72,6 +82,15 @@ vi.mock("@/screens/subscriptions-screen", () => ({
 }));
 
 describe("App routing", () => {
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((promiseResolve) => {
+      resolve = promiseResolve;
+    });
+
+    return { promise, resolve };
+  }
+
   beforeEach(() => {
     vi.restoreAllMocks();
     setupScreenMock.mockClear();
@@ -171,5 +190,46 @@ describe("App routing", () => {
       expect(sessionSpy).toHaveBeenCalledTimes(2);
     });
     expect(await screen.findByText("Subscriptions screen")).toBeInTheDocument();
+  });
+
+  it("does not let an older session response replace a newer one", async () => {
+    const olderRequest = deferred<AuthSession>();
+    const newerRequest = deferred<AuthSession>();
+    vi.spyOn(api.auth, "session")
+      .mockResolvedValueOnce({
+        authenticated: false,
+        user: null,
+        setupRequired: true,
+      })
+      .mockReturnValueOnce(olderRequest.promise)
+      .mockReturnValueOnce(newerRequest.promise);
+
+    render(<App />);
+    await screen.findByText("Setup screen");
+    const setupProps = setupScreenMock.mock.calls.at(-1)?.[0];
+    expect(setupProps?.onAuthenticated).toBeDefined();
+    act(() => {
+      void setupProps?.onAuthenticated?.();
+      void setupProps?.onAuthenticated?.();
+    });
+
+    await act(async () => {
+      newerRequest.resolve({
+        authenticated: true,
+        user: { id: 1, username: "qa" },
+        setupRequired: false,
+      });
+    });
+    expect(await screen.findByText("Subscriptions screen")).toBeInTheDocument();
+
+    await act(async () => {
+      olderRequest.resolve({
+        authenticated: false,
+        user: null,
+        setupRequired: true,
+      });
+    });
+    expect(screen.getByText("Subscriptions screen")).toBeInTheDocument();
+    expect(screen.queryByText("Setup screen")).not.toBeInTheDocument();
   });
 });

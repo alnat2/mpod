@@ -14,6 +14,7 @@ import {
 import { api, type PlaybackState } from "./api";
 import { clampPosition, setAudioPosition } from "./playback-audio";
 import type { QueueEpisode } from "./playback-context-types";
+import { useLatestRequest } from "./use-latest-request";
 
 type UsePlaybackSyncOptions = {
   audioRef: RefObject<HTMLAudioElement | null>;
@@ -63,6 +64,8 @@ export function usePlaybackSync({
   setPositionSeconds,
   setSpeedLabel,
 }: UsePlaybackSyncOptions) {
+  const queueRequests = useLatestRequest();
+  const settingsRequests = useLatestRequest();
   const writePlaybackState = useCallback(
     (episodeId: number, playback: PlaybackState | null) => {
       setQueue((current) =>
@@ -207,8 +210,12 @@ export function usePlaybackSync({
   );
 
   const loadPlaybackSettings = useCallback(async () => {
+    const requestGeneration = settingsRequests.beginRequest();
     try {
       const response = await api.settings.get();
+      if (!settingsRequests.isLatestRequest(requestGeneration)) {
+        return;
+      }
       const nextSpeed = response.settings.playbackSpeed;
       setSpeedLabel(
         isPlaybackSpeedLabel(nextSpeed) ? nextSpeed : defaultPlaybackSpeed
@@ -216,11 +223,15 @@ export function usePlaybackSync({
     } catch (error) {
       console.error("Failed to load playback settings", error);
     }
-  }, [setSpeedLabel]);
+  }, [setSpeedLabel, settingsRequests]);
 
   const loadQueue = useCallback(async () => {
+    const requestGeneration = queueRequests.beginRequest();
     try {
       const response = await api.playback.queue();
+      if (!queueRequests.isLatestRequest(requestGeneration)) {
+        return null;
+      }
       setQueue(response.queue);
       const nextActiveEpisodeId = response.activePlayback?.episodeId ?? null;
       setActiveEpisodeId(
@@ -234,9 +245,11 @@ export function usePlaybackSync({
       console.error("Failed to load queue", error);
       return null;
     } finally {
-      setLoading(false);
+      if (queueRequests.isLatestRequest(requestGeneration)) {
+        setLoading(false);
+      }
     }
-  }, [setActiveEpisodeId, setLoading, setQueue]);
+  }, [queueRequests, setActiveEpisodeId, setLoading, setQueue]);
 
   const reloadQueue = useCallback(async () => {
     await loadQueue();
@@ -284,32 +297,8 @@ export function usePlaybackSync({
   }, [loadQueue]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadInitialPlaybackSettings = async () => {
-      try {
-        const response = await api.settings.get();
-        if (cancelled) {
-          return;
-        }
-
-        const nextSpeed = response.settings.playbackSpeed;
-        if (isPlaybackSpeedLabel(nextSpeed)) {
-          setSpeedLabel(nextSpeed);
-        } else {
-          setSpeedLabel(defaultPlaybackSpeed);
-        }
-      } catch (error) {
-        console.error("Failed to load playback settings", error);
-      }
-    };
-
-    void loadInitialPlaybackSettings();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [setSpeedLabel]);
+    void loadPlaybackSettings();
+  }, [loadPlaybackSettings]);
 
   useEffect(() => {
     if (!playing || !currentEpisodeId) return;

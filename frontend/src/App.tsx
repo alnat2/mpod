@@ -7,6 +7,7 @@ import { BrowserRouter, useLocation } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthShell } from "@/components/mpod";
 import { api, type AuthSession } from "@/lib/api";
+import { useLatestRequest } from "@/lib/use-latest-request";
 import { SubscriptionsCacheProvider } from "@/lib/subscriptions-cache-provider";
 
 const AuthenticatedPlaybackProvider = lazy(async () => {
@@ -118,18 +119,27 @@ function AppRoutes() {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionError, setSessionError] = useState(false);
+  const sessionRequests = useLatestRequest();
 
   const loadSession = useCallback(async () => {
+    const requestGeneration = sessionRequests.beginRequest();
     setLoading(true);
     setSessionError(false);
     try {
-      setSession(await api.auth.session());
+      const nextSession = await api.auth.session();
+      if (sessionRequests.isLatestRequest(requestGeneration)) {
+        setSession(nextSession);
+      }
     } catch {
-      setSessionError(true);
+      if (sessionRequests.isLatestRequest(requestGeneration)) {
+        setSessionError(true);
+      }
     } finally {
-      setLoading(false);
+      if (sessionRequests.isLatestRequest(requestGeneration)) {
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [sessionRequests]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
