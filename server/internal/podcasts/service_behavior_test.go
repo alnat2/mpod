@@ -215,6 +215,12 @@ func TestRefreshUpsertsEpisodesWithoutDuplicates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateFromFeed failed: %v", err)
 	}
+	downloadPath := filepath.Join(t.TempDir(), "episode.mp3")
+	mustExecPodcast(t, db.SQL, `
+		UPDATE episodes
+		SET is_listened = 1, downloaded_path = ?
+		WHERE podcast_id = ? AND external_episode_key = 'guid-1'
+	`, downloadPath, podcast.ID)
 
 	responseBody = testRSSFeedWithTwoEpisodes("Renamed Podcast", "Episode One Updated", "guid-1", "https://cdn.example.com/1-new.mp3", "Episode Two", "guid-2", "https://cdn.example.com/2.mp3")
 	newEpisodes, _, err := service.Refresh(context.Background(), podcast.ID)
@@ -226,11 +232,20 @@ func TestRefreshUpsertsEpisodesWithoutDuplicates(t *testing.T) {
 	}
 
 	var title, audioURL string
-	if err := db.SQL.QueryRow(`SELECT title, audio_url FROM episodes WHERE podcast_id = ? AND external_episode_key = 'guid-1'`, podcast.ID).Scan(&title, &audioURL); err != nil {
+	var listened bool
+	var storedDownloadPath sql.NullString
+	if err := db.SQL.QueryRow(`
+		SELECT title, audio_url, is_listened, downloaded_path
+		FROM episodes
+		WHERE podcast_id = ? AND external_episode_key = 'guid-1'
+	`, podcast.ID).Scan(&title, &audioURL, &listened, &storedDownloadPath); err != nil {
 		t.Fatalf("query updated episode: %v", err)
 	}
 	if title != "Episode One Updated" || audioURL != "https://cdn.example.com/1-new.mp3" {
 		t.Fatalf("expected updated episode metadata, got title=%q audioURL=%q", title, audioURL)
+	}
+	if !listened || !storedDownloadPath.Valid || storedDownloadPath.String != downloadPath {
+		t.Fatalf("expected refresh to preserve user state, listened=%v downloadedPath=%+v", listened, storedDownloadPath)
 	}
 
 	var episodeCount int

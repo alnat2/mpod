@@ -92,3 +92,55 @@ func TestEpisodeFromItemIdentityPriority(t *testing.T) {
 		t.Fatalf("expected audio url to be fallback identity, got %q", record.ExternalKey)
 	}
 }
+
+func TestUpsertFeedEpisodesCountsDuplicateNewKeyOnce(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+	mustExecPodcast(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+
+	tx, err := db.SQL.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("BeginTx failed: %v", err)
+	}
+	items := []*gofeed.Item{
+		{
+			Title: "First title",
+			GUID:  "duplicate-guid",
+			Enclosures: []*gofeed.Enclosure{
+				{URL: "https://cdn.example.com/first.mp3"},
+			},
+		},
+		{
+			Title: "Updated title",
+			GUID:  "duplicate-guid",
+			Enclosures: []*gofeed.Enclosure{
+				{URL: "https://cdn.example.com/updated.mp3"},
+			},
+		},
+	}
+
+	inserted, err := upsertFeedEpisodes(context.Background(), tx, 1, items)
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("upsertFeedEpisodes failed: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit failed: %v", err)
+	}
+	if inserted != 1 {
+		t.Fatalf("expected duplicate new key to count once, got %d", inserted)
+	}
+
+	var title string
+	if err := db.SQL.QueryRow(`
+		SELECT title
+		FROM episodes
+		WHERE podcast_id = 1 AND external_episode_key = 'duplicate-guid'
+	`).Scan(&title); err != nil {
+		t.Fatalf("query upserted episode: %v", err)
+	}
+	assertPodcastCount(t, db.SQL, `SELECT COUNT(*) FROM episodes WHERE podcast_id = 1 AND external_episode_key = 'duplicate-guid'`, 1)
+	if title != "Updated title" {
+		t.Fatalf("expected updated episode title, got %q", title)
+	}
+}

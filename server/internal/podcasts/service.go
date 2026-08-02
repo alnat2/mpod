@@ -748,20 +748,16 @@ func scanPodcast(row podcastScanner) (Podcast, error) {
 }
 
 func upsertFeedEpisodes(ctx context.Context, tx *sql.Tx, podcastID int64, items []*gofeed.Item) (int, error) {
+	existingKeys, err := loadExistingEpisodeKeys(ctx, tx, podcastID)
+	if err != nil {
+		return 0, err
+	}
+
 	insertedEpisodes := 0
 	for _, item := range items {
 		episode, ok := episodeFromItem(item)
 		if !ok {
 			continue
-		}
-
-		var existing int
-		if err := tx.QueryRowContext(ctx, `
-			SELECT COUNT(*)
-			FROM episodes
-			WHERE podcast_id = ? AND external_episode_key = ?
-		`, podcastID, episode.ExternalKey).Scan(&existing); err != nil {
-			return 0, fmt.Errorf("check episode existence: %w", err)
 		}
 
 		if _, err := tx.ExecContext(ctx, `
@@ -785,9 +781,35 @@ func upsertFeedEpisodes(ctx context.Context, tx *sql.Tx, podcastID int64, items 
 			`, podcastID, episode.ExternalKey, episode.Title, episode.Description, episode.GUID, episode.AudioURL, episode.Duration, episode.PublishedAt); err != nil {
 			return 0, fmt.Errorf("insert episode: %w", err)
 		}
-		if existing == 0 {
+		if _, exists := existingKeys[episode.ExternalKey]; !exists {
 			insertedEpisodes++
+			existingKeys[episode.ExternalKey] = struct{}{}
 		}
 	}
 	return insertedEpisodes, nil
+}
+
+func loadExistingEpisodeKeys(ctx context.Context, tx *sql.Tx, podcastID int64) (map[string]struct{}, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT external_episode_key
+		FROM episodes
+		WHERE podcast_id = ?
+	`, podcastID)
+	if err != nil {
+		return nil, fmt.Errorf("load existing episode keys: %w", err)
+	}
+	defer rows.Close()
+
+	keys := make(map[string]struct{})
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, fmt.Errorf("scan existing episode key: %w", err)
+		}
+		keys[key] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate existing episode keys: %w", err)
+	}
+	return keys, nil
 }
