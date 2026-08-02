@@ -247,7 +247,7 @@ func NewRouterWithServices(logger *log.Logger, cfg config.Config, db *sql.DB, sc
 		nethttp.ServeFile(w, req, filepath.Join(staticDir, "index.html"))
 	}))
 
-	return r.recoverAndLog(mux)
+	return r.securityHeaders(r.recoverAndLog(r.requireSameOrigin(mux)))
 }
 
 func (r *Router) handleHealth(w nethttp.ResponseWriter, req *nethttp.Request) {

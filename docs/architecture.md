@@ -401,6 +401,8 @@ Auth uses server-side sessions with cookies.
 
 Session records expire after 30 days. The backend removes all expired session rows at startup and before creating a new login session; an expired session presented by a client is also deleted immediately. A session is invalid once its expiration timestamp is reached.
 
+HTTP responses set a restrictive Content Security Policy, disable MIME sniffing, and use a same-origin referrer policy. State-changing `/api` requests with an `Origin` header are accepted only when that origin matches the effective request scheme and host. Requests without `Origin` remain available to trusted local non-browser clients; session cookies retain `HttpOnly`, `SameSite=Lax`, and HTTPS-aware `Secure` behavior.
+
 Expected flow:
 - if no user exists, frontend shows setup flow
 - first registration creates user and starts session

@@ -3549,7 +3549,7 @@ func newSplitRouterWithClients(t *testing.T, cfg config.Config, authDB, appDB *s
 	mux.HandleFunc("GET /api/settings", r.handleSettingsGet)
 	mux.HandleFunc("PATCH /api/settings", r.handleSettingsPatch)
 	mux.HandleFunc("GET /api/proxy/status", r.handleProxyStatus)
-	return r.recoverAndLog(mux)
+	return r.securityHeaders(r.recoverAndLog(r.requireSameOrigin(mux)))
 }
 
 func newRouterDefaultClient(t *testing.T, cfg config.Config, appDB *storage.DB) *nethttp.Client {
