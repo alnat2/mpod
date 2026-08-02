@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -74,7 +75,7 @@ func TestMigrateRollsBackFailedMigrationWithoutRecordingVersion(t *testing.T) {
 	}
 }
 
-func TestProjectMigrationAddsActivePlaybackToExistingDatabase(t *testing.T) {
+func TestProjectMigrationsUpgradeExistingDatabase(t *testing.T) {
 	db := openMigrateTestDB(t)
 	defer db.Close()
 
@@ -84,7 +85,13 @@ func TestProjectMigrationAddsActivePlaybackToExistingDatabase(t *testing.T) {
 			applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		);
 		CREATE TABLE episodes (
-			id INTEGER PRIMARY KEY
+			id INTEGER PRIMARY KEY,
+			podcast_id INTEGER NOT NULL,
+			published_at DATETIME
+		);
+		CREATE TABLE playlist (
+			id INTEGER PRIMARY KEY,
+			position INTEGER NOT NULL
 		);
 		INSERT INTO schema_migrations (version) VALUES
 			('0001_initial.sql'),
@@ -108,7 +115,44 @@ func TestProjectMigrationAddsActivePlaybackToExistingDatabase(t *testing.T) {
 		t.Fatalf("expected active_playback table, got %q", tableName)
 	}
 
-	assertMigrationVersions(t, db.SQL, 6)
+	assertIndexExists(t, db.SQL, "idx_episodes_podcast_published")
+	assertIndexExists(t, db.SQL, "idx_playlist_position")
+	assertMigrationVersions(t, db.SQL, 7)
+}
+
+func TestProjectQueryIndexesAvoidTemporarySorts(t *testing.T) {
+	db := openMigrateTestDB(t)
+	defer db.Close()
+
+	if err := Migrate(db.SQL, "../../migrations"); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+
+	episodePlan := queryPlanDetails(t, db.SQL, `
+		SELECT id, podcast_id, title, description, audio_url, duration, downloaded_path, is_listened, published_at
+		FROM episodes
+		WHERE podcast_id = ?
+		ORDER BY published_at DESC, id DESC
+	`, 1)
+	if !strings.Contains(episodePlan, "idx_episodes_podcast_published") {
+		t.Fatalf("episode query did not use ordering index:\n%s", episodePlan)
+	}
+	if strings.Contains(episodePlan, "USE TEMP B-TREE") {
+		t.Fatalf("episode query still uses a temporary sort:\n%s", episodePlan)
+	}
+
+	playlistPlan := queryPlanDetails(t, db.SQL, `
+		SELECT episodes.id, episodes.title
+		FROM playlist
+		JOIN episodes ON episodes.id = playlist.episode_id
+		ORDER BY playlist.position ASC, playlist.id ASC
+	`)
+	if !strings.Contains(playlistPlan, "idx_playlist_position") {
+		t.Fatalf("playlist query did not use ordering index:\n%s", playlistPlan)
+	}
+	if strings.Contains(playlistPlan, "USE TEMP B-TREE") {
+		t.Fatalf("playlist query still uses a temporary sort:\n%s", playlistPlan)
+	}
 }
 
 func openMigrateTestDB(t *testing.T) *DB {
@@ -140,4 +184,37 @@ func assertMigrationVersions(t *testing.T, db *sql.DB, want int) {
 	if got != want {
 		t.Fatalf("expected %d applied migrations, got %d", want, got)
 	}
+}
+
+func assertIndexExists(t *testing.T, db *sql.DB, name string) {
+	t.Helper()
+
+	var got string
+	if err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?`, name).Scan(&got); err != nil {
+		t.Fatalf("index %s missing: %v", name, err)
+	}
+}
+
+func queryPlanDetails(t *testing.T, db *sql.DB, query string, args ...any) string {
+	t.Helper()
+
+	rows, err := db.Query("EXPLAIN QUERY PLAN "+query, args...)
+	if err != nil {
+		t.Fatalf("explain query plan: %v", err)
+	}
+	defer rows.Close()
+
+	details := make([]string, 0)
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatalf("scan query plan: %v", err)
+		}
+		details = append(details, detail)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("query plan rows: %v", err)
+	}
+	return strings.Join(details, "\n")
 }
