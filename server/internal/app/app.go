@@ -39,6 +39,9 @@ func New(logger *log.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := storage.EnsureWritableDirectory(cfg.DownloadsDir); err != nil {
+		return nil, fmt.Errorf("prepare downloads directory: %w", err)
+	}
 
 	db, err := storage.Open(cfg.DBPath)
 	if err != nil {

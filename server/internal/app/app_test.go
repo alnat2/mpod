@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +17,27 @@ import (
 	"github.com/cross/mpod/server/internal/config"
 	"github.com/cross/mpod/server/internal/storage"
 )
+
+func TestNewRejectsUnusableDownloadsPath(t *testing.T) {
+	dataDir := t.TempDir()
+	downloadsPath := filepath.Join(dataDir, "downloads")
+	if err := os.WriteFile(downloadsPath, []byte("not a directory"), 0o644); err != nil {
+		t.Fatalf("write conflicting downloads file: %v", err)
+	}
+
+	t.Setenv("SESSION_SECRET", "test-secret")
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("DB_PATH", filepath.Join(dataDir, "mpod.sqlite"))
+	t.Setenv("DATA_DIR", dataDir)
+	t.Setenv("DOWNLOADS_DIR", downloadsPath)
+	t.Setenv("SOCKS5_HOST", "")
+	t.Setenv("SOCKS5_PORT", "")
+
+	_, err := New(log.New(io.Discard, "", 0))
+	if err == nil || !strings.Contains(err.Error(), "prepare downloads directory") {
+		t.Fatalf("expected downloads startup check error, got %v", err)
+	}
+}
 
 func TestNewCleansExpiredSessionsAtStartup(t *testing.T) {
 	dataDir := t.TempDir()

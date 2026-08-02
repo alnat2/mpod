@@ -137,9 +137,13 @@ Build implications:
 - The final runtime image remains a minimal `alpine` with no C toolchain
 - Dependencies are downloaded via `go mod download` during Docker build rather than vendored, keeping the build context small (~20 MB instead of ~250 MB)
 
+Every pooled SQLite connection enables foreign-key enforcement, WAL journal mode, and a five-second busy timeout through the driver DSN. Domain handling of constraint failures uses SQLite error codes rather than matching human-readable error text. Startup treats a missing migrated table as a fatal consistency error instead of silently skipping reconciliation.
+
 ### Filesystem Storage
 
 The local filesystem stores downloaded episode audio files under `/data/downloads`.
+
+Before opening the application, the backend creates the configured downloads directory and verifies it can create, close, and remove a temporary file there. Startup fails with a clear error if the mounted storage path is unavailable or not writable.
 
 The filesystem is used only for:
 - episode download storage

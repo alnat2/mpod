@@ -52,7 +52,7 @@ func TestReconcileDownloadsClearsMissingPathAndLogs(t *testing.T) {
 	}
 }
 
-func TestReconcileDownloadsHandlesMissingEpisodesTable(t *testing.T) {
+func TestReconcileDownloadsRejectsMissingEpisodesTable(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.sqlite")
 	db, err := Open(dbPath)
 	if err != nil {
@@ -60,8 +60,8 @@ func TestReconcileDownloadsHandlesMissingEpisodesTable(t *testing.T) {
 	}
 	defer db.Close()
 
-	if err := ReconcileDownloads(db.SQL, log.New(bytes.NewBuffer(nil), "", 0)); err != nil {
-		t.Fatalf("expected nil error for missing episodes table, got %v", err)
+	if err := ReconcileDownloads(db.SQL, log.New(bytes.NewBuffer(nil), "", 0)); err == nil {
+		t.Fatal("expected missing episodes table to fail reconciliation")
 	}
 }
 

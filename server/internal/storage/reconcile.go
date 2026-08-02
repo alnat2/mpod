@@ -5,15 +5,11 @@ import (
 	"errors"
 	"log"
 	"os"
-	"strings"
 )
 
 func ReconcileDownloads(db *sql.DB, logger *log.Logger) error {
 	rows, err := db.Query(`SELECT id, downloaded_path FROM episodes WHERE downloaded_path IS NOT NULL AND downloaded_path <> ''`)
 	if err != nil {
-		if isTableMissing(err) {
-			return nil
-		}
 		return err
 	}
 	defer rows.Close()
@@ -38,11 +34,4 @@ func ReconcileDownloads(db *sql.DB, logger *log.Logger) error {
 	}
 
 	return rows.Err()
-}
-
-func isTableMissing(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "no such table: episodes")
 }

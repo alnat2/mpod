@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/cross/mpod/server/internal/remote"
+	"github.com/cross/mpod/server/internal/storage"
 	"github.com/mmcdole/gofeed"
 )
 
@@ -362,7 +363,7 @@ func (s *Service) createPodcastFromFeed(ctx context.Context, normalizedURL strin
 		VALUES (?, ?, ?, ?, ?, NULL)
 	`, podcast.Title, podcast.Description, podcast.ImageURL, podcast.RSSURL, now)
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+		if storage.IsUniqueConstraint(err) {
 			return Podcast{}, 0, ErrDuplicateSubscription
 		}
 		return Podcast{}, 0, fmt.Errorf("insert podcast: %w", err)
