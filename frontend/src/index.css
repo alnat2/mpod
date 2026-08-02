@@ -49,14 +49,6 @@
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {
     color-scheme: dark;
-    --background-color:
-      rgba(0, 0, 0, 0.3);
-    --semantic-background:
-      #272625;
-    --semantic-border:
-      #535151;
-    --semantic-foreground:
-      #ffffff;
   }
 }
 
@@ -181,14 +173,6 @@ select {
 
 .dark {
   color-scheme: dark;
-  --background-color:
-    rgba(0, 0, 0, 0.3);
-  --semantic-background:
-    #272625;
-  --semantic-border:
-    #535151;
-  --semantic-foreground:
-    #ffffff;
 }
 
 @layer base {
