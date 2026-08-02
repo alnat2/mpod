@@ -1,4 +1,4 @@
-import { render, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -119,5 +119,48 @@ describe("Player", () => {
     expect(onPlay).toHaveBeenCalledOnce();
     expect(onBack).toHaveBeenCalledOnce();
     expect(onForward).toHaveBeenCalledOnce();
+  });
+
+  it("exposes an accessible seek slider with keyboard controls", async () => {
+    const user = userEvent.setup();
+    const onProgressSeek = vi.fn();
+
+    render(
+      <TooltipProvider>
+        <Player
+          title="Episode title"
+          podcastTitle="Podcast title"
+          elapsedLabel="25:00"
+          durationLabel="75:00"
+          progressValue={25}
+          onProgressSeek={onProgressSeek}
+        />
+      </TooltipProvider>
+    );
+
+    const seekSlider = screen.getByRole("slider", {
+      name: "Seek playback position",
+    });
+    expect(seekSlider).toHaveAttribute("aria-valuemin", "0");
+    expect(seekSlider).toHaveAttribute("aria-valuemax", "100");
+    expect(seekSlider).toHaveAttribute("aria-valuenow", "25");
+    expect(seekSlider).toHaveAttribute(
+      "aria-valuetext",
+      "25:00 elapsed, 1:15:00 remaining"
+    );
+
+    seekSlider.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(onProgressSeek).toHaveBeenLastCalledWith(0.26);
+    expect(seekSlider).toHaveAttribute(
+      "aria-valuetext",
+      "26:00 elapsed, 1:14:00 remaining"
+    );
+
+    await user.keyboard("{End}");
+    expect(onProgressSeek).toHaveBeenLastCalledWith(1);
+
+    await user.keyboard("{Home}");
+    expect(onProgressSeek).toHaveBeenLastCalledWith(0);
   });
 });

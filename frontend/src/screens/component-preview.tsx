@@ -106,6 +106,7 @@ export function ComponentPreview() {
             progressValue={featuredEpisode.progressValue}
             speedLabel="Speed 1.5x"
             notesDisabled={false}
+            onProgressSeek={() => undefined}
           />
         </div>
         <PlaylistQueue summary="3 episodes · 2h 13m" className="max-w-[1040px]">

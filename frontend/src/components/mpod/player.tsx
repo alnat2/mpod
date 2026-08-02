@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type { PointerEvent } from "react";
 
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -21,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
+import { Slider } from "@/components/ui/slider";
 import {
   Tooltip,
   TooltipContent,
@@ -99,6 +99,52 @@ function TransportButton({
 
 function compactSpeedLabel(speedLabel: PlaybackSpeedLabel) {
   return speedLabel.replace(/^Speed\s/, "").replace(/x$/, "");
+}
+
+function formatSeekTime(seconds: number) {
+  const roundedSeconds = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(roundedSeconds / 3600);
+  const minutes = Math.floor((roundedSeconds % 3600) / 60);
+  const remainingSeconds = roundedSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
+  }
+
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+function seekValueText(progressValue: number, durationSeconds?: number) {
+  if (!durationSeconds || durationSeconds <= 0) {
+    return `${Math.round(progressValue)}%`;
+  }
+
+  const elapsedSeconds = (durationSeconds * progressValue) / 100;
+  return `${formatSeekTime(elapsedSeconds)} elapsed, ${formatSeekTime(
+    durationSeconds - elapsedSeconds
+  )} remaining`;
+}
+
+function parseClockLabel(label: string) {
+  const parts = label.split(":").map(Number);
+  if (
+    (parts.length !== 2 && parts.length !== 3) ||
+    parts.some((part) => !Number.isFinite(part) || part < 0)
+  ) {
+    return null;
+  }
+
+  return parts.reduce((total, part) => total * 60 + part, 0);
+}
+
+function getSeekDurationSeconds(elapsedLabel: string, remainingLabel: string) {
+  const elapsedSeconds = parseClockLabel(elapsedLabel);
+  const remainingSeconds = parseClockLabel(remainingLabel);
+  if (elapsedSeconds === null || remainingSeconds === null) {
+    return undefined;
+  }
+
+  return elapsedSeconds + remainingSeconds;
 }
 
 function PlayerAssetIcon({
@@ -201,9 +247,15 @@ export function Player({
   const isSpeedControlled = speedLabel !== undefined && onSpeedChange !== undefined;
   const [uncontrolledSpeedLabel, setUncontrolledSpeedLabel] =
     useState<PlaybackSpeedLabel>(speedLabel ?? defaultPlaybackSpeed);
+  const [pendingProgressValue, setPendingProgressValue] = useState<number | null>(
+    null
+  );
   const activeSpeedLabel = isSpeedControlled
     ? speedLabel
     : uncontrolledSpeedLabel;
+  const normalizedProgressValue = Math.min(100, Math.max(0, progressValue));
+  const displayedProgressValue =
+    pendingProgressValue ?? normalizedProgressValue;
 
   function handleSpeedChange(value: string) {
     const nextSpeed = value as PlaybackSpeedLabel;
@@ -214,13 +266,17 @@ export function Player({
     }
   }
 
-  function handleProgressPointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (!onProgressSeek) return;
+  function handleProgressChange(values: number[]) {
+    const nextValue = values[0];
+    if (nextValue === undefined) return;
+    setPendingProgressValue(nextValue);
+  }
 
-    const rect = event.currentTarget.getBoundingClientRect();
-    const clickOffset = event.clientX - rect.left;
-    const progressRatio = Math.min(1, Math.max(0, clickOffset / rect.width));
-    onProgressSeek(progressRatio);
+  function handleProgressCommit(values: number[]) {
+    const nextValue = values[0];
+    setPendingProgressValue(null);
+    if (nextValue === undefined) return;
+    onProgressSeek?.(nextValue / 100);
   }
 
   return (
@@ -247,15 +303,30 @@ export function Player({
       <div className="flex w-full flex-col gap-3 md:contents">
         <div className="flex w-full flex-col gap-2 md:contents">
           <div className="flex w-full flex-col gap-2 pb-2 md:pb-0">
-            <Progress
-              aria-label="Seek playback position"
-              className={cn(
-                "order-last h-4 bg-muted shadow-lg md:order-first md:h-2 md:bg-muted md:shadow-none",
-                onProgressSeek && "cursor-pointer"
-              )}
-              value={progressValue}
-              onPointerDown={handleProgressPointerDown}
-            />
+            {onProgressSeek ? (
+              <Slider
+                className="group order-last h-4 cursor-pointer md:order-first md:h-2 [&_[data-slot=slider-range]]:transition-none [&_[data-slot=slider-thumb]]:opacity-0 [&_[data-slot=slider-thumb]]:focus-visible:opacity-100 [&_[data-slot=slider-track]]:h-full [&_[data-slot=slider-track]]:shadow-lg md:[&_[data-slot=slider-track]]:shadow-none"
+                min={0}
+                max={100}
+                step={1}
+                value={[displayedProgressValue]}
+                thumbProps={{
+                  "aria-label": "Seek playback position",
+                  "aria-valuetext": seekValueText(
+                    displayedProgressValue,
+                    getSeekDurationSeconds(elapsedLabel, durationLabel)
+                  ),
+                }}
+                onValueChange={handleProgressChange}
+                onValueCommit={handleProgressCommit}
+              />
+            ) : (
+              <Progress
+                aria-label="Playback position"
+                className="order-last h-4 bg-muted shadow-lg md:order-first md:h-2 md:bg-muted md:shadow-none"
+                value={normalizedProgressValue}
+              />
+            )}
             <div className="order-first flex h-[18px] w-full items-center justify-between text-xs leading-4 text-muted-foreground md:order-last">
               <span>{elapsedLabel}</span>
               <span>{durationLabel}</span>
