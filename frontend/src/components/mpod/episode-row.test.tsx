@@ -9,6 +9,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { expectNoA11yViolations } from "@/test/axe";
 
 import { EpisodeRow } from "./episode-row";
 
@@ -119,6 +120,7 @@ describe("EpisodeRow", () => {
     await user.click(screen.getByRole("button", { name: "More actions" }));
 
     const dialog = screen.getByRole("dialog");
+    await expectNoA11yViolations(dialog);
     expect(dialog).toHaveTextContent("Spec-Driven Development");
     expect(dialog).toHaveTextContent("Podlodka Podcast");
     expect(

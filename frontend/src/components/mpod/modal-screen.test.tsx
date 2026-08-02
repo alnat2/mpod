@@ -3,6 +3,8 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { expectNoA11yViolations } from "@/test/axe";
+
 import { ModalScreen } from "./modal-screen";
 
 function ModalHarness() {
@@ -40,6 +42,7 @@ describe("ModalScreen", () => {
     const dialog = screen.getByRole("dialog", { name: "Example dialog" });
     expect(dialog).toHaveAttribute("aria-modal", "true");
     expect(opener.parentElement).toHaveAttribute("aria-hidden", "true");
+    await expectNoA11yViolations(dialog);
 
     const firstAction = within(dialog).getByRole("button", {
       name: "First action",

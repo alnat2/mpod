@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "@/lib/api";
+import { expectNoA11yViolations } from "@/test/axe";
 
 import { HomeScreen } from "./home-screen";
 
@@ -211,7 +212,7 @@ describe("HomeScreen", () => {
   });
 
   it("renders the player from the active playback episode, not queue order", async () => {
-    render(<HomeScreen />);
+    const { container } = render(<HomeScreen />);
 
     expect(await screen.findByTestId("player")).toHaveTextContent("Actually playing");
     expect(screen.getByTestId("player")).toHaveTextContent("Current Podcast");
@@ -226,6 +227,7 @@ describe("HomeScreen", () => {
       "no"
     );
     expect(screen.getByTestId("drag-handle-First queued episode")).toBeInTheDocument();
+    await expectNoA11yViolations(container);
   });
 
   it("shows download state without a redundant playlist state in player rows", async () => {

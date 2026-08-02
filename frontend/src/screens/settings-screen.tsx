@@ -325,6 +325,7 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                   <div className="flex w-full items-center gap-2 md:w-[220px]">
                     <Input
                       type="time"
+                      aria-label="Daily refresh time"
                       value={dailyRefreshTime}
                       disabled={loading || saving}
                       className="h-9 rounded-md px-3 text-base"

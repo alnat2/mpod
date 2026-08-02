@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "@/lib/api";
+import { expectNoA11yViolations } from "@/test/axe";
 
 import { SettingsScreen } from "./settings-screen";
 
@@ -83,7 +84,7 @@ describe("SettingsScreen", () => {
   }
 
   it("loads settings and scheduler status", async () => {
-    renderScreen();
+    const { container } = renderScreen();
 
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
     expect(screen.getByDisplayValue("03:00")).toBeInTheDocument();
@@ -91,6 +92,7 @@ describe("SettingsScreen", () => {
       screen.getByText("Status: idle · last refresh never")
     ).toBeInTheDocument();
     expect(screen.getByText("Proxy is off")).toBeInTheDocument();
+    await expectNoA11yViolations(container);
   });
 
   it("saves the daily refresh time", async () => {
