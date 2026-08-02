@@ -6,6 +6,7 @@ import { BrowserRouter, useLocation } from "react-router-dom";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthShell } from "@/components/mpod";
+import { ScreenErrorBoundary } from "@/components/screen-error-boundary";
 import { api, type AuthSession } from "@/lib/api";
 import { useLatestRequest } from "@/lib/use-latest-request";
 import { SubscriptionsCacheProvider } from "@/lib/subscriptions-cache-provider";
@@ -212,7 +213,13 @@ function AppRoutes() {
                 authenticated={authenticated}
                 setupRequired={setupRequired}
               >
-                <SubscriptionsScreen />
+                <ScreenErrorBoundary
+                  activeNavItem="Subscriptions"
+                  resetKey={location.pathname}
+                  screenName="Subscriptions"
+                >
+                  <SubscriptionsScreen />
+                </ScreenErrorBoundary>
               </ProtectedRoute>
             }
           />
@@ -223,7 +230,13 @@ function AppRoutes() {
                 authenticated={authenticated}
                 setupRequired={setupRequired}
               >
-                <HomeScreen />
+                <ScreenErrorBoundary
+                  activeNavItem="Player"
+                  resetKey={location.pathname}
+                  screenName="Player"
+                >
+                  <HomeScreen />
+                </ScreenErrorBoundary>
               </ProtectedRoute>
             }
           />
@@ -234,7 +247,13 @@ function AppRoutes() {
                 authenticated={authenticated}
                 setupRequired={setupRequired}
               >
-                <SettingsScreen onSessionChange={loadSession} />
+                <ScreenErrorBoundary
+                  activeNavItem="Settings"
+                  resetKey={location.pathname}
+                  screenName="Settings"
+                >
+                  <SettingsScreen onSessionChange={loadSession} />
+                </ScreenErrorBoundary>
               </ProtectedRoute>
             }
           />
