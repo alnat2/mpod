@@ -1,7 +1,11 @@
 import { expect, test } from "@playwright/test";
 
+import { installAppShellApiMocks } from "./api-mocks";
+
 test("logs in and lands on subscriptions", async ({ page }) => {
   let sessionCalls = 0;
+
+  await installAppShellApiMocks(page);
 
   await page.route("**/api/auth/session", async (route) => {
     sessionCalls += 1;
@@ -50,7 +54,7 @@ test("logs in and lands on subscriptions", async ({ page }) => {
     });
   });
 
-  await page.route("**/api/podcasts/1/episodes", async (route) => {
+  await page.route("**/api/episodes", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -65,6 +69,8 @@ test("logs in and lands on subscriptions", async ({ page }) => {
   await page.getByRole("button", { name: "Log in" }).click();
 
   await expect(page).toHaveURL(/\/subscriptions$/);
-  await expect(page.getByRole("heading", { name: "No podcasts" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "No podcasts", exact: true })
+  ).toBeVisible();
   await expect(page.getByText("No podcasts yet")).toBeVisible();
 });

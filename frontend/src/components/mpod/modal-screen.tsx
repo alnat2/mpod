@@ -21,6 +21,9 @@ export function ModalScreen({
 }: ModalScreenProps) {
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const swipeArmedRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  const hasOnClose = Boolean(onClose);
+  const historyCleanupTimerRef = useRef<number | null>(null);
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(
     typeof document !== "undefined" && document.activeElement instanceof HTMLElement
       ? document.activeElement
@@ -36,8 +39,17 @@ export function ModalScreen({
   }, [onClose]);
 
   useEffect(() => {
-    if (!onClose) {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!hasOnClose) {
       return;
+    }
+
+    if (historyCleanupTimerRef.current !== null) {
+      window.clearTimeout(historyCleanupTimerRef.current);
+      historyCleanupTimerRef.current = null;
     }
 
     const modalState = {
@@ -48,17 +60,20 @@ export function ModalScreen({
     window.history.pushState(modalState, "", window.location.href);
 
     const handlePopState = () => {
-      onClose();
+      onCloseRef.current?.();
     };
 
     window.addEventListener("popstate", handlePopState);
     return () => {
       window.removeEventListener("popstate", handlePopState);
-      if (window.history.state?.__mpodModal) {
-        window.history.back();
-      }
+      historyCleanupTimerRef.current = window.setTimeout(() => {
+        historyCleanupTimerRef.current = null;
+        if (window.history.state?.__mpodModal) {
+          window.history.back();
+        }
+      }, 0);
     };
-  }, [onClose]);
+  }, [hasOnClose]);
 
   useEffect(
     () => () => {

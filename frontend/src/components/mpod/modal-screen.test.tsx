@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { StrictMode, useState } from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { expectNoA11yViolations } from "@/test/axe";
 
@@ -26,6 +26,10 @@ function ModalHarness() {
 }
 
 describe("ModalScreen", () => {
+  beforeEach(async () => {
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -92,5 +96,48 @@ describe("ModalScreen", () => {
     window.dispatchEvent(new PopStateEvent("popstate"));
 
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the dialog open when its parent supplies a new close callback", () => {
+    const historyBack = vi
+      .spyOn(window.history, "back")
+      .mockImplementation(() => undefined);
+    const { rerender } = render(
+      <ModalScreen title="Example dialog" onClose={() => undefined}>
+        Dialog content
+      </ModalScreen>
+    );
+
+    rerender(
+      <ModalScreen title="Example dialog" onClose={() => undefined}>
+        Dialog content
+      </ModalScreen>
+    );
+
+    expect(
+      screen.getByRole("dialog", { name: "Example dialog" })
+    ).toBeInTheDocument();
+    expect(historyBack).not.toHaveBeenCalled();
+  });
+
+  it("does not navigate back during the StrictMode effect check", async () => {
+    const historyBack = vi
+      .spyOn(window.history, "back")
+      .mockImplementation(() => undefined);
+
+    render(
+      <StrictMode>
+        <ModalScreen title="Example dialog" onClose={() => undefined}>
+          Dialog content
+        </ModalScreen>
+      </StrictMode>
+    );
+    historyBack.mockClear();
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+    expect(
+      screen.getByRole("dialog", { name: "Example dialog" })
+    ).toBeInTheDocument();
+    expect(historyBack).not.toHaveBeenCalled();
   });
 });

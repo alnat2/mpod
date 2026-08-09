@@ -1,11 +1,15 @@
 import { expect, test } from "@playwright/test";
 
+import { installAppShellApiMocks } from "./api-mocks";
+
 test("keeps playlist order stable when playing and persists drag reorder", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
+  await installAppShellApiMocks(page);
 
   let queueOrder = [101, 102];
+  let playbackQueueCalls = 0;
   let reorderPayload: number[] | null = null;
 
   await page.addInitScript(() => {
@@ -87,6 +91,41 @@ test("keeps playlist order stable when playing and persists drag reorder", async
             downloaded: false,
           },
         })),
+      }),
+    });
+  });
+
+  await page.route("**/api/playback/queue", async (route) => {
+    playbackQueueCalls += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        queue: queueOrder.map((episodeId) => ({
+          id: episodeId,
+          podcastId: 1,
+          podcastTitle: "Queue Podcast",
+          podcastImageUrl: null,
+          title:
+            episodeId === 101
+              ? "First queued episode"
+              : "Second queued episode",
+          description: episodeId === 101 ? "First notes" : "Second notes",
+          audioUrl: `https://example.com/audio-${episodeId}.mp3`,
+          duration: episodeId === 101 ? 900 : 1200,
+          downloaded: false,
+          isListened: false,
+          publishedAt:
+            episodeId === 101
+              ? "2026-05-10T10:00:00Z"
+              : "2026-05-11T10:00:00Z",
+          playback: {
+            episodeId,
+            positionSeconds: episodeId === 101 ? 12 : 48,
+            lastUpdated: "2026-05-22T08:10:00Z",
+          },
+        })),
+        activePlayback: null,
       }),
     });
   });
@@ -173,6 +212,20 @@ test("keeps playlist order stable when playing and persists drag reorder", async
     });
   });
 
+  await page.route("**/api/playback/active", async (route) => {
+    const payload = route.request().postDataJSON() as { episodeId: number };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        activePlayback: {
+          episodeId: payload.episodeId,
+          lastUpdated: "2026-05-22T08:10:00Z",
+        },
+      }),
+    });
+  });
+
   await page.route("**/api/episodes/*/audio", async (route) => {
     await route.fulfill({
       status: 200,
@@ -213,4 +266,5 @@ test("keeps playlist order stable when playing and persists drag reorder", async
   await expect
     .poll(() => reorderPayload)
     .toEqual([102, 101]);
+  expect(playbackQueueCalls).toBe(1);
 });

@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { installAppShellApiMocks } from "./api-mocks";
+
 test("imports OPML from the empty subscriptions state", async ({ page }) => {
   let podcasts = [] as Array<{
     id: number;
@@ -11,6 +13,8 @@ test("imports OPML from the empty subscriptions state", async ({ page }) => {
     updateTime: string | null;
   }>;
   let importRequested = false;
+
+  await installAppShellApiMocks(page);
 
   await page.route("**/api/auth/session", async (route) => {
     await route.fulfill({
@@ -81,24 +85,26 @@ test("imports OPML from the empty subscriptions state", async ({ page }) => {
     });
   });
 
-  await page.route("**/api/podcasts/1/episodes", async (route) => {
+  await page.route("**/api/episodes", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        episodes: [
-          {
-            id: 101,
-            podcastId: 1,
-            title: "Imported OPML episode",
-            description: "Imported episode notes",
-            audioUrl: "https://example.com/audio.mp3",
-            duration: 1800,
-            downloaded: false,
-            isListened: false,
-            publishedAt: "2026-05-22T10:00:00Z",
-          },
-        ],
+        episodes: importRequested
+          ? [
+              {
+                id: 101,
+                podcastId: 1,
+                title: "Imported OPML episode",
+                description: "Imported episode notes",
+                audioUrl: "https://example.com/audio.mp3",
+                duration: 1800,
+                downloaded: false,
+                isListened: false,
+                publishedAt: "2026-05-22T10:00:00Z",
+              },
+            ]
+          : [],
       }),
     });
   });

@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { installAppShellApiMocks } from "./api-mocks";
+
 test("saves settings and adds a feed from the empty subscriptions state", async ({
   page,
 }) => {
@@ -13,6 +15,8 @@ test("saves settings and adds a feed from the empty subscriptions state", async 
     updateTime: string | null;
   }>;
   let dailyRefreshTime = "03:00";
+
+  await installAppShellApiMocks(page);
 
   await page.route("**/api/auth/session", async (route) => {
     await route.fulfill({
@@ -137,24 +141,26 @@ test("saves settings and adds a feed from the empty subscriptions state", async 
     });
   });
 
-  await page.route("**/api/podcasts/1/episodes", async (route) => {
+  await page.route("**/api/episodes", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        episodes: [
-          {
-            id: 101,
-            podcastId: 1,
-            title: "First imported episode",
-            description: "Imported with the feed",
-            audioUrl: "https://example.com/audio.mp3",
-            duration: 1200,
-            downloaded: false,
-            isListened: false,
-            publishedAt: "2026-05-22T10:00:00Z",
-          },
-        ],
+        episodes: podcasts.length
+          ? [
+              {
+                id: 101,
+                podcastId: 1,
+                title: "First imported episode",
+                description: "Imported with the feed",
+                audioUrl: "https://example.com/audio.mp3",
+                duration: 1200,
+                downloaded: false,
+                isListened: false,
+                publishedAt: "2026-05-22T10:00:00Z",
+              },
+            ]
+          : [],
       }),
     });
   });

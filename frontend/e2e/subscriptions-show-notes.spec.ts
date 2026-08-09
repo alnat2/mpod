@@ -1,9 +1,12 @@
 import { expect, test } from "@playwright/test";
 
+import { installAppShellApiMocks } from "./api-mocks";
+
 test("shows the expected episode actions and opens show notes", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
+  await installAppShellApiMocks(page);
 
   await page.route("**/api/auth/session", async (route) => {
     await route.fulfill({
@@ -109,13 +112,18 @@ test("shows the expected episode actions and opens show notes", async ({
 
   await page.getByRole("button", { name: "Show notes" }).click();
 
-  await expect(page.getByText("Show notes")).toBeVisible();
+  const showNotesDialog = page.getByRole("dialog", { name: "Show notes" });
+  await expect(showNotesDialog).toBeVisible();
   await expect(
-    page.getByText("Build Your SaaS - QA reorder third")
+    showNotesDialog.getByText("Build Your SaaS - QA reorder third")
   ).toBeVisible();
-  await expect(page.getByText("Episode notes from Playwright")).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "https://example.com/episode-notes" })
+    showNotesDialog.getByText("Episode notes from Playwright")
+  ).toBeVisible();
+  await expect(
+    showNotesDialog.getByRole("link", {
+      name: "https://example.com/episode-notes",
+    })
   ).toHaveAttribute("href", "https://example.com/episode-notes");
 });
 
@@ -123,6 +131,7 @@ test("mobile subscriptions can scroll to the last shown episode", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await installAppShellApiMocks(page);
 
   await page.route("**/api/auth/session", async (route) => {
     await route.fulfill({
@@ -164,7 +173,7 @@ test("mobile subscriptions can scroll to the last shown episode", async ({
     });
   });
 
-  await page.route("**/api/podcasts/1/episodes", async (route) => {
+  await page.route("**/api/episodes", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -188,6 +197,11 @@ test("mobile subscriptions can scroll to the last shown episode", async ({
 
   await expect(page.getByText("Episode 1", { exact: true })).toBeVisible();
 
+  const mountedEpisodeActions = await page
+    .getByRole("button", { name: "More actions" })
+    .count();
+  expect(mountedEpisodeActions).toBeLessThan(20);
+
   const scroller = page.locator(".mpod-scroll").first();
   await expect(scroller).toBeVisible();
 
@@ -203,6 +217,7 @@ test("default subscriptions view includes podcasts with playlist episodes", asyn
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
+  await installAppShellApiMocks(page);
 
   await page.route("**/api/auth/session", async (route) => {
     await route.fulfill({
@@ -278,7 +293,7 @@ test("default subscriptions view includes podcasts with playlist episodes", asyn
     });
   });
 
-  await page.route("**/api/podcasts/1/episodes", async (route) => {
+  await page.route("**/api/episodes", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -295,17 +310,6 @@ test("default subscriptions view includes podcasts with playlist episodes", asyn
             isListened: true,
             publishedAt: "2026-05-20T10:00:00Z",
           },
-        ],
-      }),
-    });
-  });
-
-  await page.route("**/api/podcasts/2/episodes", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        episodes: [
           {
             id: 201,
             podcastId: 2,
