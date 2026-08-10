@@ -325,6 +325,8 @@ User steps:
 
 Playback speed:
 - playback speed options and default speed are canonical in [frontend-decisions.md](frontend-decisions.md#playback-speed-control)
+- on mobile, choosing the playback speed opens a bottom sheet; selecting an option applies it and closes the sheet
+- on desktop, playback speed remains available from the dropdown menu
 - playback speed selection should be restored from backend-owned state so it stays consistent across devices
 - backend playback progress remains stored in seconds
 

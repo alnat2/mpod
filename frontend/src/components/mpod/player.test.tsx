@@ -57,6 +57,48 @@ describe("Player", () => {
     expect(onNotes).toHaveBeenCalledOnce();
   });
 
+  it("uses a bottom sheet to change playback speed on mobile", async () => {
+    const user = userEvent.setup();
+    const onSpeedChange = vi.fn();
+
+    const { container } = render(
+      <TooltipProvider>
+        <Player
+          title="Episode title"
+          podcastTitle="Podcast title"
+          elapsedLabel="12:34"
+          durationLabel="56:07"
+          speedLabel="Speed 1.3x"
+          onSpeedChange={onSpeedChange}
+        />
+      </TooltipProvider>
+    );
+
+    const mobileControls = container.querySelector(
+      '[data-player-controls="mobile"]'
+    );
+    const mobile = within(mobileControls! as HTMLElement);
+
+    await user.click(mobile.getByRole("button", { name: "Speed 1.3x" }));
+
+    expect(screen.getByText("Playback speed")).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Playback speed" })
+    ).toHaveAccessibleDescription("Playback speed options");
+    expect(
+      screen.getByRole("button", { name: "Speed 1.3x", pressed: true })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Speed 1.5x", pressed: false })
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Speed 1.5x", pressed: false })
+    );
+
+    expect(onSpeedChange).toHaveBeenCalledWith("Speed 1.5x");
+  });
+
   it("matches the desktop player control order and actions", async () => {
     const user = userEvent.setup();
     const onBack = vi.fn();

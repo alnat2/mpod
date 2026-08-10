@@ -19,6 +19,7 @@ export type BottomSheetAction = {
   icon: IconSvgElement;
   iconClassName?: string;
   onClick?: () => void;
+  selected?: boolean;
 };
 
 type BottomSheetProps = {
@@ -44,11 +45,14 @@ export function BottomSheet({
           <DrawerTitle className="text-lg leading-7 font-semibold">
             {title}
           </DrawerTitle>
-          {subtitle ? (
-            <DrawerDescription className="text-sm leading-5 font-normal">
-              {subtitle}
-            </DrawerDescription>
-          ) : null}
+          <DrawerDescription
+            className={cn(
+              "text-sm leading-5 font-normal",
+              !subtitle && "sr-only"
+            )}
+          >
+            {subtitle ?? `${title} options`}
+          </DrawerDescription>
         </div>
         <div className="border-t border-border pb-4">
           {actions.map((action) => (
@@ -57,6 +61,9 @@ export function BottomSheet({
                 className="flex h-11 w-full items-center gap-2 px-6 text-left text-base leading-6 font-normal transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
                 disabled={action.disabled}
                 type="button"
+                aria-pressed={
+                  action.selected === undefined ? undefined : action.selected
+                }
                 onClick={action.onClick}
               >
                 <HugeiconsIcon

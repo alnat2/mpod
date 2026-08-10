@@ -226,6 +226,8 @@ Decision:
   - `Speed 1.5x`
   - `Speed 2x`
 - default playback speed is `Speed 1.3x`
+- on mobile, the playback speed control opens the existing bottom sheet component; the current speed is marked and selecting an option applies it and closes the sheet
+- on desktop, the playback speed control continues to use the dropdown menu
 
 Rules:
 - speed selection should be restored from backend-owned playback settings for cross-device consistency

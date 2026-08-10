@@ -6,6 +6,7 @@ import {
   NoteIcon,
   PauseIcon,
   PlayIcon,
+  Tick02Icon,
 } from "@hugeicons/core-free-icons";
 
 import playerBackwardIcon from "@/assets/player-backward.svg";
@@ -29,6 +30,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { Artwork } from "./artwork";
+import { BottomSheet } from "./bottom-sheet";
 import {
   defaultPlaybackSpeed,
   playbackSpeedOptions,
@@ -336,8 +338,18 @@ export function Player({
             className="flex h-14 w-full items-center justify-between md:hidden"
             data-player-controls="mobile"
           >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <BottomSheet
+              title="Playback speed"
+              actions={playbackSpeedOptions.map((option) => ({
+                label: option,
+                icon: Tick02Icon,
+                iconClassName: cn(
+                  option !== activeSpeedLabel && "invisible"
+                ),
+                selected: option === activeSpeedLabel,
+                onClick: () => handleSpeedChange(option),
+              }))}
+              trigger={
                 <button
                   type="button"
                   aria-label={activeSpeedLabel}
@@ -355,20 +367,8 @@ export function Player({
                     </span>
                   </span>
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuRadioGroup
-                  value={activeSpeedLabel}
-                  onValueChange={handleSpeedChange}
-                >
-                  {playbackSpeedOptions.map((option) => (
-                    <DropdownMenuRadioItem value={option} key={option}>
-                      {option}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              }
+            />
             <TransportButton
               label={playing ? "Pause" : "Play"}
               icon={playing ? PauseIcon : PlayIcon}

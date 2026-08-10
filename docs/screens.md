@@ -255,6 +255,7 @@ Content:
 - progress display and seek affordance
 - skip backward by 15 seconds and forward by 30 seconds
 - playback speed control using the canonical options in [frontend-decisions.md](frontend-decisions.md#playback-speed-control)
+- on mobile, playback speed options open in a bottom sheet; desktop keeps the dropdown presentation
 - optional entry point to expanded controls if later approved
 
 Behavior:
