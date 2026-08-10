@@ -42,6 +42,63 @@ func TestUpdateIgnoresStaleClientUpdate(t *testing.T) {
 	}
 }
 
+func TestUpdateProcessesCompletionAfterNewerServerTimestamp(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration, is_listened) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3', 600, 0)`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration, is_listened) VALUES (2, 1, 'ep-2', 'Episode 2', 'https://example.com/2.mp3', 600, 0)`)
+	mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1), (2, 2)`)
+
+	serverTime := time.Date(2026, 8, 10, 10, 0, 0, 0, time.UTC)
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+	service.now = func() time.Time { return serverTime }
+
+	progressClientTime := serverTime.Add(-100 * time.Millisecond)
+	if _, err := service.Update(context.Background(), UpdateInput{
+		EpisodeID:       2,
+		PositionSeconds: 590,
+		DurationSeconds: 600,
+		ClientUpdatedAt: &progressClientTime,
+	}); err != nil {
+		t.Fatalf("progress Update returned error: %v", err)
+	}
+
+	completionClientTime := serverTime.Add(-50 * time.Millisecond)
+	service.now = func() time.Time { return serverTime.Add(100 * time.Millisecond) }
+	result, err := service.Update(context.Background(), UpdateInput{
+		EpisodeID:       2,
+		PositionSeconds: 600,
+		DurationSeconds: 600,
+		Completed:       true,
+		ClientUpdatedAt: &completionClientTime,
+	})
+	if err != nil {
+		t.Fatalf("completion Update returned error: %v", err)
+	}
+
+	if result.NextEpisodeID == nil || *result.NextEpisodeID != 1 {
+		t.Fatalf("expected fallback episode 1, got %v", result.NextEpisodeID)
+	}
+
+	var listened bool
+	if err := db.SQL.QueryRow(`SELECT is_listened FROM episodes WHERE id = 2`).Scan(&listened); err != nil {
+		t.Fatalf("query listened state: %v", err)
+	}
+	if !listened {
+		t.Fatal("expected completed episode to be listened")
+	}
+
+	var playlistCount int
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM playlist WHERE episode_id = 2`).Scan(&playlistCount); err != nil {
+		t.Fatalf("query playlist state: %v", err)
+	}
+	if playlistCount != 0 {
+		t.Fatalf("expected completed episode removed from playlist, got %d rows", playlistCount)
+	}
+}
+
 func TestListQueueReturnsPlaybackReadyEpisodesInPlaylistOrder(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()

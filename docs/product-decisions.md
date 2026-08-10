@@ -787,7 +787,8 @@ Active playback request fields:
 - If `durationSeconds` is present and `positionSeconds > durationSeconds`, clamp the stored value to `durationSeconds`.
 
 ### Freshness Rules
-- If `clientUpdatedAt` is older than the stored `lastUpdated`, ignore the update.
+- For ordinary progress and seek updates, if `clientUpdatedAt` is older than the stored `lastUpdated`, ignore the update.
+- An explicit `completed = true` update must still be processed even when its `clientUpdatedAt` is older than the server-written `lastUpdated` from the immediately preceding progress sync. Completion is an audio-engine event, not a competing position update.
 - If `clientUpdatedAt` is missing, the server may still accept the update and use server time as `lastUpdated`.
 - Stored `lastUpdated` is always written using server time.
 

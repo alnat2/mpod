@@ -1567,7 +1567,15 @@ func TestPlaybackCompletionReturnsFallbackEpisodeForLastPlaylistItem(t *testing.
 	mustExecHTTP(t, db, `INSERT INTO playlist (episode_id, position) VALUES (3, 3)`)
 	mustExecHTTP(t, db, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (1, 120, CURRENT_TIMESTAMP)`)
 
-	req := httptest.NewRequest(nethttp.MethodPost, "/api/playback", bytes.NewReader([]byte(`{"episodeId":3,"positionSeconds":600,"durationSeconds":600,"completed":true}`)))
+	progressReq := httptest.NewRequest(nethttp.MethodPost, "/api/playback", bytes.NewReader([]byte(`{"episodeId":3,"positionSeconds":590,"durationSeconds":600,"completed":false,"clientUpdatedAt":"2020-01-01T00:00:00Z"}`)))
+	progressReq.AddCookie(cookie)
+	progressRec := httptest.NewRecorder()
+	handler.ServeHTTP(progressRec, progressReq)
+	if progressRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from playback progress, got %d body=%s", progressRec.Code, progressRec.Body.String())
+	}
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/playback", bytes.NewReader([]byte(`{"episodeId":3,"positionSeconds":600,"durationSeconds":600,"completed":true,"clientUpdatedAt":"2020-01-01T00:00:01Z"}`)))
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

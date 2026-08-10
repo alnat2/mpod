@@ -262,10 +262,6 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 		return UpdateResult{}, err
 	}
 
-	if current != nil && input.ClientUpdatedAt != nil && input.ClientUpdatedAt.UTC().Before(current.LastUpdated) {
-		return UpdateResult{Playback: *current}, nil
-	}
-
 	position := input.PositionSeconds
 	if input.DurationSeconds > 0 && position > input.DurationSeconds {
 		position = input.DurationSeconds
@@ -290,6 +286,10 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 			Playback:      state,
 			NextEpisodeID: nextEpisodeID,
 		}, nil
+	}
+
+	if current != nil && input.ClientUpdatedAt != nil && input.ClientUpdatedAt.UTC().Before(current.LastUpdated) {
+		return UpdateResult{Playback: *current}, nil
 	}
 
 	if current == nil {
