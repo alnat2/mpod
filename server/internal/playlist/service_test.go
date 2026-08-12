@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cross/mpod/server/internal/storage"
 )
@@ -29,6 +30,32 @@ func TestAddIsIdempotent(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected 1 playlist row after duplicate add, got %d", count)
+	}
+}
+
+func TestAddSchedulesAutomaticDownloadAfterUndoWindow(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3')`)
+
+	service := NewService(db.SQL)
+	addedAt := time.Date(2026, 8, 12, 9, 0, 0, 0, time.UTC)
+	service.now = func() time.Time { return addedAt }
+	if err := service.Add(context.Background(), 1); err != nil {
+		t.Fatalf("Add failed: %v", err)
+	}
+
+	var storedAddedAt, downloadAfter time.Time
+	if err := db.SQL.QueryRow(`SELECT added_at, download_after FROM playlist WHERE episode_id = 1`).Scan(&storedAddedAt, &downloadAfter); err != nil {
+		t.Fatalf("query smart listening schedule: %v", err)
+	}
+	if !storedAddedAt.Equal(addedAt) {
+		t.Fatalf("expected added_at %s, got %s", addedAt, storedAddedAt)
+	}
+	if !downloadAfter.Equal(addedAt.Add(15 * time.Second)) {
+		t.Fatalf("expected download_after %s, got %s", addedAt.Add(15*time.Second), downloadAfter)
 	}
 }
 

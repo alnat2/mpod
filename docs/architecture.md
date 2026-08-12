@@ -423,12 +423,17 @@ The database is authoritative for whether an episode is expected to have a file,
 
 Rules carried into architecture:
 - downloaded files are disposable local copies
+- playlist items are automatically downloaded after a persistent 15-second delay
+- playlist items already present at startup are downloaded immediately when no valid local file exists
 - removing from playlist deletes file by default
 - marking listened deletes file by default
 - file deletion and DB updates should stay consistent
 
 Recommended implementation approach:
 - centralize file operations in one service
+- run one backend Smart Listening worker that processes due playlist downloads sequentially
+- deduplicate concurrent download requests per episode inside the download service
+- keep the audio URL stable and select local-file or upstream-stream delivery on the backend
 - never scatter direct `fs` deletion calls across unrelated modules
 - run startup reconciliation that clears stale `downloaded_path` values when files are missing
 

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMigrateAppliesSQLFilesInSortedOrderAndIsIdempotent(t *testing.T) {
@@ -117,7 +118,56 @@ func TestProjectMigrationsUpgradeExistingDatabase(t *testing.T) {
 
 	assertIndexExists(t, db.SQL, "idx_episodes_podcast_published")
 	assertIndexExists(t, db.SQL, "idx_playlist_position")
-	assertMigrationVersions(t, db.SQL, 7)
+	assertIndexExists(t, db.SQL, "idx_playlist_download_after")
+	assertMigrationVersions(t, db.SQL, 8)
+}
+
+func TestSmartListeningMigrationMakesExistingPlaylistItemsDueImmediately(t *testing.T) {
+	db := openMigrateTestDB(t)
+	defer db.Close()
+
+	if err := Migrate(db.SQL, "../../migrations"); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+	if _, err := db.SQL.Exec(`
+		INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml');
+		INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url)
+		VALUES (1, 1, 'episode-1', 'Episode', 'https://example.com/episode.mp3');
+	`); err != nil {
+		t.Fatalf("seed episode: %v", err)
+	}
+
+	if _, err := db.SQL.Exec(`DELETE FROM schema_migrations WHERE version = '0008_smart_listening.sql'`); err != nil {
+		t.Fatalf("remove smart listening migration record: %v", err)
+	}
+	if _, err := db.SQL.Exec(`DROP INDEX idx_playlist_download_after`); err != nil {
+		t.Fatalf("drop smart listening index: %v", err)
+	}
+	if _, err := db.SQL.Exec(`
+		CREATE TABLE playlist_legacy (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			episode_id INTEGER NOT NULL UNIQUE,
+			position INTEGER NOT NULL,
+			FOREIGN KEY (episode_id) REFERENCES episodes(id) ON DELETE CASCADE
+		);
+		INSERT INTO playlist_legacy (episode_id, position) VALUES (1, 1);
+		DROP TABLE playlist;
+		ALTER TABLE playlist_legacy RENAME TO playlist;
+	`); err != nil {
+		t.Fatalf("restore legacy playlist schema: %v", err)
+	}
+
+	if err := Migrate(db.SQL, "../../migrations"); err != nil {
+		t.Fatalf("apply smart listening migration: %v", err)
+	}
+
+	var addedAt, downloadAfter time.Time
+	if err := db.SQL.QueryRow(`SELECT added_at, download_after FROM playlist WHERE episode_id = 1`).Scan(&addedAt, &downloadAfter); err != nil {
+		t.Fatalf("query migrated playlist item: %v", err)
+	}
+	if addedAt.IsZero() || downloadAfter.IsZero() || !downloadAfter.Equal(addedAt) {
+		t.Fatalf("expected existing item to be immediately due, added_at=%s download_after=%s", addedAt, downloadAfter)
+	}
 }
 
 func TestProjectQueryIndexesAvoidTemporarySorts(t *testing.T) {

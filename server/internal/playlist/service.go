@@ -14,7 +14,8 @@ var (
 )
 
 type Service struct {
-	db *sql.DB
+	db  *sql.DB
+	now func() time.Time
 }
 
 type Episode struct {
@@ -32,7 +33,7 @@ type Item struct {
 }
 
 func NewService(db *sql.DB) *Service {
-	return &Service{db: db}
+	return &Service{db: db, now: time.Now}
 }
 
 func (s *Service) List(ctx context.Context) ([]Item, error) {
@@ -101,7 +102,12 @@ func (s *Service) Add(ctx context.Context, episodeID int64) error {
 		return fmt.Errorf("load next playlist position: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx, `INSERT INTO playlist (episode_id, position) VALUES (?, ?)`, episodeID, nextPosition); err != nil {
+	addedAt := s.now().UTC()
+	downloadAfter := addedAt.Add(15 * time.Second)
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO playlist (episode_id, position, added_at, download_after)
+		VALUES (?, ?, ?, ?)
+	`, episodeID, nextPosition, addedAt, downloadAfter); err != nil {
 		return fmt.Errorf("insert playlist item: %w", err)
 	}
 

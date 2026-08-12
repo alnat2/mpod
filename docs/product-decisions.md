@@ -856,11 +856,17 @@ Podcast unsubscribe keeps a 15-second undo window. During that window, the app k
   - `/data/downloads/<podcast-id>/<episode-id>-<safe-filename>`
 
 ### Download Rules
-- `POST /api/episodes/:id/download` downloads the audio file for the episode.
+- Smart Listening is always enabled and has no user-facing toggle.
+- Adding an episode to playlist schedules its automatic download after a 15-second cancellation window.
+- Removing the episode during that window cancels the scheduled download because the playlist row is removed.
+- Existing playlist items without a valid local file are eligible for immediate download after backend startup or migration.
+- The backend downloads playlist items in the background and prevents concurrent duplicate downloads of the same episode.
 - If a valid local file already exists, the app should not download it again.
 - If a file is missing or invalid, the app may redownload it.
 - Filenames must be sanitized before writing to disk.
 - Remote filenames must not be trusted directly.
+- Clients always use `GET /api/episodes/:id/audio`; the backend chooses local-file delivery when ready and authenticated upstream streaming otherwise.
+- The legacy manual download endpoints may remain for compatibility, but normal clients do not expose manual download controls.
 
 ### Deletion Rules
 - `DELETE /api/episodes/:id/download` deletes the local file if it exists and clears `downloaded_path`.
@@ -890,7 +896,7 @@ Podcast unsubscribe keeps a 15-second undo window. During that window, the app k
 - A separate bulk backend endpoint is not required for MVP; the frontend may commit individual mark-listened mutations immediately.
 
 ### Playlist Behavior
-- Adding an episode to playlist does not download it automatically.
+- Adding an episode to playlist schedules an automatic download after 15 seconds.
 - Adding an episode to playlist marks it unlistened if it was listened.
 - Removing an episode from playlist deletes its local file by default.
 - Manual remove-from-playlist is immediate and does not show a 15-second undo banner.
@@ -910,6 +916,7 @@ Podcast unsubscribe keeps a 15-second undo window. During that window, the app k
 - This makes storage usage self-cleaning for a personal app.
 - It treats downloads as disposable playback files, not long-term archived media.
 - Deleting files on playlist removal and listened state keeps disk usage low without extra cleanup settings.
+- Smart Listening keeps source selection backend-owned; web and Android clients do not need to know whether an audio response is remote or local.
 
 ## Scheduler Behavior
 
