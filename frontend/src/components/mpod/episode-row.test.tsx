@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   NoteIcon,
-  PlayListRemoveIcon,
+  PlayListAddIcon,
   ViewIcon,
 } from "@hugeicons/core-free-icons";
 import { describe, expect, it, vi } from "vitest";
@@ -13,8 +13,8 @@ import { expectNoA11yViolations } from "@/test/axe";
 import { EpisodeRow } from "./episode-row";
 
 describe("EpisodeRow", () => {
-  it("truncates mobile subtitles instead of letting them overflow the row", () => {
-    render(
+  it("renders the new 116px mobile card with a two-line title and inline metadata", () => {
+    const { container } = render(
       <TooltipProvider>
         <EpisodeRow
           layout="mobile"
@@ -26,13 +26,18 @@ describe("EpisodeRow", () => {
       </TooltipProvider>
     );
 
-    expect(
-      screen.getByText("Grammar Girl: For Writers and Language Lovers.")
-    ).toHaveClass("min-w-0", "truncate");
-    expect(screen.getByText("22m").parentElement).toHaveClass("w-12");
+    expect(container.firstElementChild).toHaveClass("h-[116px]", "grid");
+    expect(screen.getByText("Why your topic isn't a point")).toHaveClass(
+      "line-clamp-2"
+    );
+    expect(screen.getByText("Grammar Girl: For Writers and Language Lovers.")).toHaveClass(
+      "truncate"
+    );
+    expect(screen.getByText("22m")).toBeInTheDocument();
+    expect(screen.getByText("21.05.26")).toBeInTheDocument();
   });
 
-  it("replaces mobile status text with the exact downloaded and playlist icons", () => {
+  it("shows local-ready as the downloaded icon and does not add a playlist status icon", () => {
     const { container } = render(
       <TooltipProvider>
         <EpisodeRow
@@ -41,7 +46,6 @@ describe("EpisodeRow", () => {
           layout="mobile"
           title="Why store loyalty cards became a UX minefield"
           podcastTitle="Decoder Ring"
-          subtitle="Downloaded · In playlist"
           dateLabel="31.03.26"
           durationLabel="54m"
           showArtwork={false}
@@ -50,18 +54,13 @@ describe("EpisodeRow", () => {
       </TooltipProvider>
     );
 
-    expect(
-      screen.queryByText("Downloaded · In playlist")
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("img", { name: "Downloaded, In playlist" })
-    ).toBeInTheDocument();
+    expect(screen.getByText("Decoder Ring")).toBeInTheDocument();
     expect(
       container.querySelector('[data-episode-status-icon="downloaded"]')
     ).toBeInTheDocument();
     expect(
       container.querySelector('[data-episode-status-icon="in-playlist"]')
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
   });
 
   it("keeps status text on desktop rows", () => {
@@ -83,55 +82,71 @@ describe("EpisodeRow", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("opens mobile episode actions in the designed bottom sheet order", async () => {
+  it("shows mobile episode actions directly in the designed order", async () => {
     const user = userEvent.setup();
     const onShowNotes = vi.fn();
 
     render(
       <TooltipProvider>
-        <EpisodeRow
-          layout="mobile"
-          title="Spec-Driven Development"
-          podcastTitle="Podlodka Podcast"
-          mobileActions={[
-            {
-              label: "Remove from playlist",
-              icon: PlayListRemoveIcon,
-            },
-            {
-              label: "Show notes",
-              icon: NoteIcon,
-              onClick: onShowNotes,
-            },
-            {
-              label: "Mark as listened",
-              icon: ViewIcon,
-            },
-          ]}
-        />
+        <main>
+          <EpisodeRow
+            layout="mobile"
+            title="Spec-Driven Development"
+            podcastTitle="Podlodka Podcast"
+            actions={[
+              {
+                label: "Add to playlist",
+                icon: PlayListAddIcon,
+              },
+              {
+                label: "Show notes",
+                icon: NoteIcon,
+                onClick: onShowNotes,
+              },
+              {
+                label: "Mark as listened",
+                icon: ViewIcon,
+              },
+            ]}
+          />
+        </main>
       </TooltipProvider>
     );
 
-    await user.click(screen.getByRole("button", { name: "More actions" }));
-
-    const dialog = screen.getByRole("dialog");
-    await expectNoA11yViolations(dialog);
-    expect(dialog).toHaveTextContent("Spec-Driven Development");
-    expect(dialog).toHaveTextContent("Podlodka Podcast");
-    expect(
-      screen
-        .getAllByRole("button")
-        .filter((button) => button.closest('[role="dialog"]'))
-        .map((button) => button.textContent)
-    ).toEqual([
-      "Remove from playlist",
+    const buttons = screen.getAllByRole("button");
+    expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Add to playlist",
       "Show notes",
       "Mark as listened",
     ]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await expectNoA11yViolations(document.body);
 
     await user.click(
       screen.getByRole("button", { name: "Show notes" })
     );
     expect(onShowNotes).toHaveBeenCalledOnce();
+  });
+
+  it("renders the drag handle only when the Player queue requests it", () => {
+    const { container, rerender } = render(
+      <TooltipProvider>
+        <EpisodeRow layout="mobile" title="Queued episode" />
+      </TooltipProvider>
+    );
+
+    expect(
+      container.querySelector('[data-episode-drag-handle="true"]')
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <TooltipProvider>
+        <EpisodeRow layout="mobile" showDragHandle title="Queued episode" />
+      </TooltipProvider>
+    );
+
+    expect(
+      container.querySelector('[data-episode-drag-handle="true"]')
+    ).toBeInTheDocument();
   });
 });

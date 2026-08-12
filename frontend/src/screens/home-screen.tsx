@@ -325,21 +325,37 @@ export function HomeScreen() {
                         finishDragReorder();
                       }}
                       onDragEnd={finishDragReorder}
-                      actions={[
-                        {
-                          label: isCurrentEpisode && playing ? "Pause" : "Play",
-                          icon: isCurrentEpisode && playing ? PauseIcon : PlayIcon,
-                          onClick:
-                            isCurrentEpisode
-                              ? playToggle
-                              : () => playEpisode(episode.id),
-                        },
-                        {
-                          label: "Remove from playlist",
-                          icon: PlayListRemoveIcon,
-                          onClick: () => void removeFromPlaylist(episode),
-                        },
-                      ]}
+                      actions={isMobile
+                        ? [
+                            {
+                              label: "Remove from playlist",
+                              icon: PlayListRemoveIcon,
+                              onClick: () => void removeFromPlaylist(episode),
+                            },
+                            {
+                              label: isCurrentEpisode && playing ? "Pause" : "Play",
+                              icon: isCurrentEpisode && playing ? PauseIcon : PlayIcon,
+                              onClick:
+                                isCurrentEpisode
+                                  ? playToggle
+                                  : () => playEpisode(episode.id),
+                            },
+                          ]
+                        : [
+                            {
+                              label: isCurrentEpisode && playing ? "Pause" : "Play",
+                              icon: isCurrentEpisode && playing ? PauseIcon : PlayIcon,
+                              onClick:
+                                isCurrentEpisode
+                                  ? playToggle
+                                  : () => playEpisode(episode.id),
+                            },
+                            {
+                              label: "Remove from playlist",
+                              icon: PlayListRemoveIcon,
+                              onClick: () => void removeFromPlaylist(episode),
+                            },
+                          ]}
                       key={episode.id}
                     />
                   );

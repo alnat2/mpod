@@ -157,14 +157,16 @@ Rules:
 ### Episode Action Presentation
 
 Decision:
-- mobile episode overflow actions open in the Figma-approved bottom Drawer
+- mobile episode actions are shown directly in the episode card as explicit icon buttons
 - desktop episode actions remain inline icon buttons
+- the mobile bottom sheet is reserved for playback-speed selection in the Player
 
 Rules:
-- the Drawer header shows the episode title and podcast title
 - the mobile Subscriptions action order is playlist state, show notes, listened state
-- the mobile playlist action order is play or pause, then remove from playlist
+- the mobile Player playlist action order is remove from playlist, then play or pause
 - action availability and labels continue to reflect the current episode state
+- Subscriptions episode cards do not show a drag handle
+- Player playlist episode cards show a drag handle for queue reordering
 
 ### Subscription List Defaults
 

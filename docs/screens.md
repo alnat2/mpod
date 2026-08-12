@@ -86,7 +86,7 @@ Desktop layout guidance:
 - full-width shell surfaces may span the frame, while inner navigation and page content should align to the centered content width where practical
 
 Primary navigation should expose:
-1. Home
+1. Player
 2. Subscriptions
 3. Settings
 
@@ -176,6 +176,7 @@ Recommended episode actions:
 
 Row and state guidance:
 - follow the canonical action, tooltip, and state rules in [frontend-decisions.md](frontend-decisions.md#manual-listened-state-actions)
+- mobile episode actions are explicit icon buttons inside the episode card; they do not open a separate action sheet
 - playlist actions should be one tap from the episode list
 - downloaded state is status information; do not expose a manual download action
 - do not expose a separate `Delete` or `Delete download` action in the MVP UI
@@ -189,16 +190,17 @@ UX notes:
 - this should be optimized for repeated scanning and quick actions
 - episode rows are likely the most important reusable app-specific UI unit
 
-### 5. Home Queue / Playlist Area
+### 5. Player Queue / Playlist Area
 
 Purpose:
-- manage the active listening queue from the Home screen
+- manage the active listening queue from the Player screen
 
 Content:
 - ordered list of playlist episodes
 - current playback indicator where relevant
 - reorder interaction
 - remove from playlist action
+- explicit mobile remove and play or pause actions on each playlist episode card
 
 States:
 - empty playlist state
@@ -206,7 +208,7 @@ States:
 
 UX notes:
 - the playlist is not a separate primary screen or route for MVP
-- the playlist persists as a queue area on the Home screen
+- the playlist persists as a queue area on the Player screen
 - the playlist should feel like a working queue, not a static library
 - reordering should be straightforward and reliable
 - clear completed is not required for the first MVP

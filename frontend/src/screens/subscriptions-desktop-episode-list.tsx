@@ -203,11 +203,6 @@ export function SubscriptionsDesktopEpisodeList({
                 notesAction,
                 listenedAction,
               ]}
-              mobileActions={[
-                playlistAction,
-                notesAction,
-                listenedAction,
-              ]}
             />
           </div>
         );

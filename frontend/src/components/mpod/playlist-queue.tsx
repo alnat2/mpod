@@ -23,7 +23,10 @@ export function PlaylistQueue({
 }: PlaylistQueueProps) {
   return (
     <div className={cn("flex flex-col w-full gap-1", className)}>
-      <div className="flex h-[50px] shrink-0 w-full items-center justify-between gap-2 bg-card px-3 rounded shadow-xs text-sm text-muted-foreground">
+      <div
+        className="flex h-[50px] shrink-0 w-full items-center justify-between gap-2 rounded px-3 text-sm text-muted-foreground"
+        data-playlist-queue-top-info="true"
+      >
         <div className="min-w-0 truncate">{summary}</div>
         {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
       </div>

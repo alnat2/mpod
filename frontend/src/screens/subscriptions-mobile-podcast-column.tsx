@@ -19,10 +19,10 @@ type PodcastWithEpisodes = Podcast & {
   episodes: Array<Episode & { inPlaylist: boolean }>;
 };
 
-const MOBILE_EPISODE_ROW_HEIGHT = 76;
+const MOBILE_EPISODE_ROW_HEIGHT = 116;
 const EPISODE_ROW_GAP = 4;
 const EPISODE_OVERSCAN_ROWS = 4;
-const MOBILE_EPISODE_VIEWPORT_HEIGHT = 152;
+const MOBILE_EPISODE_VIEWPORT_HEIGHT = 236;
 
 function episodeSummaryLabel(totalCount: number, unlistenedCount: number) {
   return `${totalCount} / ${unlistenedCount} episodes`;
@@ -223,11 +223,6 @@ export function MobilePodcastColumn({
                   }
                   thumbnailAlt={`${podcast.title} artwork`}
                   actions={[
-                    playlistAction,
-                    notesAction,
-                    listenedAction,
-                  ]}
-                  mobileActions={[
                     playlistAction,
                     notesAction,
                     listenedAction,

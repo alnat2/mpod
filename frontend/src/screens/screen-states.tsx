@@ -170,9 +170,9 @@ export function ListLoadingState({
         ))}
       </div>
       <Skeleton className="mt-1 h-[228px] rounded-2xl md:mt-2 md:h-[50px] md:rounded-md" />
-      <Skeleton className="h-[76px] rounded-md" />
-      <Skeleton className="h-[76px] rounded-md" />
-      <Skeleton className="h-[76px] rounded-md md:h-[70px]" />
+      <Skeleton className="h-[116px] rounded-[16px] md:h-[70px] md:rounded-md" />
+      <Skeleton className="h-[116px] rounded-[16px] md:h-[70px] md:rounded-md" />
+      <Skeleton className="h-[116px] rounded-[16px] md:h-[70px] md:rounded-md" />
     </div>
   );
 }

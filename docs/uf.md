@@ -228,6 +228,7 @@ Design intent:
 - playlist operations should be available directly from episode lists
 - episode rows should make title, date, downloaded state, listened state, and playlist state visible where relevant
 - detailed episode-row action labels, download state treatment, and manual listened-state rules are canonical in [frontend-decisions.md](frontend-decisions.md#manual-listened-state-actions)
+- mobile episode actions are displayed directly in each card; the episode action flow does not use a bottom sheet
 - screen-level error and undo banners should render out of flow in a fixed overlay positioned `100px` from the top of the viewport
 - episode rows should use `Mark listened` and `Mark unlistened` actions for manual listened-state changes, not `Show listened` or `Show unlistened` filter buttons
 - do not expose a separate `Delete` or `Delete download` episode action in the MVP UI
@@ -269,14 +270,14 @@ Goal:
 User steps:
 1. User adds episodes to the playlist from podcast or episode views.
 2. The playlist becomes the listening queue.
-3. User reviews order and current queue state in the Home screen playlist area.
+3. User reviews order and current queue state in the Player screen playlist area.
 4. User reorders items when priorities change.
 5. User starts playback from any queued episode.
 
 Design intent:
 - the playlist is not a secondary feature, it is a core listening workflow
 - the playlist is not a separate primary screen or route for MVP
-- the playlist persists as a queue area on the Home screen
+- the playlist persists as a queue area on the Player screen
 - queue management should feel lightweight and fast
 - playlist order should be obvious and manipulable
 - the playlist should feel like an actionable queue, not just a passive list
@@ -326,6 +327,7 @@ User steps:
 Playback speed:
 - playback speed options and default speed are canonical in [frontend-decisions.md](frontend-decisions.md#playback-speed-control)
 - on mobile, choosing the playback speed opens a bottom sheet; selecting an option applies it and closes the sheet
+- playback speed is the only mobile Player control that uses the bottom sheet
 - on desktop, playback speed remains available from the dropdown menu
 - playback speed selection should be restored from backend-owned state so it stays consistent across devices
 - backend playback progress remains stored in seconds
@@ -506,7 +508,7 @@ Backend rules:
 
 The authenticated app should revolve around three main sections:
 
-1. Home
+1. Player
 2. Subscriptions
 3. Settings
 
@@ -526,7 +528,7 @@ This document does not force a final route map, but a reasonable first-pass scre
 - login screen
 - Subscriptions screen
 - selected podcast episode list inside Subscriptions
-- Home screen playlist/queue area
+- Player screen playlist/queue area
 - settings screen
 - persistent or semi-persistent player UI
 
@@ -553,7 +555,7 @@ These flows are intentionally general. The following still need refinement in fr
 
 - exact navigation pattern
 - exact mobile layout
-- exact Home playlist/queue layout across desktop and mobile
+- exact Player playlist/queue layout across desktop and mobile
 - how global player visibility should behave across screen sizes
 - bulk actions, if any
 - exact empty states and feedback patterns

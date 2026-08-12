@@ -1,6 +1,13 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
-import { MoreVerticalIcon } from "@hugeicons/core-free-icons";
+import {
+  NoteIcon,
+  PauseIcon,
+  PlayIcon,
+  PlayListAddIcon,
+  PlayListRemoveIcon,
+  ViewIcon,
+} from "@hugeicons/core-free-icons";
 
 import { EpisodeRow } from "./episode-row";
 import { featuredEpisode } from "./story-fixtures";
@@ -23,11 +30,11 @@ const meta = {
     dateLabel: "31.03.26",
     durationLabel: "54m",
     showArtwork: false,
-    showDragHandle: true,
-    mobileMenuAction: {
-      label: "More actions",
-      icon: MoreVerticalIcon,
-    },
+    actions: [
+      { label: "Add to playlist", icon: PlayListAddIcon },
+      { label: "Show notes", icon: NoteIcon },
+      { label: "Mark as listened", icon: ViewIcon },
+    ],
   },
   decorators: [
     (Story) => (
@@ -49,6 +56,12 @@ export const Default: Story = {};
 export const Current: Story = {
   args: {
     current: true,
+    dateLabel: undefined,
+    showDragHandle: true,
+    actions: [
+      { label: "Remove from playlist", icon: PlayListRemoveIcon },
+      { label: "Pause", icon: PauseIcon },
+    ],
   },
 };
 
@@ -61,6 +74,11 @@ export const Downloaded: Story = {
 export const InPlaylist: Story = {
   args: {
     inPlaylist: true,
+    actions: [
+      { label: "Remove from playlist", icon: PlayListRemoveIcon },
+      { label: "Show notes", icon: NoteIcon },
+      { label: "Mark as listened", icon: ViewIcon },
+    ],
   },
 };
 
@@ -68,5 +86,16 @@ export const DownloadedAndInPlaylist: Story = {
   args: {
     downloaded: true,
     inPlaylist: true,
+  },
+};
+
+export const PlayerQueued: Story = {
+  args: {
+    dateLabel: undefined,
+    showDragHandle: true,
+    actions: [
+      { label: "Remove from playlist", icon: PlayListRemoveIcon },
+      { label: "Play", icon: PlayIcon },
+    ],
   },
 };

@@ -9,7 +9,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
 import {
   DragDropVerticalIcon,
-  MoreVerticalIcon,
   PauseIcon,
   PlayIcon,
   PlayListRemoveIcon,
@@ -17,7 +16,6 @@ import {
 } from "@hugeicons/core-free-icons";
 
 import downloadedStatusIcon from "@/assets/episode-downloaded-status.svg";
-import inPlaylistStatusIcon from "@/assets/episode-in-playlist-status.svg";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -27,7 +25,6 @@ import {
 import { cn } from "@/lib/utils";
 
 import { Artwork } from "./artwork";
-import { BottomSheet } from "./bottom-sheet";
 
 type EpisodeRowAction = {
   disabled?: boolean;
@@ -53,7 +50,6 @@ type EpisodeRowProps = {
   showArtwork?: boolean;
   episodeRowId?: number;
   showDragHandle?: boolean;
-  mobileMenuAction?: EpisodeRowAction;
   draggable?: boolean;
   dragging?: boolean;
   onDragStart?: DragEventHandler<HTMLDivElement>;
@@ -68,23 +64,20 @@ type EpisodeRowProps = {
   onMouseEnter?: MouseEventHandler<HTMLDivElement>;
   onMouseUp?: MouseEventHandler<HTMLDivElement>;
   actions?: EpisodeRowAction[];
-  mobileActions?: EpisodeRowAction[];
   children?: ReactNode;
 };
 
 function EpisodeStatusIcon({
   className,
-  name,
   src,
 }: {
   className?: string;
-  name: "downloaded" | "in-playlist";
   src: string;
 }) {
   return (
     <span
       className="flex size-4 shrink-0 items-center justify-center"
-      data-episode-status-icon={name}
+      data-episode-status-icon="downloaded"
       aria-hidden="true"
     >
       <span
@@ -104,13 +97,22 @@ function EpisodeStatusIcon({
   );
 }
 
-function EpisodeIconButton({ action }: { action: EpisodeRowAction }) {
+function EpisodeIconButton({
+  action,
+  mobile = false,
+}: {
+  action: EpisodeRowAction;
+  mobile?: boolean;
+}) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
           aria-label={action.label}
-          className="rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary"
+          className={cn(
+            "rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary",
+            mobile ? "size-11 [&_svg]:size-6" : "[&_svg]:size-4"
+          )}
           disabled={action.disabled}
           variant="outline"
           size="icon-lg"
@@ -119,11 +121,7 @@ function EpisodeIconButton({ action }: { action: EpisodeRowAction }) {
           onPointerDown={(event) => event.stopPropagation()}
           onClick={action.onClick}
         >
-          <HugeiconsIcon
-            icon={action.icon}
-            className={cn("size-4", action.iconClassName)}
-            aria-hidden="true"
-          />
+          <HugeiconsIcon icon={action.icon} className={action.iconClassName} aria-hidden="true" />
         </Button>
       </TooltipTrigger>
       <TooltipContent>{action.label}</TooltipContent>
@@ -131,49 +129,10 @@ function EpisodeIconButton({ action }: { action: EpisodeRowAction }) {
   );
 }
 
-function EpisodeActionsSheet({
-  action,
-  items,
-  podcastTitle,
-  title,
-}: {
-  action: EpisodeRowAction;
-  items: EpisodeRowAction[];
-  podcastTitle?: string;
-  title: string;
-}) {
-  return (
-    <BottomSheet
-      actions={items}
-      subtitle={podcastTitle}
-      title={title}
-      trigger={
-        <Button
-          aria-label={action.label}
-          className="rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary"
-          variant="outline"
-          size="icon-lg"
-          type="button"
-          onMouseDown={(event) => event.stopPropagation()}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <HugeiconsIcon
-            icon={action.icon}
-            className={cn("size-4", action.iconClassName)}
-            aria-hidden="true"
-          />
-        </Button>
-      }
-    />
-  );
-}
-
 export function EpisodeRow({
   className,
   current,
   downloaded = false,
-  inPlaylist = false,
   layout = "auto",
   title,
   podcastTitle,
@@ -185,7 +144,6 @@ export function EpisodeRow({
   showArtwork = true,
   episodeRowId,
   showDragHandle = false,
-  mobileMenuAction,
   draggable,
   dragging,
   onDragStart,
@@ -200,18 +158,10 @@ export function EpisodeRow({
   onMouseEnter,
   onMouseUp,
   actions,
-  mobileActions,
   children,
 }: EpisodeRowProps) {
   const isMobile = layout === "mobile";
   const isDesktop = layout === "desktop";
-  const showMobileStatusIcons = isMobile && (downloaded || inPlaylist);
-  const mobileStatusLabel = [
-    downloaded ? "Downloaded" : null,
-    inPlaylist ? "In playlist" : null,
-  ]
-    .filter(Boolean)
-    .join(", ");
   const resolvedActions =
     actions ??
     [
@@ -219,17 +169,8 @@ export function EpisodeRow({
       { label: "Remove from playlist", icon: PlayListRemoveIcon },
       { label: "Show notes", icon: ViewIcon },
     ];
-  const resolvedSubtitle =
-    subtitle ??
-    (podcastTitle
-      ? current
-        ? `${podcastTitle} · now playing`
-        : podcastTitle
-      : undefined);
-  const resolvedMobileMenuAction = mobileMenuAction ?? {
-    label: "More actions",
-    icon: MoreVerticalIcon,
-  };
+  const resolvedSubtitle = subtitle ?? podcastTitle;
+  const mobileInfoLabel = current ? "Now playing" : resolvedSubtitle;
   const desktopActions = children ?? resolvedActions.map((action) => (
     <EpisodeIconButton action={action} key={action.label} />
   ));
@@ -237,12 +178,12 @@ export function EpisodeRow({
   return (
     <div
       className={cn(
-        "flex w-full shrink-0 items-center rounded shadow-xs bg-card text-foreground",
+        "w-full shrink-0 bg-card text-foreground shadow-xs",
         isMobile
-          ? "h-[76px] gap-2 overflow-hidden px-3 py-2"
+          ? "relative grid h-[116px] grid-cols-[minmax(0,1fr)_auto] grid-rows-[40px_44px] gap-x-2 gap-y-2 overflow-hidden rounded-[16px] py-3 pr-3 pl-8"
           : isDesktop
-            ? "h-[70px] gap-3 px-3"
-            : "h-[76px] gap-2 overflow-hidden px-2 py-2 md:h-[70px] md:gap-3 md:px-3 md:py-0",
+            ? "flex h-[70px] items-center gap-3 rounded px-3"
+            : "relative grid h-[116px] grid-cols-[minmax(0,1fr)_auto] grid-rows-[40px_44px] gap-x-2 gap-y-2 overflow-hidden rounded-[16px] py-3 pr-3 pl-8 md:flex md:h-[70px] md:items-center md:gap-3 md:rounded md:px-3 md:py-0",
         draggable && "cursor-grab",
         dragging && "opacity-60",
         current && "bg-accent",
@@ -265,10 +206,21 @@ export function EpisodeRow({
     >
       {showDragHandle ? (
         <div
-          className="flex size-6 shrink-0 items-center justify-center"
+          className={cn(
+            "flex shrink-0 items-center justify-center",
+            isMobile
+              ? "absolute top-1/2 left-0 size-8 -translate-y-1/2"
+              : isDesktop
+                ? "size-6"
+                : "absolute top-1/2 left-0 size-8 -translate-y-1/2 md:static md:size-6 md:translate-y-0"
+          )}
           aria-hidden="true"
+          data-episode-drag-handle="true"
         >
-          <HugeiconsIcon icon={DragDropVerticalIcon} className="size-6" />
+          <HugeiconsIcon
+            icon={DragDropVerticalIcon}
+            className={cn(isMobile ? "size-8" : isDesktop ? "size-6" : "size-8 md:size-6")}
+          />
         </div>
       ) : null}
       {showArtwork ? (
@@ -284,87 +236,91 @@ export function EpisodeRow({
       ) : null}
       <div
         className={cn(
-          "flex min-w-0 flex-1 flex-col justify-center",
-          isDesktop ? "gap-1" : "gap-0.5 md:gap-1"
+          isMobile
+            ? "contents"
+            : isDesktop
+              ? "flex min-w-0 flex-1 flex-col justify-center gap-1"
+              : "contents md:flex md:min-w-0 md:flex-1 md:flex-col md:justify-center md:gap-1"
         )}
       >
         <p
           className={cn(
             "min-w-0 text-sm leading-5 font-semibold",
-            isMobile ? "line-clamp-2" : isDesktop ? "truncate" : "line-clamp-2 md:line-clamp-1"
+            isMobile
+              ? "col-span-2 line-clamp-2 self-center"
+              : isDesktop
+                ? "truncate"
+                : "col-span-2 line-clamp-2 self-center md:line-clamp-1"
           )}
         >
           {title}
         </p>
-        {showMobileStatusIcons ? (
+        {!isDesktop ? (
           <div
-            aria-label={mobileStatusLabel}
-            className="flex h-4 items-center gap-1 text-chart-5"
-            data-episode-status="true"
-            role="img"
-          >
-            {downloaded ? (
-              <EpisodeStatusIcon
-                className="size-[13.6667px]"
-                name="downloaded"
-                src={downloadedStatusIcon}
-              />
-            ) : null}
-            {inPlaylist ? (
-              <EpisodeStatusIcon
-                className="size-4"
-                name="in-playlist"
-                src={inPlaylistStatusIcon}
-              />
-            ) : null}
-          </div>
-        ) : resolvedSubtitle ? (
-          <p
             className={cn(
-              isMobile
-                ? "min-w-0 truncate text-xs leading-4 text-muted-foreground"
-                : "truncate text-xs leading-4 text-muted-foreground",
-              (current || resolvedSubtitle.toLowerCase().includes("playlist")) && "text-chart-5"
+              "grid h-10 min-w-0 grid-cols-[auto_minmax(0,1fr)] grid-rows-2 gap-x-1 gap-y-1 self-center",
+              !isMobile && "md:hidden"
             )}
           >
-            {resolvedSubtitle}
+            <div className="col-span-2 flex min-w-0 items-center gap-0.5 text-chart-5">
+              {downloaded ? (
+                <EpisodeStatusIcon className="size-full" src={downloadedStatusIcon} />
+              ) : null}
+              {mobileInfoLabel ? (
+                <p className="min-w-0 flex-1 truncate text-xs leading-4">
+                  {mobileInfoLabel}
+                </p>
+              ) : null}
+            </div>
+            {durationLabel ? (
+              <span className="self-start whitespace-nowrap text-xs leading-4 text-muted-foreground">
+                {durationLabel}
+              </span>
+            ) : null}
+            {dateLabel ? (
+              <span className="self-start text-right whitespace-nowrap text-xs leading-4 text-muted-foreground">
+                {dateLabel}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+        {!isMobile && resolvedSubtitle ? (
+          <p
+            className={cn(
+              "truncate text-xs leading-4 text-muted-foreground",
+              !isDesktop && "hidden md:block",
+              current && "text-chart-5"
+            )}
+          >
+            {current ? `${resolvedSubtitle} · now playing` : resolvedSubtitle}
           </p>
         ) : null}
       </div>
-      <div
-        className={cn(
-          "flex shrink-0 text-right text-xs leading-4 whitespace-nowrap text-muted-foreground",
-          isMobile
-            ? "w-12 flex-col items-end justify-center gap-1"
-            : isDesktop
-              ? "flex-row items-center gap-2"
-              : "flex-col items-end justify-center gap-0.5 md:flex-row md:items-center md:gap-2"
-        )}
-      >
-        {dateLabel ? <span>{dateLabel}</span> : null}
-        {durationLabel ? <span>{durationLabel}</span> : null}
-      </div>
-      <div
-        className={cn(
-          "shrink-0 items-center gap-2",
-          isMobile ? "flex" : isDesktop ? "hidden" : "flex md:hidden"
-        )}
-      >
-        <EpisodeActionsSheet
-          action={resolvedMobileMenuAction}
-          items={mobileActions ?? resolvedActions}
-          podcastTitle={podcastTitle}
-          title={title}
-        />
-      </div>
-      <div
-        className={cn(
-          "shrink-0 items-center gap-2",
-          isMobile ? "hidden" : isDesktop ? "flex" : "hidden md:flex"
-        )}
-      >
-        {desktopActions}
-      </div>
+      {!isMobile ? (
+        <div
+          className={cn(
+            "shrink-0 text-right text-xs leading-4 whitespace-nowrap text-muted-foreground",
+            isDesktop
+              ? "flex flex-row items-center gap-2"
+              : "hidden md:flex md:flex-row md:items-center md:gap-2"
+          )}
+        >
+          {dateLabel ? <span>{dateLabel}</span> : null}
+          {durationLabel ? <span>{durationLabel}</span> : null}
+        </div>
+      ) : null}
+      {!isDesktop ? (
+        <div className={cn("shrink-0 items-center gap-2", isMobile ? "flex self-center" : "flex self-center md:hidden")}>
+          {resolvedActions.map((action) => (
+            <EpisodeIconButton action={action} key={action.label} mobile />
+          ))}
+        </div>
+      ) : null}
+      {!isMobile ? (
+        <div className={cn("shrink-0 items-center gap-2", isDesktop ? "flex" : "hidden md:flex")}>
+          {desktopActions}
+        </div>
+      ) : null}
     </div>
   );
 }
