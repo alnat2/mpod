@@ -88,11 +88,29 @@ func TestRunOnceIgnoresPlaylistItemRemovedDuringUndoWindow(t *testing.T) {
 	}
 }
 
+func TestRunOnceDiscardsDownloadWhenPlaylistItemIsRemovedDuringFetch(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+	now := time.Date(2026, 8, 12, 9, 0, 15, 0, time.UTC)
+	seedPlaylistItem(t, db, 1, now)
+
+	fake := &fakeDownloader{db: db, removeDuringDownload: true}
+	service := newTestService(db, fake, now)
+	processed, err := service.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce failed: %v", err)
+	}
+	if !processed || len(fake.deleted) != 1 || fake.deleted[0] != 1 {
+		t.Fatalf("expected removed episode download discarded, processed=%v deleted=%v", processed, fake.deleted)
+	}
+}
+
 type fakeDownloader struct {
-	db          *storage.DB
-	downloaded  []int64
-	deleted     []int64
-	downloadErr error
+	db                   *storage.DB
+	downloaded           []int64
+	deleted              []int64
+	downloadErr          error
+	removeDuringDownload bool
 }
 
 func (f *fakeDownloader) Download(_ context.Context, episodeID int64) (downloads.EpisodeDownload, error) {
@@ -103,6 +121,11 @@ func (f *fakeDownloader) Download(_ context.Context, episodeID int64) (downloads
 	if f.db != nil {
 		if _, err := f.db.SQL.Exec(`UPDATE episodes SET downloaded_path = 'downloaded.mp3' WHERE id = ?`, episodeID); err != nil {
 			return downloads.EpisodeDownload{}, err
+		}
+		if f.removeDuringDownload {
+			if _, err := f.db.SQL.Exec(`DELETE FROM playlist WHERE episode_id = ?`, episodeID); err != nil {
+				return downloads.EpisodeDownload{}, err
+			}
 		}
 	}
 	return downloads.EpisodeDownload{ID: episodeID, Downloaded: true}, nil

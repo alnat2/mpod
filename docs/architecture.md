@@ -434,6 +434,7 @@ Recommended implementation approach:
 - run one backend Smart Listening worker that processes due playlist downloads sequentially
 - deduplicate concurrent download requests per episode inside the download service
 - keep the audio URL stable and select local-file or upstream-stream delivery on the backend
+- pace remote audio responses when total size and episode duration are known, allowing a short initial buffer and modest bitrate headroom instead of letting the browser eagerly fetch the full file
 - never scatter direct `fs` deletion calls across unrelated modules
 - run startup reconciliation that clears stale `downloaded_path` values when files are missing
 

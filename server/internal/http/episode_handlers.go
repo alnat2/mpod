@@ -7,8 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	nethttp "net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cross/mpod/server/internal/downloads"
 	"github.com/cross/mpod/server/internal/episodes"
@@ -18,6 +21,9 @@ import (
 const (
 	audioProxyUserAgent = "mpod/1.0 (+self-hosted podcast client)"
 	audioProxyAccept    = "audio/*, application/octet-stream;q=0.9, */*;q=0.1"
+	minimumStreamRate   = 32 * 1024
+	streamRateHeadroom  = 1.5
+	streamInitialBurst  = 2 * time.Second
 )
 
 var (
@@ -204,7 +210,13 @@ func (r *Router) handleEpisodeAudio(w nethttp.ResponseWriter, req *nethttp.Reque
 	}
 	w.Header().Set("Cache-Control", "private, max-age=0")
 	w.WriteHeader(resp.StatusCode)
-	if _, err := io.Copy(w, io.MultiReader(bytes.NewReader(audioResp.prefix), resp.Body)); err != nil {
+	stream := io.Reader(io.MultiReader(bytes.NewReader(audioResp.prefix), resp.Body))
+	if episode.Duration != nil {
+		if bytesPerSecond := streamBytesPerSecond(audioResp.totalLength, *episode.Duration); bytesPerSecond > 0 {
+			stream = newPacedReader(req.Context(), stream, bytesPerSecond)
+		}
+	}
+	if _, err := io.Copy(w, stream); err != nil {
 		r.logger.Printf("copy episode audio failed: %v", err)
 	}
 }
@@ -213,6 +225,7 @@ type remoteEpisodeAudio struct {
 	response    *nethttp.Response
 	prefix      []byte
 	contentType string
+	totalLength int64
 }
 
 func (r *Router) openRemoteEpisodeAudio(sourceReq *nethttp.Request, audioURL string, client *nethttp.Client) (*remoteEpisodeAudio, error) {
@@ -260,7 +273,89 @@ func (r *Router) openRemoteEpisodeAudio(sourceReq *nethttp.Request, audioURL str
 		response:    resp,
 		prefix:      prefix,
 		contentType: contentType,
+		totalLength: responseTotalLength(resp),
 	}, nil
+}
+
+func responseTotalLength(resp *nethttp.Response) int64 {
+	contentRange := strings.TrimSpace(resp.Header.Get("Content-Range"))
+	if _, total, ok := strings.Cut(contentRange, "/"); ok {
+		if parsed, err := strconv.ParseInt(strings.TrimSpace(total), 10, 64); err == nil && parsed > 0 {
+			return parsed
+		}
+	}
+	if resp.ContentLength > 0 {
+		return resp.ContentLength
+	}
+	if parsed, err := strconv.ParseInt(strings.TrimSpace(resp.Header.Get("Content-Length")), 10, 64); err == nil && parsed > 0 {
+		return parsed
+	}
+	return 0
+}
+
+func streamBytesPerSecond(contentLength, durationSeconds int64) int64 {
+	if contentLength <= 0 || durationSeconds <= 0 {
+		return 0
+	}
+	rate := int64(math.Ceil(float64(contentLength) / float64(durationSeconds) * streamRateHeadroom))
+	if rate < minimumStreamRate {
+		return minimumStreamRate
+	}
+	return rate
+}
+
+type pacedReader struct {
+	ctx            context.Context
+	reader         io.Reader
+	bytesPerSecond int64
+	burstBytes     int64
+	startedAt      time.Time
+	bytesRead      int64
+	now            func() time.Time
+	wait           func(context.Context, time.Duration) error
+}
+
+func newPacedReader(ctx context.Context, reader io.Reader, bytesPerSecond int64) *pacedReader {
+	return &pacedReader{
+		ctx:            ctx,
+		reader:         reader,
+		bytesPerSecond: bytesPerSecond,
+		burstBytes:     int64(streamInitialBurst.Seconds()) * bytesPerSecond,
+		startedAt:      time.Now(),
+		now:            time.Now,
+		wait:           waitContext,
+	}
+}
+
+func (r *pacedReader) Read(buffer []byte) (int, error) {
+	n, err := r.reader.Read(buffer)
+	if n == 0 {
+		return n, err
+	}
+	r.bytesRead += int64(n)
+	throttledBytes := r.bytesRead - r.burstBytes
+	if throttledBytes <= 0 || r.bytesPerSecond <= 0 {
+		return n, err
+	}
+
+	targetElapsed := time.Duration(float64(throttledBytes) / float64(r.bytesPerSecond) * float64(time.Second))
+	if delay := targetElapsed - r.now().Sub(r.startedAt); delay > 0 {
+		if waitErr := r.wait(r.ctx, delay); waitErr != nil {
+			return n, waitErr
+		}
+	}
+	return n, err
+}
+
+func waitContext(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (r *Router) shouldRetryAudioDirect(ctx context.Context) bool {

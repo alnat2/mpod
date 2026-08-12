@@ -866,6 +866,8 @@ Podcast unsubscribe keeps a 15-second undo window. During that window, the app k
 - Filenames must be sanitized before writing to disk.
 - Remote filenames must not be trusted directly.
 - Clients always use `GET /api/episodes/:id/audio`; the backend chooses local-file delivery when ready and authenticated upstream streaming otherwise.
+- A client that wants to switch during active playback may poll the existing episode response while `downloaded = false`. When it becomes `true`, the client pauses, preserves the exact playback position, reloads the same audio URL, seeks to that position, waits until the local source is ready, and resumes. A controlled pause is preferred over a position jump.
+- Web and Android clients may instead finish the current remote stream and use the local file on the next audio request; source switching is not required for API compatibility.
 - The legacy manual download endpoints may remain for compatibility, but normal clients do not expose manual download controls.
 
 ### Deletion Rules
