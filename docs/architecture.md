@@ -358,23 +358,26 @@ sequenceDiagram
   B-->>F: Imported and fetched
 ```
 
-### Download Episode
+### Smart Listening Download
 
 ```mermaid
 sequenceDiagram
-  participant U as User
   participant F as Frontend
   participant B as Backend
   participant M as Media Host
   participant FS as Filesystem
   participant D as Database
 
-  U->>F: Download episode
-  F->>B: POST /api/episodes/:id/download
+  F->>B: Add episode to playlist
+  B->>D: Store playlist item and download deadline
+  B-->>F: Playlist item added
+  B->>B: Wait until the persistent 15-second delay expires
   B->>M: Fetch audio
-  B->>FS: Save file
+  B->>B: Validate media response and complete body
+  B->>FS: Atomically publish validated local file
   B->>D: Save downloaded_path
-  B-->>F: Downloaded state updated
+  F->>B: GET /api/episodes/:id/audio
+  B-->>F: Local file when ready, otherwise paced remote stream
 ```
 
 ### Playback Sync

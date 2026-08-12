@@ -332,6 +332,11 @@ Response:
 
 #### `POST /api/episodes/:id/download`
 
+This authenticated endpoint remains available for backward compatibility and
+administrative use. Normal clients do not need to call it: Smart Listening
+automatically schedules a download 15 seconds after an episode is added to the
+playlist.
+
 Success response:
 ```json
 {
