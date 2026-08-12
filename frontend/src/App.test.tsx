@@ -168,6 +168,74 @@ describe("App routing", () => {
     expect(await screen.findByText("Settings screen")).toBeInTheDocument();
   });
 
+  it("drops protected UI and routes to login after an API 401", async () => {
+    window.history.replaceState({}, "", "/subscriptions");
+    const sessionSpy = vi
+      .spyOn(api.auth, "session")
+      .mockResolvedValueOnce({
+        authenticated: true,
+        user: { id: 1, username: "qa" },
+        setupRequired: false,
+      })
+      .mockResolvedValueOnce({
+        authenticated: false,
+        user: null,
+        setupRequired: false,
+      });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Authentication is required",
+          },
+        }),
+        {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    );
+
+    render(<App />);
+    expect(await screen.findByText("Subscriptions screen")).toBeInTheDocument();
+
+    await expect(api.podcasts.list()).rejects.toMatchObject({ status: 401 });
+
+    expect(await screen.findByText("Login screen")).toBeInTheDocument();
+    expect(screen.queryByText("Subscriptions screen")).not.toBeInTheDocument();
+    expect(sessionSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("rechecks an authenticated session when a cached page is restored", async () => {
+    window.history.replaceState({}, "", "/settings");
+    const sessionSpy = vi
+      .spyOn(api.auth, "session")
+      .mockResolvedValueOnce({
+        authenticated: true,
+        user: { id: 1, username: "qa" },
+        setupRequired: false,
+      })
+      .mockResolvedValueOnce({
+        authenticated: false,
+        user: null,
+        setupRequired: false,
+      });
+
+    render(<App />);
+    expect(await screen.findByText("Settings screen")).toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(
+        Object.assign(new Event("pageshow"), { persisted: true })
+      );
+    });
+
+    expect(await screen.findByText("Login screen")).toBeInTheDocument();
+    expect(screen.queryByText("Settings screen")).not.toBeInTheDocument();
+    expect(sessionSpy).toHaveBeenCalledTimes(2);
+  });
+
   it("shows a retry screen when session loading fails and recovers on retry", async () => {
     const user = userEvent.setup();
     const sessionSpy = vi

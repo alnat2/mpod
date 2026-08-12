@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, api } from "./api";
+import { ApiError, api, subscribeToUnauthorized } from "./api";
 
 describe("api client", () => {
   afterEach(() => {
@@ -102,5 +102,34 @@ describe("api client", () => {
     await expect(api.settings.get()).rejects.toEqual(
       new ApiError("Bad Gateway", "HTTP_ERROR", 502)
     );
+  });
+
+  it("notifies auth state when an API request returns unauthorized", async () => {
+    const onUnauthorized = vi.fn();
+    const unsubscribe = subscribeToUnauthorized(onUnauthorized);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: "UNAUTHORIZED",
+              message: "Authentication is required",
+            },
+          }),
+          {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          }
+        )
+      )
+    );
+
+    await expect(api.settings.get()).rejects.toEqual(
+      new ApiError("Authentication is required", "UNAUTHORIZED", 401)
+    );
+    expect(onUnauthorized).toHaveBeenCalledOnce();
+
+    unsubscribe();
   });
 });

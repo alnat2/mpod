@@ -415,6 +415,8 @@ The frontend should use `GET /api/auth/session` at startup to decide:
 - login required
 - authenticated app state
 
+The frontend also revalidates the session when an authenticated tab returns to the foreground or is restored from the back-forward cache. Any `401 Unauthorized` response from the API invalidates the current frontend auth state, unmounts authenticated providers and cached protected views, and triggers a session recheck before routing to login or setup.
+
 ## Download and File Flow
 
 The database is authoritative for whether an episode is expected to have a file, but the backend must verify actual file presence when relevant.

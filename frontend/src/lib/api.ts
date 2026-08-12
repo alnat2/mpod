@@ -121,6 +121,21 @@ type RequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
 };
 
+type UnauthorizedListener = () => void;
+
+const unauthorizedListeners = new Set<UnauthorizedListener>();
+
+export function subscribeToUnauthorized(listener: UnauthorizedListener) {
+  unauthorizedListeners.add(listener);
+  return () => {
+    unauthorizedListeners.delete(listener);
+  };
+}
+
+function notifyUnauthorized() {
+  unauthorizedListeners.forEach((listener) => listener());
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (response.status === 204) {
     return undefined as T;
@@ -170,7 +185,14 @@ async function apiRequest<T>(path: string, options: RequestOptions = {}) {
     headers,
   });
 
-  return parseResponse<T>(response);
+  try {
+    return await parseResponse<T>(response);
+  } catch (error) {
+    if (response.status === 401) {
+      notifyUnauthorized();
+    }
+    throw error;
+  }
 }
 
 export const api = {

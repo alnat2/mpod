@@ -1,4 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "next-themes";
 import { Navigate, Route, Routes } from "react-router-dom";
@@ -7,7 +14,11 @@ import { BrowserRouter, useLocation } from "react-router-dom";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthShell } from "@/components/mpod";
 import { ScreenErrorBoundary } from "@/components/screen-error-boundary";
-import { api, type AuthSession } from "@/lib/api";
+import {
+  api,
+  subscribeToUnauthorized,
+  type AuthSession,
+} from "@/lib/api";
 import { useLatestRequest } from "@/lib/use-latest-request";
 import { SubscriptionsCacheProvider } from "@/lib/subscriptions-cache-provider";
 
@@ -121,6 +132,7 @@ function AppRoutes() {
   const [loading, setLoading] = useState(true);
   const [sessionError, setSessionError] = useState(false);
   const sessionRequests = useLatestRequest();
+  const passiveSessionRefreshRef = useRef<Promise<void> | null>(null);
 
   const loadSession = useCallback(async () => {
     const requestGeneration = sessionRequests.beginRequest();
@@ -142,6 +154,20 @@ function AppRoutes() {
     }
   }, [sessionRequests]);
 
+  const refreshSessionOnce = useCallback(() => {
+    if (passiveSessionRefreshRef.current) {
+      return;
+    }
+
+    const refresh = loadSession();
+    passiveSessionRefreshRef.current = refresh;
+    void refresh.finally(() => {
+      if (passiveSessionRefreshRef.current === refresh) {
+        passiveSessionRefreshRef.current = null;
+      }
+    });
+  }, [loadSession]);
+
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       void loadSession();
@@ -149,6 +175,44 @@ function AppRoutes() {
 
     return () => window.clearTimeout(timeout);
   }, [loadSession]);
+
+  useEffect(
+    () => subscribeToUnauthorized(refreshSessionOnce),
+    [refreshSessionOnce]
+  );
+
+  useEffect(() => {
+    if (!session?.authenticated) {
+      return;
+    }
+
+    const refreshVisibleSession = () => {
+      refreshSessionOnce();
+    };
+    const refreshRestoredSession = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        refreshSessionOnce();
+      }
+    };
+    const refreshForegroundSession = () => {
+      if (document.visibilityState === "visible") {
+        refreshSessionOnce();
+      }
+    };
+
+    window.addEventListener("focus", refreshVisibleSession);
+    window.addEventListener("pageshow", refreshRestoredSession);
+    document.addEventListener("visibilitychange", refreshForegroundSession);
+
+    return () => {
+      window.removeEventListener("focus", refreshVisibleSession);
+      window.removeEventListener("pageshow", refreshRestoredSession);
+      document.removeEventListener(
+        "visibilitychange",
+        refreshForegroundSession
+      );
+    };
+  }, [refreshSessionOnce, session?.authenticated]);
 
   if (location.pathname === "/component-preview") {
     return (
