@@ -15,6 +15,7 @@ import (
 	httpapi "github.com/cross/mpod/server/internal/http"
 	"github.com/cross/mpod/server/internal/pathutil"
 	"github.com/cross/mpod/server/internal/scheduler"
+	"github.com/cross/mpod/server/internal/smartlistening"
 	"github.com/cross/mpod/server/internal/storage"
 )
 
@@ -27,6 +28,7 @@ type App struct {
 	db              io.Closer
 	cancel          context.CancelFunc
 	scheduler       *scheduler.Service
+	smartListening  *smartlistening.Service
 	listen          func(network, address string) (net.Listener, error)
 	shutdownTimeout time.Duration
 	stopOnce        sync.Once
@@ -67,6 +69,10 @@ func New(logger *log.Logger) (*App, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("cleanup expired sessions: %w", err)
 	}
+	if err := routerServices.Downloads.CleanupPartialFiles(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("cleanup partial downloads: %w", err)
+	}
 	schedulerService, err := scheduler.NewService(db.SQL, logger, routerServices.Settings, routerServices.Podcasts.RefreshAll, cfg.TZ)
 	if err != nil {
 		_ = db.Close()
@@ -74,6 +80,8 @@ func New(logger *log.Logger) (*App, error) {
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	schedulerService.Start(runCtx)
+	smartListeningService := smartlistening.NewService(db.SQL, logger, routerServices.Downloads)
+	smartListeningService.Start(runCtx)
 
 	router := httpapi.NewRouterWithServices(logger, cfg, db.SQL, schedulerService, routerServices)
 	server := &http.Server{
@@ -89,6 +97,7 @@ func New(logger *log.Logger) (*App, error) {
 		db:              db,
 		cancel:          cancel,
 		scheduler:       schedulerService,
+		smartListening:  smartListeningService,
 		listen:          net.Listen,
 		shutdownTimeout: defaultShutdownTimeout,
 	}, nil

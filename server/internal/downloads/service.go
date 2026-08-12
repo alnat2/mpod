@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cross/mpod/server/internal/media"
@@ -26,6 +27,15 @@ type Service struct {
 	db           *sql.DB
 	client       *http.Client
 	downloadsDir string
+	mu           sync.Mutex
+	inFlight     map[int64]*downloadCall
+}
+
+type downloadCall struct {
+	done   chan struct{}
+	cancel context.CancelFunc
+	result EpisodeDownload
+	err    error
 }
 
 type EpisodeDownload struct {
@@ -40,10 +50,38 @@ func NewService(db *sql.DB, client *http.Client, downloadsDir string) *Service {
 		db:           db,
 		client:       client,
 		downloadsDir: downloadsDir,
+		inFlight:     make(map[int64]*downloadCall),
 	}
 }
 
 func (s *Service) Download(ctx context.Context, episodeID int64) (EpisodeDownload, error) {
+	s.mu.Lock()
+	if call := s.inFlight[episodeID]; call != nil {
+		s.mu.Unlock()
+		select {
+		case <-call.done:
+			return call.result, call.err
+		case <-ctx.Done():
+			return EpisodeDownload{}, ctx.Err()
+		}
+	}
+
+	downloadCtx, cancel := context.WithCancel(ctx)
+	call := &downloadCall{done: make(chan struct{}), cancel: cancel}
+	s.inFlight[episodeID] = call
+	s.mu.Unlock()
+
+	call.result, call.err = s.download(downloadCtx, episodeID)
+	cancel()
+
+	s.mu.Lock()
+	delete(s.inFlight, episodeID)
+	close(call.done)
+	s.mu.Unlock()
+	return call.result, call.err
+}
+
+func (s *Service) download(ctx context.Context, episodeID int64) (EpisodeDownload, error) {
 	meta, err := s.loadEpisodeMeta(ctx, episodeID)
 	if err != nil {
 		return EpisodeDownload{}, err
@@ -76,7 +114,7 @@ func (s *Service) Download(ctx context.Context, episodeID int64) (EpisodeDownloa
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if resp.StatusCode != http.StatusOK {
 		return EpisodeDownload{}, fmt.Errorf("download audio status: %s", resp.Status)
 	}
 	if !media.IsPlayableContentType(resp.Header.Get("Content-Type")) {
@@ -103,14 +141,24 @@ func (s *Service) Download(ctx context.Context, episodeID int64) (EpisodeDownloa
 		return EpisodeDownload{}, fmt.Errorf("create temp download file: %w", err)
 	}
 
-	copyErr := func() error {
-		defer file.Close()
-		_, err := io.Copy(file, io.MultiReader(bytes.NewReader(prefix), resp.Body))
-		return err
-	}()
+	written, copyErr := io.Copy(file, io.MultiReader(bytes.NewReader(prefix), resp.Body))
+	if copyErr == nil {
+		copyErr = file.Sync()
+	}
+	if closeErr := file.Close(); copyErr == nil {
+		copyErr = closeErr
+	}
 	if copyErr != nil {
 		_ = os.Remove(tmpPath)
 		return EpisodeDownload{}, fmt.Errorf("write audio file: %w", copyErr)
+	}
+	if ctx.Err() != nil {
+		_ = os.Remove(tmpPath)
+		return EpisodeDownload{}, ctx.Err()
+	}
+	if resp.ContentLength > 0 && written != resp.ContentLength {
+		_ = os.Remove(tmpPath)
+		return EpisodeDownload{}, fmt.Errorf("download audio incomplete: wrote %d of %d bytes", written, resp.ContentLength)
 	}
 
 	if err := os.Rename(tmpPath, targetPath); err != nil {
@@ -119,6 +167,7 @@ func (s *Service) Download(ctx context.Context, episodeID int64) (EpisodeDownloa
 	}
 
 	if _, err := s.db.ExecContext(ctx, `UPDATE episodes SET downloaded_path = ? WHERE id = ?`, targetPath, episodeID); err != nil {
+		_ = os.Remove(targetPath)
 		return EpisodeDownload{}, fmt.Errorf("save downloaded_path: %w", err)
 	}
 
@@ -126,6 +175,10 @@ func (s *Service) Download(ctx context.Context, episodeID int64) (EpisodeDownloa
 }
 
 func (s *Service) Delete(ctx context.Context, episodeID int64) (EpisodeDownload, error) {
+	if err := s.cancelDownload(ctx, episodeID); err != nil {
+		return EpisodeDownload{}, fmt.Errorf("cancel episode download: %w", err)
+	}
+
 	meta, err := s.loadEpisodeMeta(ctx, episodeID)
 	if err != nil {
 		return EpisodeDownload{}, err
@@ -142,6 +195,40 @@ func (s *Service) Delete(ctx context.Context, episodeID int64) (EpisodeDownload,
 	}
 
 	return EpisodeDownload{ID: episodeID, Downloaded: false}, nil
+}
+
+func (s *Service) cancelDownload(ctx context.Context, episodeID int64) error {
+	s.mu.Lock()
+	call := s.inFlight[episodeID]
+	if call != nil {
+		call.cancel()
+	}
+	s.mu.Unlock()
+	if call == nil {
+		return nil
+	}
+
+	select {
+	case <-call.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s *Service) CleanupPartialFiles() error {
+	return filepath.WalkDir(s.downloadsDir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".tmp") {
+			return nil
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove partial download %q: %w", path, err)
+		}
+		return nil
+	})
 }
 
 type episodeMeta struct {
