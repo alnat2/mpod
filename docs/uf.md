@@ -428,8 +428,8 @@ User steps:
 2. User views the current daily refresh time.
 3. User updates the daily refresh time if desired.
 4. User turns configured proxy usage on or off if proxy configuration is available.
-5. If proxy usage is enabled, user can view the current observed external IP and country reported by backend.
-6. User views scheduler status.
+5. User views the latest refresh information on the first line below the Settings title.
+6. User views proxy runtime identity on the second line below the Settings title; when proxy is enabled this includes the observed external IP and country reported by backend.
 
 Design intent:
 - settings should stay small and operational
@@ -437,6 +437,8 @@ Design intent:
 - scheduler state should be understandable without overwhelming the user
 - proxy settings should be a simple on/off switch, not a host or credential editor
 - proxy runtime identity should show backend-reported state such as off, active, unknown, or error
+- desktop and mobile use the same two-line page-header status order: last refresh, then proxy runtime identity
+- the proxy card keeps static guidance while runtime status remains in the page header
 
 Backend rules:
 - scheduler runs once per day at one global configured time

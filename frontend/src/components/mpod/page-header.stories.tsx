@@ -41,3 +41,16 @@ export const WithoutActions: Story = {
     actions: [],
   },
 };
+
+export const SettingsStatus: Story = {
+  args: {
+    title: "Settings",
+    subtitle: (
+      <>
+        <span className="block">Last refresh today at 03:04</span>
+        <span className="block">Current IP: 43.32.112.45 • Geo: UK</span>
+      </>
+    ),
+    actions: [],
+  },
+};

@@ -30,7 +30,7 @@ function formatSchedulerRefresh(status: SchedulerStatus | null) {
     status?.lastRunAt ?? status?.lastSuccessAt ?? status?.lastFailureAt ?? null;
 
   if (!lastRefreshAt) {
-    return `Status: ${status?.state ?? "idle"} · last refresh never`;
+    return "Last refresh never";
   }
 
   const refreshDate = new Date(lastRefreshAt);
@@ -46,7 +46,7 @@ function formatSchedulerRefresh(status: SchedulerStatus | null) {
   }).format(refreshDate);
 
   if (isSameDay) {
-    return `Status: ${status?.state ?? "idle"} · last refresh today at ${timeLabel}`;
+    return `Last refresh today at ${timeLabel}`;
   }
 
   const dateLabel = new Intl.DateTimeFormat(undefined, {
@@ -54,10 +54,10 @@ function formatSchedulerRefresh(status: SchedulerStatus | null) {
     day: "numeric",
   }).format(refreshDate);
 
-  return `Status: ${status?.state ?? "idle"} · last refresh ${dateLabel} at ${timeLabel}`;
+  return `Last refresh ${dateLabel} at ${timeLabel}`;
 }
 
-function formatProxyDescription(
+function formatProxyIdentity(
   proxyConfigured: boolean,
   settings: SettingsValues | null,
   proxyStatus: ProxyRuntimeStatus | null
@@ -72,27 +72,12 @@ function formatProxyDescription(
 
   if (proxyStatus?.status === "ok") {
     if (proxyStatus.externalIp || proxyStatus.country) {
-      return (
-        <>
-          {proxyStatus.externalIp ? (
-            <>
-              <span className="font-semibold text-muted-foreground">
-                Current IP:
-              </span>{" "}
-              <span className="text-foreground">{proxyStatus.externalIp}</span>
-            </>
-          ) : null}
-          {proxyStatus.externalIp && proxyStatus.country ? (
-            <span className="text-foreground"> • </span>
-          ) : null}
-          {proxyStatus.country ? (
-            <>
-              <span className="font-semibold text-muted-foreground">Geo:</span>{" "}
-              <span className="text-foreground">{proxyStatus.country}</span>
-            </>
-          ) : null}
-        </>
-      );
+      return [
+        proxyStatus.externalIp ? `Current IP: ${proxyStatus.externalIp}` : null,
+        proxyStatus.country ? `Geo: ${proxyStatus.country}` : null,
+      ]
+        .filter(Boolean)
+        .join(" • ");
     }
   }
 
@@ -106,7 +91,6 @@ function formatProxyDescription(
 type SettingsCardProps = {
   title: string;
   description: ReactNode;
-  descriptionIsStatus?: boolean;
   action?: ReactNode;
   children?: ReactNode;
   className?: string;
@@ -115,30 +99,24 @@ type SettingsCardProps = {
 function SettingsCard({
   title,
   description,
-  descriptionIsStatus,
   action,
   children,
   className,
 }: SettingsCardProps) {
   return (
     <Card
-      className={`w-full rounded-md border border-border bg-card p-4 shadow-none ${className ?? ""}`}
+      className={`w-full gap-0 rounded-md border border-border bg-card p-4 shadow-none ${className ?? ""}`}
     >
       <div className="flex w-full items-start gap-4">
         <div className="min-w-0 flex-1">
           <h2 className="text-base leading-6 font-semibold text-card-foreground">
             {title}
           </h2>
-          <p
-            className="mt-1 text-sm leading-5 text-muted-foreground"
-            role={descriptionIsStatus ? "status" : undefined}
-            aria-live={descriptionIsStatus ? "polite" : undefined}
-            aria-atomic={descriptionIsStatus ? "true" : undefined}
-          >
+          <p className="mt-1 text-sm leading-5 text-muted-foreground">
             {description}
           </p>
         </div>
-        {action ? <div className="flex min-w-0 shrink-0">{action}</div> : null}
+        {action ? <div className="flex min-w-0 shrink-0 self-center">{action}</div> : null}
       </div>
       {children ? <div className="mt-5">{children}</div> : null}
     </Card>
@@ -161,6 +139,17 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
   const [reloadKey, setReloadKey] = useState(0);
   const statusPollRequests = useLatestRequest();
   const proxyConfigured = settings?.proxyConfigured || proxyStatus?.proxyConfigured || false;
+  const settingsStatus = (
+    <div
+      className="flex flex-col"
+      role={!loading ? "status" : undefined}
+      aria-live={!loading ? "polite" : undefined}
+      aria-atomic={!loading ? "true" : undefined}
+    >
+      <span>{formatSchedulerRefresh(scheduler)}</span>
+      <span>{formatProxyIdentity(proxyConfigured, settings, proxyStatus)}</span>
+    </div>
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -284,6 +273,7 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
     <>
       <AppShell
         activeNavItem="Settings"
+        mainClassName="xl:max-w-[1280px]"
         onAddPodcast={() => setModal("rss")}
         pageTitle="Settings"
         pageSubtitle=""
@@ -293,16 +283,20 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
         <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5">
           {isMobile ? (
             <div className="pt-4">
-              <PageHeader layout="mobile" title="Settings" actions={[]} />
+              <PageHeader
+                layout="mobile"
+                title="Settings"
+                subtitle={settingsStatus}
+                actions={[]}
+              />
             </div>
           ) : (
-            <div className="flex w-full items-center gap-6">
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
-                <h1 className="truncate text-3xl leading-9 font-semibold text-foreground">
-                  Settings
-                </h1>
-              </div>
-            </div>
+            <PageHeader
+              layout="desktop"
+              title="Settings"
+              subtitle={settingsStatus}
+              actions={[]}
+            />
           )}
           <ScreenBannerStack>
             {error ? (
@@ -316,13 +310,13 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
           </ScreenBannerStack>
           <div className="mpod-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden pt-4 pb-20 md:py-6">
             <div className="flex w-full flex-col gap-4">
-              <div className="grid gap-4 md:gap-6 lg:grid-cols-[1fr_420px]">
+              <div className="grid gap-4 min-[1360px]:grid-cols-[1fr_680px] min-[1360px]:gap-6">
                 <SettingsCard
                   title="Feed daily refresh"
                   description="Feeds are refreshed once per day at a single global time."
-                  className="md:min-h-[193px]"
+                  className="min-[1360px]:min-h-[168px]"
                 >
-                  <div className="flex w-full items-center gap-2 md:w-[220px]">
+                  <div className="flex w-full items-center gap-2 min-[1360px]:w-[220px]">
                     <Input
                       type="time"
                       aria-label="Daily refresh time"
@@ -333,32 +327,19 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                     />
                     <Button
                       type="button"
-                      className="h-9 rounded-lg px-4"
+                      className="h-9 w-[116px] rounded-lg px-4 min-[1360px]:w-auto"
                       disabled={saving || loading}
                       onClick={() => void handleSaveRefreshTime()}
                     >
                       Save time
                     </Button>
                   </div>
-                  <p
-                    className="mt-4 text-sm leading-5 font-medium text-secondary-foreground"
-                    role={!loading ? "status" : undefined}
-                    aria-live={!loading ? "polite" : undefined}
-                    aria-atomic={!loading ? "true" : undefined}
-                  >
-                    {formatSchedulerRefresh(scheduler)}
-                  </p>
                 </SettingsCard>
 
-                <div className="flex flex-col gap-4">
+                <div className="grid gap-4 min-[1360px]:grid-cols-2">
                   <SettingsCard
                     title="Use SOCKS5 proxy"
-                    descriptionIsStatus={!loading}
-                    description={formatProxyDescription(
-                      proxyConfigured,
-                      settings,
-                      proxyStatus
-                    )}
+                    description="Turn on if direct connection update fails."
                     action={
                       <Switch
                         aria-label="Use SOCKS5 proxy"
@@ -391,7 +372,11 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                     title="Export OPML"
                     description="Download the current subscription list as an OPML file."
                     action={
-                      <Button asChild type="button" className="h-8 rounded-md px-3">
+                      <Button
+                        asChild
+                        type="button"
+                        className="h-9 w-[115px] rounded-md px-3"
+                      >
                         <a href={api.podcasts.exportOPMLPath}>Export OPML</a>
                       </Button>
                     }
@@ -404,7 +389,7 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                       <Button
                         type="button"
                         variant="secondary"
-                        className="h-8 rounded-md px-3"
+                        className="h-8 w-[113px] rounded-md px-3"
                         onClick={() => void handleLogout()}
                       >
                         Log out

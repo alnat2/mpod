@@ -12,6 +12,18 @@ import { SettingsScreen } from "./settings-screen";
 
 vi.mock("@/components/mpod", () => ({
   AppShell: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  PageHeader: ({
+    title,
+    subtitle,
+  }: {
+    title: string;
+    subtitle?: ReactNode;
+  }) => (
+    <header>
+      <h1>{title}</h1>
+      {subtitle}
+    </header>
+  ),
 }));
 
 vi.mock("./add-podcast-modal", () => ({
@@ -76,11 +88,10 @@ describe("SettingsScreen", () => {
     );
   }
 
-  async function expectProxyIdentityToUseThemeTokens() {
-    expect(await screen.findByText("43.32.112.45")).toHaveClass("text-foreground");
-    expect(screen.getByText("UK")).toHaveClass("text-foreground");
-    expect(screen.getByText("Current IP:")).toHaveClass("text-muted-foreground");
-    expect(screen.getByText("Geo:")).toHaveClass("text-muted-foreground");
+  async function expectProxyIdentityInPageHeader() {
+    expect(
+      await screen.findByText("Current IP: 43.32.112.45 • Geo: UK")
+    ).toBeInTheDocument();
   }
 
   it("loads settings and scheduler status", async () => {
@@ -89,9 +100,12 @@ describe("SettingsScreen", () => {
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
     expect(screen.getByDisplayValue("03:00")).toBeInTheDocument();
     expect(
-      screen.getByText("Status: idle · last refresh never")
+      screen.getByText("Last refresh never")
     ).toBeInTheDocument();
     expect(screen.getByText("Proxy is off")).toBeInTheDocument();
+    expect(
+      screen.getByText("Turn on if direct connection update fails.")
+    ).toBeInTheDocument();
     await expectNoA11yViolations(container);
   });
 
@@ -151,7 +165,7 @@ describe("SettingsScreen", () => {
     await waitFor(() => {
       expect(updateSpy).toHaveBeenCalledWith({ proxyEnabled: true });
     });
-    await expectProxyIdentityToUseThemeTokens();
+    await expectProxyIdentityInPageHeader();
   });
 
   it("toggles dark theme locally without saving backend settings", async () => {
@@ -200,7 +214,7 @@ describe("SettingsScreen", () => {
 
     renderScreen();
 
-    await expectProxyIdentityToUseThemeTokens();
+    await expectProxyIdentityInPageHeader();
   });
 
   it("shows the backend proxy error when proxy lookup fails", async () => {

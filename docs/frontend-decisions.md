@@ -76,6 +76,19 @@ Tablet:
 - tablet layouts are out of scope for MVP as separate mockups
 - implementation may interpolate between desktop and mobile behavior, but tablet is not a separate design target
 
+### Settings Status Presentation
+
+Decision:
+- desktop and mobile Settings screens show operational status as a two-line `PageHeader` subtitle
+- the first line shows the latest feed refresh time
+- the second line shows proxy runtime identity or its backend-reported off/error state
+- the proxy setting card uses the static description `Turn on if direct connection update fails.`
+
+Rules:
+- when proxy runtime lookup succeeds, use `Current IP: {ip} • Geo: {country}` with backend-provided values
+- do not repeat scheduler or proxy runtime status inside their setting cards
+- desktop keeps the wide refresh card on the left and the remaining settings in a compact `2×2` grid; mobile stacks the same cards vertically
+
 ### shadcn Skills
 
 Decision:

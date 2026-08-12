@@ -221,19 +221,23 @@ Purpose:
 Content:
 - export OPML
 - daily refresh time setting
-- scheduler status information
+- scheduler last-refresh information in the page header
 - proxy usage switch when SOCKS5 proxy configuration is available
 - read-only proxy configured status
-- read-only proxy runtime identity status with external IP and country when proxy usage is enabled
+- read-only proxy runtime identity status in the page header, with external IP and country when proxy usage is enabled
+- dark-theme switch
 - logout action
 
 UX notes:
 - settings should remain small and practical
 - this is not a profile-management area in the multi-user sense
 - the proxy control should be a simple on/off switch; host, port, username, and password remain runtime configuration
-- when proxy usage is disabled, the settings view should show `Proxy is off`
-- when proxy usage is enabled and runtime lookup succeeds, the settings view should show the observed external IP and country label returned by backend
-- when proxy runtime lookup fails, the settings view should show an explicit unknown/error state from backend rather than inventing geo or connectivity details
+- the page header subtitle should show the last refresh on its first line and proxy runtime identity on its second line on both desktop and mobile
+- the proxy card description should remain the static guidance `Turn on if direct connection update fails.`
+- when proxy usage is disabled, the second page-header line should show `Proxy is off`
+- when proxy usage is enabled and runtime lookup succeeds, the second page-header line should show `Current IP: {ip} • Geo: {country}` using backend values
+- when proxy runtime lookup fails, the second page-header line should show the explicit backend error rather than inventing geo or connectivity details
+- desktop uses a wide daily-refresh card on the left and a `2×2` grid of compact setting cards on the right; mobile stacks all cards in one column
 - for daily refresh time, the save action should be secondary when the time has not changed and primary only after the user changes the time
 - do not add cleanup toggles unless product decisions are intentionally changed
 

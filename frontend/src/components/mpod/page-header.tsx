@@ -15,7 +15,7 @@ type PageHeaderProps = {
   actions?: PageHeaderAction[];
   className?: string;
   layout?: "auto" | "desktop" | "mobile";
-  subtitle?: string;
+  subtitle?: ReactNode;
   title: string;
 };
 
@@ -46,9 +46,9 @@ export function PageHeader({
           {title}
         </h1>
         {subtitle ? (
-          <p className="w-full text-base leading-6 font-medium text-muted-foreground">
+          <div className="w-full text-base leading-6 font-medium text-muted-foreground">
             {subtitle}
-          </p>
+          </div>
         ) : null}
       </div>
       {actions.length > 0 ? (
