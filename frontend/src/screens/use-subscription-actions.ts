@@ -38,9 +38,6 @@ export function useSubscriptionActions({
   setReloadKey,
   showAll,
 }: UseSubscriptionActionsOptions) {
-  const [downloadingEpisodeIds, setDownloadingEpisodeIds] = useState<Set<number>>(
-    () => new Set()
-  );
   const [refreshingPodcastIds, setRefreshingPodcastIds] = useState<Set<number>>(
     () => new Set()
   );
@@ -201,34 +198,6 @@ export function useSubscriptionActions({
     }
   }
 
-  async function downloadFromSubscription(episodeId: number) {
-    setActionError(null);
-    setDownloadingEpisodeIds((current) => new Set(current).add(episodeId));
-
-    try {
-      await api.episodes.download(episodeId);
-      setPodcasts((current) =>
-        current.map((podcast) => ({
-          ...podcast,
-          episodes: podcast.episodes.map((episode) =>
-            episode.id === episodeId
-              ? { ...episode, downloaded: true }
-              : episode
-          ),
-        }))
-      );
-      setReloadKey((current) => current + 1);
-    } catch (caught) {
-      setActionError(getErrorMessage(caught));
-    } finally {
-      setDownloadingEpisodeIds((current) => {
-        const next = new Set(current);
-        next.delete(episodeId);
-        return next;
-      });
-    }
-  }
-
   async function scheduleUnsubscribePodcast(
     podcast: Pick<Podcast, "id" | "title">
   ) {
@@ -339,7 +308,6 @@ export function useSubscriptionActions({
 
   return {
     actionError,
-    downloadingEpisodeIds,
     exitingPodcastIds,
     markListened,
     pendingActions,
@@ -352,7 +320,6 @@ export function useSubscriptionActions({
     runAction,
     scheduleUnsubscribePodcast,
     setActionError,
-    downloadFromSubscription,
     undoAction,
   };
 }

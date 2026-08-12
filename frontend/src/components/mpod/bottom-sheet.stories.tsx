@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 import {
-  DownloadSquare01Icon,
   NoteIcon,
   PlayListRemoveIcon,
   ViewIcon,
@@ -33,10 +32,6 @@ const meta = {
       {
         label: "Show notes",
         icon: NoteIcon,
-      },
-      {
-        label: "Download",
-        icon: DownloadSquare01Icon,
       },
       {
         label: "Mark as listened",

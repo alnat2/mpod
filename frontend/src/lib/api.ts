@@ -260,11 +260,6 @@ export const api = {
         `/api/episodes/${episodeId}`,
         { method: "PATCH", body: { isListened } }
       ),
-    download: (episodeId: number) =>
-      apiRequest<{ success: true; episode: Partial<Episode> }>(
-        `/api/episodes/${episodeId}/download`,
-        { method: "POST" }
-      ),
   },
   playlist: {
     list: () => apiRequest<{ items: MaybeArray<PlaylistItem> }>("/api/playlist"),

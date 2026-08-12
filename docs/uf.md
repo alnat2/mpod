@@ -216,7 +216,6 @@ User steps:
 7. The episode list area updates in the same podcasts screen, showing unlistened episodes by default or all episodes while `Show all` is active.
 8. User decides what to do with each episode:
    - add to playlist
-   - download
    - mark listened or unlistened
 9. When the selected podcast has unlistened episodes, user can choose `Mark all listened` from the selected podcast episode-list header.
 
@@ -226,16 +225,14 @@ Design intent:
 - the podcast selector should default to subscriptions with unlistened episodes so completed subscriptions do not crowd the main work view
 - detailed Subscriptions filtering and podcast-card container rules are canonical in [frontend-decisions.md](frontend-decisions.md#subscription-list-defaults)
 - single-podcast refresh can be exposed on podcast cards as a lightweight supporting action
-- downloading and playlist operations should be available directly from episode lists
+- playlist operations should be available directly from episode lists
 - episode rows should make title, date, downloaded state, listened state, and playlist state visible where relevant
 - detailed episode-row action labels, download state treatment, and manual listened-state rules are canonical in [frontend-decisions.md](frontend-decisions.md#manual-listened-state-actions)
-- when a download fails, show a dismissible notification at the top of the screen for 10 seconds and return the affected row to a normal inline `Download` action
 - screen-level error and undo banners should render out of flow in a fixed overlay positioned `100px` from the top of the viewport
-- the 10-second download-failure notification timeout is separate from the 15-second destructive-action undo window
 - episode rows should use `Mark listened` and `Mark unlistened` actions for manual listened-state changes, not `Show listened` or `Show unlistened` filter buttons
 - do not expose a separate `Delete` or `Delete download` episode action in the MVP UI
 - downloaded files are cleaned up through playback completion or manual `mark listened`
-- manual listened and unlistened actions should be available without making them visually heavier than queue or download
+- manual listened and unlistened actions should be available without making them visually heavier than queue or show notes
 
 Backend rules:
 - episode state comes from backend data
@@ -292,18 +289,18 @@ Backend rules:
 ## Download Flow
 
 Goal:
-- optionally store a local disposable copy for playback
+- reflect automatic disposable downloads without exposing manual controls
 
 User steps:
-1. User triggers download for an episode.
-2. User waits for download completion.
-3. Episode becomes downloaded in the UI.
+1. User adds an episode to the playlist.
+2. Backend schedules and completes the download automatically.
+3. Episode downloaded state updates in the UI.
 
 Design intent:
-- show a clear loading state during download
 - display whether an episode is downloaded
+- do not expose a manual `Download` action
 - avoid promising archival or permanent local storage
-- make it clear that downloading is optional, not required before listening
+- do not require a local download before listening
 
 Backend rules:
 - download paths and file lifecycle are controlled by the backend
@@ -321,7 +318,10 @@ User steps:
 3. Playback controls remain usable on both desktop and mobile layouts.
 4. User continues browsing while audio plays.
 5. Playback progress is sent to the backend periodically.
-6. If the user leaves and comes back later, the backend-provided playback state is used to resume.
+6. If a local download becomes available during active playback, the web player
+   preserves the position, reloads the same audio URL, restores the position,
+   and resumes after the source is ready.
+7. If the user leaves and comes back later, the backend-provided playback state is used to resume.
 
 Playback speed:
 - playback speed options and default speed are canonical in [frontend-decisions.md](frontend-decisions.md#playback-speed-control)

@@ -98,6 +98,91 @@ export function setAudioPosition(
   }
 }
 
+export function reloadAudioSourceAtPosition(
+  audio: HTMLAudioElement,
+  positionSeconds: number,
+  setPositionSeconds: (positionSeconds: number) => void,
+  onReady: () => void,
+  onFailure: () => void
+) {
+  let settled = false;
+  let positionApplied = false;
+
+  const cleanup = () => {
+    audio.removeEventListener("loadedmetadata", applyPosition);
+    audio.removeEventListener("canplay", handleCanPlay);
+    audio.removeEventListener("seeked", handleSeeked);
+    audio.removeEventListener("error", handleError);
+  };
+
+  const cancel = () => {
+    settled = true;
+    cleanup();
+  };
+
+  const finish = () => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    cleanup();
+    onReady();
+  };
+
+  const fail = () => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    cleanup();
+    onFailure();
+  };
+
+  function applyPosition() {
+    if (settled || audio.readyState < HTMLMediaElement.HAVE_METADATA) {
+      return;
+    }
+    positionApplied = setAudioPosition(audio, positionSeconds);
+    setPositionSeconds(positionApplied ? positionSeconds : 0);
+  }
+
+  function handleCanPlay() {
+    applyPosition();
+    if (positionApplied) {
+      finish();
+    } else {
+      fail();
+    }
+  }
+
+  function handleSeeked() {
+    if (positionApplied) {
+      finish();
+    }
+  }
+
+  function handleError() {
+    fail();
+  }
+
+  audio.addEventListener("loadedmetadata", applyPosition);
+  audio.addEventListener("canplay", handleCanPlay);
+  audio.addEventListener("seeked", handleSeeked);
+  audio.addEventListener("error", handleError);
+  audio.load();
+
+  if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
+    queueMicrotask(() => {
+      applyPosition();
+      if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+        finish();
+      }
+    });
+  }
+
+  return cancel;
+}
+
 export function primeAudioSource(
   audio: HTMLAudioElement,
   episode: AudioSourceEpisode,

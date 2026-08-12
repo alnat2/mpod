@@ -105,7 +105,7 @@ test("shows the expected episode actions and opens show notes", async ({
 
   await expect(page.getByRole("heading", { name: "Subscriptions" })).toBeVisible();
   await expect(page.getByText("QA reorder third")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Download" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Download" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Add to playlist" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Show notes" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Mark as listened" })).toBeVisible();

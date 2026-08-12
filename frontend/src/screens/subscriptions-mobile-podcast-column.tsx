@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
-  DownloadSquare01Icon,
-  DownloadSquare02Icon,
-  Loading02Icon,
   NoteIcon,
   PlayListAddIcon,
   PlayListRemoveIcon,
@@ -32,9 +29,7 @@ function episodeSummaryLabel(totalCount: number, unlistenedCount: number) {
 }
 
 type MobilePodcastColumnProps = {
-  downloadingEpisodeIds: Set<number>;
   onAddToPlaylist: (episodeId: number) => void;
-  onDownload: (episodeId: number) => void;
   onMarkListened: (
     episodes: Array<Pick<Episode, "id" | "title">>,
     isListened: boolean
@@ -48,9 +43,7 @@ type MobilePodcastColumnProps = {
 };
 
 export function MobilePodcastColumn({
-  downloadingEpisodeIds,
   onAddToPlaylist,
-  onDownload,
   onMarkListened,
   onRemoveFromPlaylist,
   onShowNotes,
@@ -183,29 +176,6 @@ export function MobilePodcastColumn({
           {virtualEpisodeWindow.items.map((episode) => {
             const duration = formatDuration(durationForEpisode(episode));
             const publishedAt = formatEpisodeDate(episode.publishedAt);
-            const downloading = downloadingEpisodeIds.has(episode.id);
-            const downloadAction = {
-              label: downloading
-                ? "Downloading"
-                : episode.downloaded
-                  ? "Downloaded"
-                  : "Download",
-              icon: downloading
-                ? Loading02Icon
-                : episode.downloaded
-                  ? DownloadSquare02Icon
-                  : DownloadSquare01Icon,
-              iconClassName: downloading
-                ? "animate-spin"
-                : episode.downloaded
-                  ? "text-muted-foreground"
-                  : undefined,
-              disabled: downloading,
-              onClick:
-                episode.downloaded || downloading
-                  ? undefined
-                  : () => onDownload(episode.id),
-            };
             const playlistAction = {
               label: episode.inPlaylist
                 ? "Remove from playlist"
@@ -253,7 +223,6 @@ export function MobilePodcastColumn({
                   }
                   thumbnailAlt={`${podcast.title} artwork`}
                   actions={[
-                    downloadAction,
                     playlistAction,
                     notesAction,
                     listenedAction,
@@ -261,7 +230,6 @@ export function MobilePodcastColumn({
                   mobileActions={[
                     playlistAction,
                     notesAction,
-                    downloadAction,
                     listenedAction,
                   ]}
                 />

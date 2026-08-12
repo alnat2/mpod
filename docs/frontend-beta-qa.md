@@ -21,7 +21,6 @@ Use this checklist before a beta push and after any high-risk frontend change.
 - Empty state shows `Add RSS feed` and `Import OPML`
 - Add one RSS feed and confirm the podcast card appears
 - Open one episode row and verify action order:
-  - `Download` / `Downloaded`
   - `Add to playlist` / `Remove from playlist`
   - `Show notes`
   - `Mark as listened` / `Mark as unlistened`
@@ -40,6 +39,8 @@ Use this checklist before a beta push and after any high-risk frontend change.
 - Drag playlist items and confirm the new order persists after reload
 - Click the progress bar to seek
 - Change playback speed and confirm the menu label matches playback behavior
+- Start a non-downloaded playlist episode and confirm playback keeps its position
+  when the automatic download becomes available
 
 ## Settings
 

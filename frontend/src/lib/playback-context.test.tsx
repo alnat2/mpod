@@ -35,12 +35,17 @@ class FakeAudio {
   defaultPlaybackRate = 1;
   paused = true;
   error: FakeMediaError | null = null;
+  private sourceReloading = false;
   private listeners = new Map<string, Set<() => void>>();
   playImpl = vi.fn(async () => {
     this.paused = false;
   });
   pauseImpl = vi.fn(() => {
     this.paused = true;
+  });
+  loadImpl = vi.fn(() => {
+    this.currentTimeValue = 0;
+    this.readyState = 0;
   });
 
   constructor() {
@@ -67,7 +72,11 @@ class FakeAudio {
       this.readyState >= 1 &&
       (type === "loadedmetadata" || type === "canplay")
     ) {
-      queueMicrotask(listener);
+      queueMicrotask(() => {
+        if (!this.sourceReloading) {
+          listener();
+        }
+      });
     }
   }
 
@@ -83,7 +92,15 @@ class FakeAudio {
     this.pauseImpl();
   }
 
+  load() {
+    this.sourceReloading = true;
+    this.loadImpl();
+  }
+
   emit(type: string) {
+    if (type === "loadedmetadata" || type === "canplay") {
+      this.sourceReloading = false;
+    }
     this.listeners.get(type)?.forEach((listener) => listener());
   }
 }
@@ -768,6 +785,71 @@ describe("PlaybackProvider", () => {
         completed: false,
       })
     );
+  });
+
+  it("reloads a newly downloaded source at the current position before resuming", async () => {
+    const user = userEvent.setup();
+    const downloadedEpisodeRequest = deferred<{ episode: Episode }>();
+    const episodeSpy = vi.mocked(api.episodes.get);
+    episodeSpy.mockReturnValueOnce(downloadedEpisodeRequest.promise);
+    const updateSpy = vi.mocked(api.playback.update);
+
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+
+    const audio = FakeAudio.first;
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+      expect(episodeSpy).toHaveBeenCalledTimes(1);
+    });
+
+    const originalSource = audio.src;
+    audio.currentTime = 237;
+    audio.pauseImpl.mockClear();
+    audio.playImpl.mockClear();
+
+    await act(async () => {
+      downloadedEpisodeRequest.resolve({
+        episode: { ...episodes.get(1)!, downloaded: true },
+      });
+    });
+
+    await waitFor(() => {
+      expect(audio.pauseImpl).toHaveBeenCalledTimes(1);
+      expect(audio.loadImpl).toHaveBeenCalledTimes(1);
+    });
+    expect(audio.src).toBe(originalSource);
+    expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    expect(updateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        episodeId: 1,
+        positionSeconds: 237,
+        completed: false,
+      })
+    );
+    expect(audio.playImpl).not.toHaveBeenCalled();
+
+    act(() => {
+      audio.readyState = 1;
+      audio.emit("loadedmetadata");
+    });
+    expect(audio.currentTime).toBe(237);
+    expect(audio.playImpl).not.toHaveBeenCalled();
+
+    act(() => {
+      audio.readyState = 3;
+      audio.emit("canplay");
+    });
+
+    await waitFor(() => {
+      expect(audio.playImpl).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByTestId("position")).toHaveTextContent("237");
   });
 
   it("keeps system media controls and player state in sync after pausing", async () => {

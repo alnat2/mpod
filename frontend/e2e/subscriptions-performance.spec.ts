@@ -125,7 +125,7 @@ test("keeps a large subscription view bounded and visible during revalidation", 
   const mountedDownloadActions = await page
     .getByRole("button", { name: "Download" })
     .count();
-  expect(mountedDownloadActions).toBeLessThan(25);
+  expect(mountedDownloadActions).toBe(0);
   expect(podcastCalls).toBeLessThanOrEqual(2);
   expect(episodeCalls).toBeLessThanOrEqual(2);
   expect(playlistCalls).toBeLessThanOrEqual(2);

@@ -1,13 +1,14 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   type Dispatch,
   type RefObject,
   type SetStateAction,
 } from "react";
 
 import type { PlaybackSpeedLabel } from "@/components/mpod/playback";
-import type { PlaybackUpdateResponse } from "./api";
+import { api, type PlaybackUpdateResponse } from "./api";
 import {
   applyPlaybackRate,
   attemptAudioPlay,
@@ -16,6 +17,7 @@ import {
   describeMediaError,
   primeAudioSource,
   readAudioDuration,
+  reloadAudioSourceAtPosition,
   setAudioPosition,
 } from "./playback-audio";
 import type { QueueEpisode } from "./playback-context-types";
@@ -24,6 +26,8 @@ type CommitPlayback = (
   nextPositionSeconds: number,
   options?: { completed?: boolean; didSeek?: boolean }
 ) => Promise<PlaybackUpdateResponse | null>;
+
+const DOWNLOADED_SOURCE_POLL_MS = 5000;
 
 type UsePlaybackAudioOptions = {
   audioRef: RefObject<HTMLAudioElement | null>;
@@ -42,6 +46,7 @@ type UsePlaybackAudioOptions = {
   positionSeconds: number;
   speedLabel: PlaybackSpeedLabel;
   setActiveEpisodeId: Dispatch<SetStateAction<number | null>>;
+  setQueue: Dispatch<SetStateAction<QueueEpisode[]>>;
   setPlaying: Dispatch<SetStateAction<boolean>>;
   setPlaybackError: Dispatch<SetStateAction<string | null>>;
   setPositionSeconds: Dispatch<SetStateAction<number>>;
@@ -81,6 +86,7 @@ export function usePlaybackAudio({
   positionSeconds,
   speedLabel,
   setActiveEpisodeId,
+  setQueue,
   setPlaying,
   setPlaybackError,
   setPositionSeconds,
@@ -91,6 +97,14 @@ export function usePlaybackAudio({
   refreshPlaybackState,
   loadQueue,
 }: UsePlaybackAudioOptions) {
+  const sourceSwitchingRef = useRef(false);
+  const sourceReloadCleanupRef = useRef<(() => void) | null>(null);
+  // Track the source that is actually loaded, independently from fresher queue data.
+  const sourceDownloadStateRef = useRef<{
+    episodeId: number;
+    downloaded: boolean;
+  } | null>(null);
+
   useEffect(() => {
     const audio = new Audio();
     audioRef.current = audio;
@@ -114,6 +128,9 @@ export function usePlaybackAudio({
     };
 
     const onPause = () => {
+      if (sourceSwitchingRef.current) {
+        return;
+      }
       const shouldCommitPlayback = playingRef.current;
       playingRef.current = false;
       setPlaying(false);
@@ -199,6 +216,7 @@ export function usePlaybackAudio({
     };
 
     const onError = () => {
+      sourceSwitchingRef.current = false;
       sourceReadyRef.current = false;
       playingRef.current = false;
       setPlaying(false);
@@ -235,6 +253,9 @@ export function usePlaybackAudio({
       audio.removeEventListener("error", onError);
       audio.pause();
       audio.src = "";
+      sourceReloadCleanupRef.current?.();
+      sourceReloadCleanupRef.current = null;
+      sourceSwitchingRef.current = false;
       sourcePrimedRef.current = false;
       sourceReadyRef.current = false;
     };
@@ -256,6 +277,138 @@ export function usePlaybackAudio({
     sourceReadyRef,
     speedLabelRef,
     userInitiatedPlayRef,
+  ]);
+
+  useEffect(() => {
+    if (sourceDownloadStateRef.current?.episodeId === currentEpisode?.id) {
+      return;
+    }
+    sourceReloadCleanupRef.current?.();
+    sourceReloadCleanupRef.current = null;
+    sourceSwitchingRef.current = false;
+    sourceDownloadStateRef.current = currentEpisode
+      ? {
+          episodeId: currentEpisode.id,
+          downloaded: currentEpisode.downloaded,
+        }
+      : null;
+  }, [currentEpisode]);
+
+  const currentEpisodeId = currentEpisode?.id ?? null;
+
+  useEffect(() => {
+    const sourceDownloadState = sourceDownloadStateRef.current;
+    if (
+      currentEpisodeId === null ||
+      !playing ||
+      sourceDownloadState?.episodeId !== currentEpisodeId ||
+      sourceDownloadState.downloaded
+    ) {
+      return;
+    }
+
+    const episodeId = currentEpisodeId;
+    let cancelled = false;
+    let checking = false;
+
+    const checkDownloadedSource = async () => {
+      if (checking || sourceSwitchingRef.current || !playingRef.current) {
+        return;
+      }
+
+      checking = true;
+      try {
+        const { episode } = await api.episodes.get(episodeId);
+        if (
+          cancelled ||
+          !episode.downloaded ||
+          !playingRef.current ||
+          currentEpisodeRef.current?.id !== episodeId
+        ) {
+          return;
+        }
+
+        const audio = audioRef.current;
+        const targetSrc = `${window.location.origin}/api/episodes/${episodeId}/audio`;
+        if (!audio || !audio.src.includes(targetSrc)) {
+          return;
+        }
+
+        const savedPosition = audio.currentTime;
+        sourceDownloadStateRef.current = {
+          episodeId,
+          downloaded: true,
+        };
+        sourceSwitchingRef.current = true;
+        audio.pause();
+        void commitPlayback(savedPosition);
+        sourceReadyRef.current = false;
+        setQueue((current) =>
+          current.map((item) =>
+            item.id === episodeId ? { ...item, downloaded: true } : item
+          )
+        );
+
+        sourceReloadCleanupRef.current?.();
+        sourceReloadCleanupRef.current = reloadAudioSourceAtPosition(
+          audio,
+          savedPosition,
+          setPositionSeconds,
+          () => {
+            sourceReloadCleanupRef.current = null;
+            if (currentEpisodeRef.current?.id !== episodeId) {
+              sourceSwitchingRef.current = false;
+              return;
+            }
+
+            sourceSwitchingRef.current = false;
+            sourceReadyRef.current = true;
+            if (playingRef.current) {
+              void attemptAudioPlay(audio, (error) => {
+                playingRef.current = false;
+                setPlaying(false);
+                setPlaybackError(describeAudioError(error));
+              });
+            }
+          },
+          () => {
+            sourceReloadCleanupRef.current = null;
+            sourceSwitchingRef.current = false;
+            playingRef.current = false;
+            sourceReadyRef.current = false;
+            setPlaying(false);
+            setPlaybackError(describeMediaError(audio.error));
+          }
+        );
+      } catch {
+        // Download completion polling is best effort; playback keeps streaming.
+      } finally {
+        checking = false;
+      }
+    };
+
+    void checkDownloadedSource();
+    const intervalId = window.setInterval(
+      () => void checkDownloadedSource(),
+      DOWNLOADED_SOURCE_POLL_MS
+    );
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [
+    audioRef,
+    commitPlayback,
+    currentEpisodeId,
+    currentEpisodeRef,
+    playing,
+    playingRef,
+    setPlaybackError,
+    setPlaying,
+    setPositionSeconds,
+    setQueue,
+    sourceReadyRef,
   ]);
 
   useEffect(() => {

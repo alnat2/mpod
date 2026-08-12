@@ -153,6 +153,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       positionSeconds,
       speedLabel,
       setActiveEpisodeId,
+      setQueue,
       setPlaying,
       setPlaybackError,
       setPositionSeconds,

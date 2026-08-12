@@ -141,8 +141,6 @@ Rules:
 - the backend remains the source of truth for listened state and file lifecycle behavior
 - episode rows should expose `Mark listened` and `Mark unlistened` only where relevant for manual listened-state changes
 - icon-only episode-row actions should use tooltips with state-specific labels:
-  - `Download`
-  - `Downloaded`
   - `Add to playlist`
   - `Remove from playlist`
   - `Mark as listened`
@@ -164,7 +162,7 @@ Decision:
 
 Rules:
 - the Drawer header shows the episode title and podcast title
-- the mobile Subscriptions action order is playlist state, show notes, download state, listened state
+- the mobile Subscriptions action order is playlist state, show notes, listened state
 - the mobile playlist action order is play or pause, then remove from playlist
 - action availability and labels continue to reflect the current episode state
 
@@ -191,15 +189,17 @@ Reasoning:
 - this keeps the main subscriptions view focused on podcasts that currently need attention
 - it still gives access to the full subscription list without adding a separate route or advanced filter UI
 
-### Download Failure Feedback
+### Automatic Download State And Playback Source Switching
 
 Decision:
-- when an episode download fails, show a notification at the top of the screen
-- while an episode download is running, the episode row `Download` action should switch to a loading icon and be disabled for that episode
-- when an episode is already downloaded, the episode row download icon should use muted color treatment
-- the notification should be dismissible and should close automatically after 10 seconds
-- in the affected episode row, show the normal inline `Download` action again
-- this 10-second failure notification timeout is separate from the 15-second destructive-action undo window
+- normal clients do not expose manual episode download controls
+- episode rows may continue to display downloaded state as status information
+- while an actively playing episode started with `downloaded = false`, the web
+  player periodically checks the existing episode endpoint
+- when the episode becomes downloaded, the player pauses, saves progress,
+  reloads the same audio URL, restores the saved position, and resumes only
+  after the source is ready
+- polling failures do not interrupt the current stream; the next check may retry
 
 ### Icon Library
 
@@ -210,10 +210,6 @@ Rules:
 - do not introduce additional icon libraries
 - when a Hugeicons icon is used in code, prefer the Hugeicons export name directly instead of local alias renaming
 - shared frontend icon choices should stay aligned with the Hugeicons names used by the matching Figma components
-
-Reasoning:
-- the notification makes the failure visible without overloading the row
-- returning the row to `Download` keeps retry behavior simple and avoids introducing a separate retry control for MVP
 
 ### Playback Speed Control
 

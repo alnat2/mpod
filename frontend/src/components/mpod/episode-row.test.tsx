@@ -1,7 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
-  DownloadSquare01Icon,
   NoteIcon,
   PlayListRemoveIcon,
   ViewIcon,
@@ -105,10 +104,6 @@ describe("EpisodeRow", () => {
               onClick: onShowNotes,
             },
             {
-              label: "Download",
-              icon: DownloadSquare01Icon,
-            },
-            {
               label: "Mark as listened",
               icon: ViewIcon,
             },
@@ -131,7 +126,6 @@ describe("EpisodeRow", () => {
     ).toEqual([
       "Remove from playlist",
       "Show notes",
-      "Download",
       "Mark as listened",
     ]);
 

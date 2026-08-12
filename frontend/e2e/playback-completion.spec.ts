@@ -125,6 +125,15 @@ test("starts the topmost fallback after the last episode really ends", async ({
       body: JSON.stringify({ playback: lastEpisode.playback }),
     });
   });
+  await page.route("**/api/episodes/*", async (route) => {
+    const episodeId = Number(new URL(route.request().url()).pathname.split("/").at(-1));
+    const episode = episodeId === 1 ? firstEpisode : lastEpisode;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ episode }),
+    });
+  });
   await page.route("**/api/playback/active", async (route) => {
     const payload = route.request().postDataJSON() as { episodeId: number };
     await route.fulfill({

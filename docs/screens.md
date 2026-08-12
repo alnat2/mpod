@@ -170,23 +170,19 @@ Default episode visibility:
 Recommended episode actions:
 - add to playlist
 - remove from playlist when relevant
-- download
 - mark listened
 - mark unlistened when relevant
 - mark all listened from the selected podcast episode-list header when relevant
 
 Row and state guidance:
 - follow the canonical action, tooltip, and state rules in [frontend-decisions.md](frontend-decisions.md#manual-listened-state-actions)
-- downloading and playlist actions should be one tap from the episode list
-- while an episode is downloading, its row-level `Download` button should show a loading icon and should not start a second download request
-- when an episode is already downloaded, its row-level download icon should use muted color treatment
+- playlist actions should be one tap from the episode list
+- downloaded state is status information; do not expose a manual download action
 - do not expose a separate `Delete` or `Delete download` action in the MVP UI
 - downloaded files are cleaned up through playback completion or manual `mark listened`
 - manual `Mark listened` and `Mark all listened` remove affected episodes from playlist after the backend mark-listened action commits
 - mark listened and mark unlistened should be available from the episode row or an episode action menu
 - do not use `Show listened` or `Show unlistened` buttons for episode filtering in the MVP UI
-- download failures should show a dismissible notification at the top of the screen for 10 seconds, and the affected episode row should show the normal inline `Download` action again
-- the 10-second download-failure notification timeout is separate from the 15-second destructive-action undo window
 - episodes with no usable audio should be disabled or hidden rather than presented as normal playable items
 
 UX notes:

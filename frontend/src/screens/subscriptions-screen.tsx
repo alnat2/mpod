@@ -91,7 +91,6 @@ export function SubscriptionsScreen() {
   });
   const {
     actionError,
-    downloadingEpisodeIds,
     exitingPodcastIds,
     markListened,
     pendingActions,
@@ -104,7 +103,6 @@ export function SubscriptionsScreen() {
     runAction,
     scheduleUnsubscribePodcast,
     setActionError,
-    downloadFromSubscription,
     undoAction,
   } = useSubscriptionActions({
     podcasts,
@@ -293,13 +291,9 @@ export function SubscriptionsScreen() {
                               podcast={podcast}
                               visibleEpisodes={episodes}
                               showAll={showAll}
-                              downloadingEpisodeIds={downloadingEpisodeIds}
                               podcastCardNode={renderPodcastCard(podcast)}
                               onMarkListened={(items, isListened) =>
                                 void markListened(items, isListened)
-                              }
-                              onDownload={(id) =>
-                                void downloadFromSubscription(id)
                               }
                               onRemoveFromPlaylist={(episode) =>
                                 void removeFromPlaylist(episode)
@@ -324,11 +318,9 @@ export function SubscriptionsScreen() {
                       key={`${selectedPodcast.id}-${showAll ? "all" : "unlistened"}`}
                       podcast={selectedPodcast}
                       visibleEpisodes={visibleEpisodes}
-                      downloadingEpisodeIds={downloadingEpisodeIds}
                       onMarkListened={(items, isListened) =>
                         void markListened(items, isListened)
                       }
-                      onDownload={(id) => void downloadFromSubscription(id)}
                       onRemoveFromPlaylist={(episode) =>
                         void removeFromPlaylist(episode)
                       }

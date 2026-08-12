@@ -368,7 +368,6 @@ describe("SubscriptionsScreen", () => {
     );
 
     expect(buttons).toEqual([
-      "Download",
       "Add to playlist",
       "Show notes",
       "Mark as listened",
@@ -513,11 +512,11 @@ describe("SubscriptionsScreen", () => {
     );
 
     expect(buttons).toEqual([
-      "Downloaded",
       "Remove from playlist",
       "Show notes",
       "Mark as unlistened",
     ]);
+    expect(row).toHaveTextContent("Downloaded");
   });
 
   it("opens the show notes modal from the row action", async () => {
