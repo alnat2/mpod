@@ -895,6 +895,46 @@ describe("PlaybackProvider", () => {
     expect(audio.playImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("syncs system media controls when browser events are delayed in the background", async () => {
+    const user = userEvent.setup();
+    const updateSpy = vi.spyOn(api.playback, "update");
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+    const audio = FakeAudio.first;
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+
+    audio.currentTime = 222;
+    mediaSession.invoke("pause");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("no");
+      expect(mediaSession.playbackState).toBe("paused");
+    });
+    expect(updateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        episodeId: 1,
+        positionSeconds: 222,
+        completed: false,
+      })
+    );
+
+    audio.playImpl.mockClear();
+    mediaSession.invoke("play");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+      expect(mediaSession.playbackState).toBe("playing");
+    });
+    expect(audio.playImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("refreshes stale backend playback before resuming a paused episode", async () => {
     const user = userEvent.setup();
     renderPlaybackProvider();
@@ -1201,6 +1241,84 @@ describe("PlaybackProvider", () => {
         completed: true,
       })
     );
+  });
+
+  it("does not replay a finished final episode while backend fallback is pending", async () => {
+    const user = userEvent.setup();
+    const completion = deferred<Awaited<ReturnType<typeof api.playback.update>>>();
+    const firstEpisode = episodes.get(1)!;
+    const secondEpisode = episodes.get(2)!;
+    const queueSpy = vi.mocked(api.playback.queue);
+    queueSpy
+      .mockResolvedValueOnce({
+        queue: [
+          {
+            ...secondEpisode,
+            podcastTitle: "Second Podcast",
+            podcastImageUrl: null,
+            playback: playback.get(2) ?? null,
+          },
+        ],
+        activePlayback: {
+          episodeId: 2,
+          lastUpdated: "2026-05-22T09:05:00Z",
+        },
+      })
+      .mockResolvedValueOnce({
+        queue: [
+          {
+            ...firstEpisode,
+            podcastTitle: "First Podcast",
+            podcastImageUrl: null,
+            playback: playback.get(1) ?? null,
+          },
+        ],
+        activePlayback: null,
+      });
+    vi.mocked(api.playback.update).mockReturnValueOnce(completion.promise);
+
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent(
+        "Second queued episode"
+      );
+    });
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+
+    const audio = FakeAudio.first;
+    audio.currentTime = 2400;
+    audio.emit("ended");
+
+    await waitFor(() => {
+      expect(api.playback.update).toHaveBeenCalledWith(
+        expect.objectContaining({ episodeId: 2, completed: true })
+      );
+      expect(screen.getByTestId("playing")).toHaveTextContent("no");
+    });
+
+    const playbackGetSpy = vi.mocked(api.playback.get);
+    playbackGetSpy.mockClear();
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+    expect(playbackGetSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      completion.resolve({
+        playback: {
+          episodeId: 2,
+          positionSeconds: 2400,
+          lastUpdated: "2026-05-22T09:10:00Z",
+        },
+        nextEpisodeId: 1,
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent(
+        "First queued episode"
+      );
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
   });
 
   it("starts a backend fallback from the refreshed queue when the loaded queue is stale", async () => {

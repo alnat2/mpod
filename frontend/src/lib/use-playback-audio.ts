@@ -15,6 +15,7 @@ import {
   clampPosition,
   describeAudioError,
   describeMediaError,
+  getPositiveDuration,
   primeAudioSource,
   readAudioDuration,
   reloadAudioSourceAtPosition,
@@ -24,7 +25,12 @@ import type { QueueEpisode } from "./playback-context-types";
 
 type CommitPlayback = (
   nextPositionSeconds: number,
-  options?: { completed?: boolean; didSeek?: boolean }
+  options?: {
+    completed?: boolean;
+    didSeek?: boolean;
+    episodeId?: number;
+    durationSeconds?: number;
+  }
 ) => Promise<PlaybackUpdateResponse | null>;
 
 const DOWNLOADED_SOURCE_POLL_MS = 5000;
@@ -99,6 +105,7 @@ export function usePlaybackAudio({
 }: UsePlaybackAudioOptions) {
   const sourceSwitchingRef = useRef(false);
   const sourceReloadCleanupRef = useRef<(() => void) | null>(null);
+  const completionInProgressEpisodeIdRef = useRef<number | null>(null);
   // Track the source that is actually loaded, independently from fresher queue data.
   const sourceDownloadStateRef = useRef<{
     episodeId: number;
@@ -166,8 +173,12 @@ export function usePlaybackAudio({
     };
 
     const startBackendFallbackEpisode = async (
+      completedEpisodeId: number,
       response: PlaybackUpdateResponse | null
     ) => {
+      if (completionInProgressEpisodeIdRef.current !== completedEpisodeId) {
+        return;
+      }
       if (response?.nextEpisodeId == null) {
         await loadQueue();
         return;
@@ -184,16 +195,27 @@ export function usePlaybackAudio({
       if (!fallbackEpisode) {
         return;
       }
+      if (completionInProgressEpisodeIdRef.current !== completedEpisodeId) {
+        return;
+      }
 
       startQueuedEpisode(fallbackEpisode);
     };
 
     const onEnded = () => {
       const finishedEpisode = currentEpisodeRef.current;
+      if (!finishedEpisode) {
+        return;
+      }
+      const finishedPosition = audio.currentTime;
+      const finishedDuration = getPositiveDuration(
+        readAudioDuration(audio),
+        finishedEpisode.duration
+      );
       const currentQueue = queueRef.current;
-      const currentIndex = finishedEpisode
-        ? currentQueue.findIndex((episode) => episode.id === finishedEpisode.id)
-        : -1;
+      const currentIndex = currentQueue.findIndex(
+        (episode) => episode.id === finishedEpisode.id
+      );
       const nextEpisode =
         currentIndex >= 0 ? currentQueue[currentIndex + 1] ?? null : null;
 
@@ -202,17 +224,26 @@ export function usePlaybackAudio({
       } else {
         playingRef.current = false;
         setPlaying(false);
+        completionInProgressEpisodeIdRef.current = finishedEpisode.id;
       }
 
-      void commitPlayback(audio.currentTime, { completed: true }).then(
+      void commitPlayback(finishedPosition, {
+        completed: true,
+        episodeId: finishedEpisode.id,
+        durationSeconds: finishedDuration,
+      }).then(
         async (response) => {
           if (!nextEpisode) {
-            await startBackendFallbackEpisode(response);
+            await startBackendFallbackEpisode(finishedEpisode.id, response);
             return;
           }
           await loadQueue();
         }
-      );
+      ).finally(() => {
+        if (completionInProgressEpisodeIdRef.current === finishedEpisode.id) {
+          completionInProgressEpisodeIdRef.current = null;
+        }
+      });
     };
 
     const onError = () => {
@@ -514,6 +545,10 @@ export function usePlaybackAudio({
       return;
     }
 
+    if (completionInProgressEpisodeIdRef.current === currentEpisode?.id) {
+      return;
+    }
+
     if (audio && currentEpisode) {
       void (async () => {
         const syncedEpisode = await refreshPlaybackState(currentEpisode);
@@ -564,6 +599,7 @@ export function usePlaybackAudio({
 
   const playEpisode = useCallback(
     (episodeId: number) => {
+      completionInProgressEpisodeIdRef.current = null;
       setPlaybackError(null);
       userInitiatedPlayRef.current = true;
       const queuedEpisode =

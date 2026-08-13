@@ -1,6 +1,6 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
-import { attemptAudioPlay, describeAudioError } from "./playback-audio";
+import { describeAudioError } from "./playback-audio";
 import type { QueueEpisode } from "./playback-context-types";
 
 type UsePlaybackMediaSessionOptions = {
@@ -10,6 +10,7 @@ type UsePlaybackMediaSessionOptions = {
   playing: boolean;
   playingRef: RefObject<boolean>;
   userInitiatedPlayRef: RefObject<boolean>;
+  commitCurrentPlayback: () => void;
   setPlaying: (playing: boolean) => void;
   setPlaybackError: (error: string | null) => void;
 };
@@ -21,9 +22,12 @@ export function usePlaybackMediaSession({
   playing,
   playingRef,
   userInitiatedPlayRef,
+  commitCurrentPlayback,
   setPlaying,
   setPlaybackError,
 }: UsePlaybackMediaSessionOptions) {
+  const playRequestPendingRef = useRef(false);
+
   useEffect(() => {
     if (
       typeof navigator === "undefined" ||
@@ -40,16 +44,51 @@ export function usePlaybackMediaSession({
         return;
       }
 
+      if (!audio.paused) {
+        playingRef.current = true;
+        userInitiatedPlayRef.current = false;
+        setPlaying(true);
+        return;
+      }
+      if (playRequestPendingRef.current) {
+        return;
+      }
+
+      playRequestPendingRef.current = true;
       userInitiatedPlayRef.current = true;
       setPlaybackError(null);
-      void attemptAudioPlay(audio, (error) => {
-        playingRef.current = false;
-        setPlaying(false);
-        setPlaybackError(describeAudioError(error));
-      });
+      void (async () => {
+        try {
+          await audio.play();
+          if (audioRef.current !== audio || audio.paused) {
+            return;
+          }
+          playingRef.current = true;
+          userInitiatedPlayRef.current = false;
+          setPlaying(true);
+        } catch (error) {
+          playingRef.current = false;
+          setPlaying(false);
+          setPlaybackError(describeAudioError(error));
+        } finally {
+          playRequestPendingRef.current = false;
+        }
+      })();
     };
     const handlePause = () => {
-      audioRef.current?.pause();
+      const audio = audioRef.current;
+      if (!audio) {
+        return;
+      }
+
+      const wasPlaying = playingRef.current || !audio.paused;
+      audio.pause();
+      if (wasPlaying && playingRef.current) {
+        // Some background browser paths do not dispatch a pause event promptly.
+        commitCurrentPlayback();
+        playingRef.current = false;
+        setPlaying(false);
+      }
     };
 
     const registeredActions: MediaSessionAction[] = [];
@@ -80,6 +119,7 @@ export function usePlaybackMediaSession({
   }, [
     audioRef,
     currentEpisodeRef,
+    commitCurrentPlayback,
     playingRef,
     setPlaybackError,
     setPlaying,

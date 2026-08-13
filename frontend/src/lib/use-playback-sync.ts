@@ -80,15 +80,22 @@ export function usePlaybackSync({
   const commitPlayback = useCallback(
     async (
       nextPositionSeconds: number,
-      options: { completed?: boolean; didSeek?: boolean } = {}
+      options: {
+        completed?: boolean;
+        didSeek?: boolean;
+        episodeId?: number;
+        durationSeconds?: number;
+      } = {}
     ) => {
       const episode = currentEpisodeRef.current;
-      if (!episode) return null;
+      const episodeId = options.episodeId ?? episode?.id;
+      if (episodeId == null) return null;
 
       try {
-        const durationSeconds = currentEpisodeDurationRef.current;
+        const durationSeconds =
+          options.durationSeconds ?? currentEpisodeDurationRef.current;
         return await api.playback.update({
-          episodeId: episode.id,
+          episodeId,
           positionSeconds: Math.round(
             clampPosition(nextPositionSeconds, durationSeconds)
           ),
