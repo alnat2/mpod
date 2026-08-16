@@ -346,9 +346,6 @@ func (s *Service) applyCompletionSideEffects(ctx context.Context, episodeID int6
 	if err := s.episodeActions.SetListened(ctx, episodeID, true); err != nil {
 		return fmt.Errorf("mark episode listened from playback: %w", err)
 	}
-	if err := s.playlist.Remove(ctx, episodeID); err != nil {
-		return fmt.Errorf("remove completed episode from playlist: %w", err)
-	}
 	return nil
 }
 
