@@ -8,7 +8,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "next-themes";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Outlet, Navigate, Route, Routes } from "react-router-dom";
 import { BrowserRouter, useLocation } from "react-router-dom";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -126,6 +126,15 @@ function RouteTransition({
   );
 }
 
+function AnimatedLayout() {
+  const location = useLocation();
+  return (
+    <RouteTransition routeKey={location.pathname}>
+      <Outlet />
+    </RouteTransition>
+  );
+}
+
 function AppRoutes() {
   const location = useLocation();
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -237,92 +246,92 @@ function AppRoutes() {
   const authenticatedHome = authenticated ? "/subscriptions" : "/login";
 
   const routes = (
-    <RouteTransition routeKey={location.pathname}>
-      <Routes>
-          <Route
-            path="/"
-            element={
-              <Navigate
-                to={setupRequired ? "/setup" : authenticatedHome}
-                replace
-              />
-            }
-          />
-          <Route
-            path="/setup"
-            element={
-              setupRequired ? (
-                <SetupScreen onAuthenticated={loadSession} />
-              ) : (
-                <Navigate to={authenticatedHome} replace />
-              )
-            }
-          />
-          <Route
-            path="/login"
-            element={
-              setupRequired ? (
-                <Navigate to="/setup" replace />
-              ) : authenticated ? (
-                <Navigate to="/subscriptions" replace />
-              ) : (
-                <LoginScreen onAuthenticated={loadSession} />
-              )
-            }
-          />
-          <Route
-            path="/subscriptions"
-            element={
-              <ProtectedRoute
-                authenticated={authenticated}
-                setupRequired={setupRequired}
+    <Routes>
+      <Route element={<AnimatedLayout />}>
+        <Route
+          path="/"
+          element={
+            <Navigate
+              to={setupRequired ? "/setup" : authenticatedHome}
+              replace
+            />
+          }
+        />
+        <Route
+          path="/setup"
+          element={
+            setupRequired ? (
+              <SetupScreen onAuthenticated={loadSession} />
+            ) : (
+              <Navigate to={authenticatedHome} replace />
+            )
+          }
+        />
+        <Route
+          path="/login"
+          element={
+            setupRequired ? (
+              <Navigate to="/setup" replace />
+            ) : authenticated ? (
+              <Navigate to="/subscriptions" replace />
+            ) : (
+              <LoginScreen onAuthenticated={loadSession} />
+            )
+          }
+        />
+        <Route
+          path="/subscriptions"
+          element={
+            <ProtectedRoute
+              authenticated={authenticated}
+              setupRequired={setupRequired}
+            >
+              <ScreenErrorBoundary
+                activeNavItem="Subscriptions"
+                resetKey={location.pathname}
+                screenName="Subscriptions"
               >
-                <ScreenErrorBoundary
-                  activeNavItem="Subscriptions"
-                  resetKey={location.pathname}
-                  screenName="Subscriptions"
-                >
-                  <SubscriptionsScreen />
-                </ScreenErrorBoundary>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/home"
-            element={
-              <ProtectedRoute
-                authenticated={authenticated}
-                setupRequired={setupRequired}
+                <SubscriptionsScreen />
+              </ScreenErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/home"
+          element={
+            <ProtectedRoute
+              authenticated={authenticated}
+              setupRequired={setupRequired}
+            >
+              <ScreenErrorBoundary
+                activeNavItem="Player"
+                resetKey={location.pathname}
+                screenName="Player"
               >
-                <ScreenErrorBoundary
-                  activeNavItem="Player"
-                  resetKey={location.pathname}
-                  screenName="Player"
-                >
-                  <HomeScreen />
-                </ScreenErrorBoundary>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute
-                authenticated={authenticated}
-                setupRequired={setupRequired}
+                <HomeScreen />
+              </ScreenErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute
+              authenticated={authenticated}
+              setupRequired={setupRequired}
+            >
+              <ScreenErrorBoundary
+                activeNavItem="Settings"
+                resetKey={location.pathname}
+                screenName="Settings"
               >
-                <ScreenErrorBoundary
-                  activeNavItem="Settings"
-                  resetKey={location.pathname}
-                  screenName="Settings"
-                >
-                  <SettingsScreen onSessionChange={loadSession} />
-                </ScreenErrorBoundary>
-              </ProtectedRoute>
-            }
-          />
-      </Routes>
-    </RouteTransition>
+                <SettingsScreen onSessionChange={loadSession} />
+              </ScreenErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+      </Route>
+    </Routes>
   );
 
   return (
