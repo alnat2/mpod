@@ -285,7 +285,7 @@ func (s *Service) fetchFeed(ctx context.Context, normalizedURL string) (*gofeed.
 		return nil, fmt.Errorf("%w: status=%s", ErrFeedFetchFailed, resp.Status)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 20*1024*1024))
 	if err != nil {
 		return nil, fmt.Errorf("%w: read body: %v", ErrFeedFetchFailed, err)
 	}
@@ -314,6 +314,9 @@ func looksLikeHTMLResponse(contentType string, body []byte) bool {
 }
 
 func bodyPreview(body []byte) string {
+	if len(body) > 256 {
+		body = body[:256]
+	}
 	preview := strings.TrimSpace(strings.ToValidUTF8(string(body), ""))
 	preview = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ").Replace(preview)
 	if len(preview) > 120 {
@@ -608,7 +611,7 @@ func episodeFromItem(item *gofeed.Item) (episodeRecord, bool) {
 
 func firstAudioURL(item *gofeed.Item) string {
 	for _, enclosure := range item.Enclosures {
-		if strings.TrimSpace(enclosure.URL) != "" {
+		if strings.TrimSpace(enclosure.URL) != "" && strings.HasPrefix(strings.ToLower(enclosure.Type), "audio/") {
 			return strings.TrimSpace(enclosure.URL)
 		}
 	}

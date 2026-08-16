@@ -139,7 +139,7 @@ func (r *Router) handlePodcastImage(w nethttp.ResponseWriter, req *nethttp.Reque
 	if resp.ContentLength > 0 {
 		w.Header().Set("Content-Length", strconv.FormatInt(resp.ContentLength, 10))
 	}
-	if _, err := io.Copy(w, resp.Body); err != nil {
+	if _, err := io.Copy(w, io.LimitReader(resp.Body, 5*1024*1024)); err != nil {
 		r.logger.Printf("copy podcast image failed: %v", err)
 	}
 }
