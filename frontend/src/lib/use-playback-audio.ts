@@ -219,15 +219,17 @@ export function usePlaybackAudio({
       let nextEpisode = null;
       if (currentIndex >= 0) {
         for (let i = currentIndex - 1; i >= 0; i--) {
-          if (!currentQueue[i].isListened) {
-            nextEpisode = currentQueue[i];
+          const episode = currentQueue[i];
+          if (episode && !episode.isListened) {
+            nextEpisode = episode;
             break;
           }
         }
         if (!nextEpisode) {
           for (let i = currentIndex + 1; i < currentQueue.length; i++) {
-            if (!currentQueue[i].isListened) {
-              nextEpisode = currentQueue[i];
+            const episode = currentQueue[i];
+            if (episode && !episode.isListened) {
+              nextEpisode = episode;
               break;
             }
           }
