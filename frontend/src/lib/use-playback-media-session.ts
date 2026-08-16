@@ -1,6 +1,5 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, type RefObject } from "react";
 
-import { describeAudioError } from "./playback-audio";
 import type { QueueEpisode } from "./playback-context-types";
 
 type UsePlaybackMediaSessionOptions = {
@@ -13,6 +12,7 @@ type UsePlaybackMediaSessionOptions = {
   commitCurrentPlayback: () => void;
   setPlaying: (playing: boolean) => void;
   setPlaybackError: (error: string | null) => void;
+  playToggle: () => void;
 };
 
 export function usePlaybackMediaSession({
@@ -25,9 +25,8 @@ export function usePlaybackMediaSession({
   commitCurrentPlayback,
   setPlaying,
   setPlaybackError,
+  playToggle,
 }: UsePlaybackMediaSessionOptions) {
-  const playRequestPendingRef = useRef(false);
-
   useEffect(() => {
     if (
       typeof navigator === "undefined" ||
@@ -50,30 +49,8 @@ export function usePlaybackMediaSession({
         setPlaying(true);
         return;
       }
-      if (playRequestPendingRef.current) {
-        return;
-      }
 
-      playRequestPendingRef.current = true;
-      userInitiatedPlayRef.current = true;
-      setPlaybackError(null);
-      void (async () => {
-        try {
-          await audio.play();
-          if (audioRef.current !== audio || audio.paused) {
-            return;
-          }
-          playingRef.current = true;
-          userInitiatedPlayRef.current = false;
-          setPlaying(true);
-        } catch (error) {
-          playingRef.current = false;
-          setPlaying(false);
-          setPlaybackError(describeAudioError(error));
-        } finally {
-          playRequestPendingRef.current = false;
-        }
-      })();
+      playToggle();
     };
     const handlePause = () => {
       const audio = audioRef.current;
@@ -124,6 +101,7 @@ export function usePlaybackMediaSession({
     setPlaybackError,
     setPlaying,
     userInitiatedPlayRef,
+    playToggle,
   ]);
 
   useEffect(() => {

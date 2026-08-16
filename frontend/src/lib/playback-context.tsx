@@ -186,6 +186,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     commitCurrentPlayback,
     setPlaying,
     setPlaybackError,
+    playToggle,
   });
 
   const stateValue = useMemo(
