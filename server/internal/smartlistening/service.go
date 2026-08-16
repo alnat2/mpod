@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	defaultPollInterval = time.Second
+	defaultPollInterval = 10 * time.Second
 	defaultRetryDelay   = 5 * time.Minute
 )
 
