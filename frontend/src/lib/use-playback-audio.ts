@@ -216,8 +216,23 @@ export function usePlaybackAudio({
       const currentIndex = currentQueue.findIndex(
         (episode) => episode.id === finishedEpisode.id
       );
-      const nextEpisode =
-        currentIndex >= 0 ? currentQueue[currentIndex + 1] ?? null : null;
+      let nextEpisode = null;
+      if (currentIndex >= 0) {
+        for (let i = currentIndex - 1; i >= 0; i--) {
+          if (!currentQueue[i].isListened) {
+            nextEpisode = currentQueue[i];
+            break;
+          }
+        }
+        if (!nextEpisode) {
+          for (let i = currentIndex + 1; i < currentQueue.length; i++) {
+            if (!currentQueue[i].isListened) {
+              nextEpisode = currentQueue[i];
+              break;
+            }
+          }
+        }
+      }
 
       if (nextEpisode) {
         startQueuedEpisode(nextEpisode);
