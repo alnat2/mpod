@@ -895,6 +895,38 @@ describe("PlaybackProvider", () => {
     expect(audio.playImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("does not re-register Media Session action handlers on timeupdate", async () => {
+    const user = userEvent.setup();
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+
+    const audio = FakeAudio.first;
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+
+    mediaSession.setActionHandler.mockClear();
+
+    for (let i = 1; i <= 3; i++) {
+      audio.currentTime = i;
+      audio.emit("timeupdate");
+
+      await waitFor(() => {
+        expect(screen.getByTestId("position")).toHaveTextContent(String(i));
+      });
+    }
+
+    const playPauseCalls = mediaSession.setActionHandler.mock.calls.filter(
+      (call) => call[0] === "play" || call[0] === "pause"
+    );
+    expect(playPauseCalls).toHaveLength(0);
+  });
+
   it("syncs system media controls when browser events are delayed in the background", async () => {
     const user = userEvent.setup();
     const updateSpy = vi.spyOn(api.playback, "update");
