@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
 import type { QueueEpisode } from "./playback-context-types";
 
@@ -27,17 +27,11 @@ export function usePlaybackMediaSession({
   setPlaybackError,
   playToggle,
 }: UsePlaybackMediaSessionOptions) {
-  useEffect(() => {
-    if (
-      typeof navigator === "undefined" ||
-      !("mediaSession" in navigator) ||
-      !navigator.mediaSession
-    ) {
-      return;
-    }
+  const handlePlayRef = useRef<(() => void) | null>(null);
+  const handlePauseRef = useRef<(() => void) | null>(null);
 
-    const mediaSession = navigator.mediaSession;
-    const handlePlay = () => {
+  useEffect(() => {
+    handlePlayRef.current = () => {
       const audio = audioRef.current;
       if (!audio || !currentEpisodeRef.current || !audio.src) {
         return;
@@ -52,7 +46,8 @@ export function usePlaybackMediaSession({
 
       playToggle();
     };
-    const handlePause = () => {
+
+    handlePauseRef.current = () => {
       const audio = audioRef.current;
       if (!audio) {
         return;
@@ -61,12 +56,31 @@ export function usePlaybackMediaSession({
       const wasPlaying = playingRef.current || !audio.paused;
       audio.pause();
       if (wasPlaying && playingRef.current) {
-        // Some background browser paths do not dispatch a pause event promptly.
         commitCurrentPlayback();
         playingRef.current = false;
         setPlaying(false);
       }
     };
+  }, [
+    audioRef,
+    currentEpisodeRef,
+    commitCurrentPlayback,
+    playingRef,
+    setPlaying,
+    userInitiatedPlayRef,
+    playToggle,
+  ]);
+
+  useEffect(() => {
+    if (
+      typeof navigator === "undefined" ||
+      !("mediaSession" in navigator) ||
+      !navigator.mediaSession
+    ) {
+      return;
+    }
+
+    const mediaSession = navigator.mediaSession;
 
     const registeredActions: MediaSessionAction[] = [];
     const registerAction = (
@@ -81,8 +95,8 @@ export function usePlaybackMediaSession({
       }
     };
 
-    registerAction("play", handlePlay);
-    registerAction("pause", handlePause);
+    registerAction("play", () => handlePlayRef.current?.());
+    registerAction("pause", () => handlePauseRef.current?.());
 
     return () => {
       for (const action of registeredActions) {
@@ -93,16 +107,7 @@ export function usePlaybackMediaSession({
         }
       }
     };
-  }, [
-    audioRef,
-    currentEpisodeRef,
-    commitCurrentPlayback,
-    playingRef,
-    setPlaybackError,
-    setPlaying,
-    userInitiatedPlayRef,
-    playToggle,
-  ]);
+  }, []);
 
   useEffect(() => {
     if (
