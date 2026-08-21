@@ -8,7 +8,7 @@ import type {
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
 import {
-  DragDropVerticalIcon,
+  Menu09Icon,
   PauseIcon,
   PlayIcon,
   PlayListRemoveIcon,
@@ -99,7 +99,6 @@ function EpisodeStatusIcon({
 
 function EpisodeIconButton({
   action,
-  mobile = false,
 }: {
   action: EpisodeRowAction;
   mobile?: boolean;
@@ -110,12 +109,10 @@ function EpisodeIconButton({
         <Button
           aria-label={action.label}
           className={cn(
-            "rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary",
-            mobile ? "size-11 [&_svg]:size-6" : "[&_svg]:size-4"
+            "size-11 rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary [&_svg]:size-6"
           )}
           disabled={action.disabled}
           variant="outline"
-          size="icon-lg"
           type="button"
           onMouseDown={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
@@ -218,7 +215,7 @@ export function EpisodeRow({
           data-episode-drag-handle="true"
         >
           <HugeiconsIcon
-            icon={DragDropVerticalIcon}
+            icon={Menu09Icon}
             className={cn(isMobile ? "size-8" : isDesktop ? "size-6" : "size-8 md:size-6")}
           />
         </div>
