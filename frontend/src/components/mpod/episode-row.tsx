@@ -118,7 +118,11 @@ function EpisodeIconButton({
           onPointerDown={(event) => event.stopPropagation()}
           onClick={action.onClick}
         >
-          <HugeiconsIcon icon={action.icon} className={action.iconClassName} aria-hidden="true" />
+          <HugeiconsIcon
+            icon={action.icon}
+            className={cn("size-6", action.iconClassName)}
+            aria-hidden="true"
+          />
         </Button>
       </TooltipTrigger>
       <TooltipContent>{action.label}</TooltipContent>
