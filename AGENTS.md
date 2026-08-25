@@ -80,13 +80,15 @@ If this file conflicts with those documents, follow:
 - Prefer explicit code paths over heavy indirection.
 - Add small comments only when they clarify non-obvious behavior.
 
-## Figma Console MCP Usage Rules
+## Figma MCP Usage Rules
 
-When using Console Figma MCP tools:
+When working with Figma:
+- Always use the official Figma MCP server directly for all Figma interactions, inspections, and screenshots.
+- NEVER use local cached files, dumped JSON files, or fallback data instead of live Figma MCP calls.
+- If Figma MCP access fails, encounters an error, or is unavailable, stop immediately and report the exact access issue to the user. Do not make assumptions or attempt workarounds with cached data.
 - Wait 2-3 seconds between each tool call.
 - Never make more than 3 Figma API calls in a row without pausing.
 - Break large tasks into smaller steps, for example colors first, then typography, then spacing.
-- Always verify the Desktop Bridge plugin is running in Figma before starting.
 - Prefer targeted queries over broad "extract everything" requests.
 
 ## Project Skills
