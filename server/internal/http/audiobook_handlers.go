@@ -59,13 +59,24 @@ func (r *Router) handleAudiobookCover(w nethttp.ResponseWriter, req *nethttp.Req
 		return
 	}
 
-	coverPath, err := r.audiobooks.GetCoverPath(req.Context(), id)
+	data, mimeType, coverPath, err := r.audiobooks.GetCoverData(req.Context(), id)
 	if err != nil {
 		if errors.Is(err, audiobooks.ErrBookNotFound) || errors.Is(err, audiobooks.ErrNoCover) {
 			r.writeAPIError(w, nethttp.StatusNotFound, "COVER_NOT_FOUND", "Audiobook cover not found")
 			return
 		}
 		r.writeAPIError(w, nethttp.StatusInternalServerError, "COVER_GET_FAILED", "Failed to get audiobook cover")
+		return
+	}
+
+	if len(data) > 0 {
+		if mimeType != "" {
+			w.Header().Set("Content-Type", mimeType)
+		} else {
+			w.Header().Set("Content-Type", "image/jpeg")
+		}
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		_, _ = w.Write(data)
 		return
 	}
 

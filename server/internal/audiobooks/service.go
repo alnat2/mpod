@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -341,29 +342,44 @@ func (s *Service) GetTrack(ctx context.Context, trackID int64) (*Track, error) {
 	return &t, nil
 }
 
-func (s *Service) GetCoverPath(ctx context.Context, bookID int64) (string, error) {
+func (s *Service) GetCoverData(ctx context.Context, bookID int64) ([]byte, string, string, error) {
 	var coverPath sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT cover_path FROM audiobooks WHERE id = ?`, bookID).Scan(&coverPath)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", ErrBookNotFound
+		return nil, "", "", ErrBookNotFound
 	}
 	if err != nil {
-		return "", fmt.Errorf("query book cover: %w", err)
+		return nil, "", "", fmt.Errorf("query book cover: %w", err)
 	}
 	if !coverPath.Valid || coverPath.String == "" {
-		return "", ErrNoCover
+		return nil, "", "", ErrNoCover
+	}
+
+	if strings.HasPrefix(coverPath.String, "embedded:") {
+		audioRel := strings.TrimPrefix(coverPath.String, "embedded:")
+		absAudio := filepath.Join(s.rootDir, audioRel)
+		data, mime, err := ExtractEmbeddedArtwork(absAudio)
+		if err != nil {
+			return nil, "", "", ErrNoCover
+		}
+		return data, mime, "", nil
 	}
 
 	absPath := filepath.Join(s.rootDir, coverPath.String)
 	if _, err := os.Stat(absPath); err != nil {
-		return "", ErrNoCover
+		return nil, "", "", ErrNoCover
 	}
-	return absPath, nil
+	return nil, "", absPath, nil
+}
+
+func (s *Service) GetCoverPath(ctx context.Context, bookID int64) (string, error) {
+	_, _, filePath, err := s.GetCoverData(ctx, bookID)
+	return filePath, err
 }
 
 func (s *Service) Delete(ctx context.Context, bookID int64, deleteDiskFiles bool) error {
-	var relPath string
-	err := s.db.QueryRowContext(ctx, `SELECT rel_path FROM audiobooks WHERE id = ?`, bookID).Scan(&relPath)
+	var id int64
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM audiobooks WHERE id = ?`, bookID).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrBookNotFound
 	}
@@ -371,14 +387,10 @@ func (s *Service) Delete(ctx context.Context, bookID int64, deleteDiskFiles bool
 		return fmt.Errorf("query book for delete: %w", err)
 	}
 
-	// Delete from DB (cascades to tracks, playback, playlist)
+	// Delete from DB (cascades to tracks, playback, playlist).
+	// Audiobook directory is strictly read-only: disk files are never deleted.
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM audiobooks WHERE id = ?`, bookID); err != nil {
 		return fmt.Errorf("delete audiobook db record: %w", err)
-	}
-
-	if deleteDiskFiles && s.rootDir != "" && relPath != "" {
-		targetPath := filepath.Join(s.rootDir, relPath)
-		_ = os.RemoveAll(targetPath)
 	}
 
 	return nil

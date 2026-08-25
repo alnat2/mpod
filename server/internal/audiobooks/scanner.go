@@ -242,6 +242,13 @@ func ScanDirectory(rootDir string) ([]ScannedBook, error) {
 				})
 			}
 
+			if coverRel == "" && len(content.audioFiles) > 0 {
+				if _, _, err := ExtractEmbeddedArtwork(content.audioFiles[0]); err == nil {
+					firstTrackRel, _ := filepath.Rel(cleanRoot, content.audioFiles[0])
+					coverRel = "embedded:" + firstTrackRel
+				}
+			}
+
 			books = append(books, ScannedBook{
 				Title:     bookTitle,
 				Author:    author,
@@ -263,6 +270,8 @@ func ScanDirectory(rootDir string) ([]ScannedBook, error) {
 				coverRel := ""
 				if content.coverFile != "" {
 					coverRel, _ = filepath.Rel(cleanRoot, content.coverFile)
+				} else if _, _, err := ExtractEmbeddedArtwork(af); err == nil {
+					coverRel = "embedded:" + trackRel
 				}
 
 				tracks := []ScannedTrack{
