@@ -1314,12 +1314,14 @@ The app should reject unsafe session secret configuration in production.
 ## Audiobook Support
 
 ### Decision
-mpod supports local audiobook playback with cross-device sync. Audiobooks are scanned from a configured local directory (`AUDIOBOOKS_DIR`, default `/data/audiobooks`), watched automatically via Linux `inotify`, and played directly without server-side transcoding.
+mpod supports local audiobook playback with cross-device sync. Audiobooks are scanned from a configured local directory (`AUDIOBOOKS_DIR`, default `/share/audio/abooks/`), watched automatically via Linux `inotify`, and played directly without server-side transcoding.
 
 ### File Formats
-- Supported formats are strictly `.mp3`, `.m4b`, and `.m4a`.
+- Supported audio formats are strictly `.mp3`, `.m4b`, and `.m4a`.
+- Supported image cover formats: `.jpg`, `.jpeg`, `.png` (`cover.jpg`, `cover.png`, `folder.jpg`).
 - All supported formats are streamed directly to the browser with HTTP `Range` request support for seeking.
 - No ffmpeg or on-the-fly transcoding is required.
+- **File Manager / Explorer Filtering:** The file explorer view displays only supported audio file formats (`.mp3`, `.m4b`, `.m4a`) and directories. Non-supported files (such as `.txt`, `.pdf`, `.nfo`, `.exe`, `.ds_store`, etc.) are filtered out and not rendered in the UI.
 
 ### Directory Scanning Rules
 The scanner traverses `AUDIOBOOKS_DIR` using standard recursive directory walking:
@@ -1356,9 +1358,9 @@ The scanner traverses `AUDIOBOOKS_DIR` using standard recursive directory walkin
   - Playback advances to the next item in the playlist (if one exists).
 
 ### File Safety & Deletion Policy
-- Audiobook files on disk are permanent user media assets and are **never deleted automatically** by the backend when an audiobook is finished or removed from the playlist.
-- Deleting an audiobook is an explicit action available in the UI. When confirmed, it deletes the database records and optionally removes the book folder/files from disk.
-- Deletion uses the standard 15-second Undo banner pattern before permanently executing the disk removal.
+- Audiobook files on disk are permanent library media assets. mpod treats the audiobook directory as strictly read-only.
+- mpod **never deletes** audiobook files or folders from disk under any circumstances (neither automatically upon playback completion or playlist removal, nor manually via any UI action).
+- There is no file deletion functionality for audiobooks. Removing an audiobook from the playlist or marking it as listened affects only database state.
 
 ### Audiobook Endpoints
 

@@ -70,8 +70,8 @@ Current intended defaults:
 - base data directory: `/data`
 - database path: `/data/mpod.sqlite`
 - downloads path: `/data/downloads`
-- audiobooks path: `/data/audiobooks`
-- one container, one persistent volume
+- audiobooks path: `/share/audio/abooks/`
+- one container, persistent volume for app data + mounted audiobooks directory (read-only)
 
 Expected runtime configuration:
 - `PORT`

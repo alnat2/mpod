@@ -58,9 +58,10 @@ Needs:
 ## Audiobook Management
 
 ### Library Directory
-- Scans a configured local directory (`AUDIOBOOKS_DIR`, default `/data/audiobooks`)
+- Scans a configured local directory (`AUDIOBOOKS_DIR`, default `/share/audio/abooks/`)
 - Automatically detects changes via Linux `inotify` (`fsnotify`) with debounced rescanning
 - Supported audio formats: `.mp3`, `.m4b`, `.m4a`
+- File explorer displays only supported audio extensions and directories; unsupported files are filtered out
 - Folder structure mapping:
   - Subfolder with multiple audio files -> Audiobook with chapters (folder name = book title, parent folder = author, audio files = chapters sorted naturally)
   - Standalone audio file -> Audiobook with 1 track (filename = book title, parent folder = author)
@@ -70,7 +71,7 @@ Needs:
 - An audiobook is represented in the playlist queue as a single compact item displaying current chapter and progress
 - Clicking the playlist item or "Show Chapters" in the player opens a modal with all chapters
 - Sequential playback automatically advances to the next chapter upon completion
-- Audiobook files on disk are permanent library assets and are never deleted when removed from playlist or finished
+- Audiobook files on disk are permanent library assets and are strictly read-only: mpod never deletes audiobook files from disk under any circumstance
 
 ---
 

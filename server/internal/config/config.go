@@ -30,7 +30,7 @@ func Load() (Config, error) {
 		DataDir:          envOrDefault("DATA_DIR", "/data"),
 		DBPath:           envOrDefault("DB_PATH", "/data/mpod.sqlite"),
 		DownloadsDir:     envOrDefault("DOWNLOADS_DIR", "/data/downloads"),
-		AudiobooksDir:    envOrDefault("AUDIOBOOKS_DIR", "/data/audiobooks"),
+		AudiobooksDir:    envOrDefault("AUDIOBOOKS_DIR", "/share/audio/abooks/"),
 		DailyRefreshTime: envOrDefault("DAILY_REFRESH_TIME", "03:00"),
 		SOCKS5Host:       os.Getenv("SOCKS5_HOST"),
 		SOCKS5Port:       os.Getenv("SOCKS5_PORT"),
