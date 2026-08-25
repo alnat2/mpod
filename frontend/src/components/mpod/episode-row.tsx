@@ -220,7 +220,7 @@ export function EpisodeRow({
         >
           <HugeiconsIcon
             icon={Menu09Icon}
-            className={cn(isMobile ? "size-8" : isDesktop ? "size-6" : "size-8 md:size-6")}
+            className={cn(isMobile ? "size-5" : isDesktop ? "size-6" : "size-5 md:size-6")}
           />
         </div>
       ) : null}
