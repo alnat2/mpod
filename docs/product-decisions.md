@@ -1310,3 +1310,73 @@ The app should reject unsafe session secret configuration in production.
 
 ### Notes
 - Local development may allow simpler secrets, but production startup should fail clearly on unsafe defaults.
+
+## Audiobook Support
+
+### Decision
+mpod supports local audiobook playback with cross-device sync. Audiobooks are scanned from a configured local directory (`AUDIOBOOKS_DIR`, default `/data/audiobooks`), watched automatically via Linux `inotify`, and played directly without server-side transcoding.
+
+### File Formats
+- Supported formats are strictly `.mp3`, `.m4b`, and `.m4a`.
+- All supported formats are streamed directly to the browser with HTTP `Range` request support for seeking.
+- No ffmpeg or on-the-fly transcoding is required.
+
+### Directory Scanning Rules
+The scanner traverses `AUDIOBOOKS_DIR` using standard recursive directory walking:
+1. **Multi-file Audiobook (Folder with multiple audio files):**
+   - The directory itself represents the **Audiobook**.
+   - The directory name is the book title.
+   - The parent directory (if not the root `AUDIOBOOKS_DIR`) represents the **Author**.
+   - Direct audio files inside the directory are **Chapters/Tracks**, sorted naturally by filename (e.g. `01...`, `02...`).
+2. **Single-file Audiobook (Standalone audio file):**
+   - The audio file itself represents the **Audiobook** (with 1 chapter/track).
+   - The file name (without extension) is the book title.
+   - The parent directory (if not the root `AUDIOBOOKS_DIR`) represents the **Author**.
+3. **Artwork:**
+   - If a file named `cover.jpg`, `cover.png`, or `folder.jpg` exists in the book's directory, it is served as the book's artwork.
+
+### inotify Watcher Rules
+- On Linux, the backend starts a background file watcher using `fsnotify` (`inotify`) monitoring `AUDIOBOOKS_DIR` and its subfolders.
+- File system events (`Create`, `Write`, `Remove`, `Rename`) trigger a debounced rescan with a 2–3 second delay after the last write to prevent reading files while they are still being copied.
+- When new subdirectories are created, the watcher automatically attaches to them.
+
+### Playlist Presentation & Chapters Modal
+- An audiobook is represented in the playlist as **a single item**, regardless of how many chapters/tracks it contains.
+- The playlist item displays the book title, author, and current chapter progress (e.g. `Chapter 3 of 12 • 15:40 / 30:00`).
+- Clicking the playlist item opens the **Chapters Modal / Bottom Sheet** showing the full chapter list with duration and listening status.
+- In the audio player, multi-track audiobooks replace the "Show Notes" button with a "Show Chapters" button that opens the same Chapters Modal.
+
+### Auto-advance & Playback Sync
+- Audiobooks use the existing playback sync mechanism to track position in seconds per chapter.
+- When a chapter finishes (`completed = true` sent to `POST /api/playback`), the backend:
+  - Marks that chapter as listened (`is_listened = true`).
+  - Sets `nextEpisodeId` / `nextTrackId` to the next chapter in the audiobook.
+- When the final chapter of an audiobook finishes:
+  - The entire audiobook is marked completed and removed from the playlist.
+  - Playback advances to the next item in the playlist (if one exists).
+
+### File Safety & Deletion Policy
+- Audiobook files on disk are permanent user media assets and are **never deleted automatically** by the backend when an audiobook is finished or removed from the playlist.
+- Deleting an audiobook is an explicit action available in the UI. When confirmed, it deletes the database records and optionally removes the book folder/files from disk.
+- Deletion uses the standard 15-second Undo banner pattern before permanently executing the disk removal.
+
+### Audiobook Endpoints
+
+#### `GET /api/audiobooks`
+Returns all scanned audiobooks with author, title, track count, total duration, and overall progress.
+
+#### `GET /api/audiobooks/:id`
+Returns detailed audiobook info including the ordered list of tracks/chapters and their individual playback progress.
+
+#### `GET /api/audiobooks/:id/tracks/:trackId/audio`
+Streams the chapter audio file with full HTTP `Range` request support.
+
+#### `GET /api/audiobooks/:id/cover`
+Serves the cover artwork image if present, or 404 if none.
+
+#### `POST /api/audiobooks/rescan`
+Forces a manual rescan of the audiobooks directory.
+
+#### `DELETE /api/audiobooks/:id`
+Deletes the audiobook records and optionally removes files from disk.
+

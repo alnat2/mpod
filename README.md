@@ -7,8 +7,9 @@ This repository has a completed Go backend MVP and is now focused on frontend sc
 
 ## Goals
 
-- Simple personal podcast manager
+- Simple personal podcast and audiobook manager
 - RSS and OPML import/export
+- Local audiobooks library scanning with automatic inotify watching
 - Episode downloading
 - Playlist-based listening
 - Cross-device playback resume
@@ -40,10 +41,11 @@ Planned MVP capabilities:
 - import subscriptions from OPML
 - export subscriptions to OPML
 - fetch and store podcast episodes
+- scan local audiobooks (.mp3, .m4b, .m4a) with automatic inotify watching
 - download episode audio files
-- add and remove episodes from a playlist
+- add and remove episodes and audiobooks from a playlist
 - reorder playlist
-- play episodes with position tracking
+- play episodes and audiobook chapters with position tracking
 - resume playback across devices
 - daily scheduled feed refresh
 
@@ -68,6 +70,7 @@ Current intended defaults:
 - base data directory: `/data`
 - database path: `/data/mpod.sqlite`
 - downloads path: `/data/downloads`
+- audiobooks path: `/data/audiobooks`
 - one container, one persistent volume
 
 Expected runtime configuration:
@@ -77,6 +80,7 @@ Expected runtime configuration:
 - `DATA_DIR`
 - `DB_PATH`
 - `DOWNLOADS_DIR`
+- `AUDIOBOOKS_DIR`
 - `DAILY_REFRESH_TIME`
 - `APP_ENV`
 - `APP_BUILD`

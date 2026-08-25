@@ -294,12 +294,24 @@ Responsible for:
 - updating whether configured SOCKS5 proxy usage is enabled
 - exposing configuration values that belong in user-managed settings instead of environment variables
 
+### Audiobooks Module
+
+Responsible for:
+- scanning `AUDIOBOOKS_DIR` for `.mp3`, `.m4b`, `.m4a` files
+- grouping folders and single files into Audiobooks and Tracks/Chapters
+- parsing audio duration and detecting local cover art
+- running a background `fsnotify` (`inotify`) watcher with debounced rescanning
+- serving audiobook chapter audio with `Range` request support
+- preserving audio files on disk regardless of playlist removal or playback completion
+
 ## Data Model View
 
 Initial logical entities:
 - `users`
 - `podcasts`
 - `episodes`
+- `audiobooks`
+- `audiobook_tracks`
 - `playlist`
 - `playback`
 - `settings`

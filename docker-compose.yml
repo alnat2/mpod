@@ -14,6 +14,7 @@ services:
       DATA_DIR: ${DATA_DIR:-/data}
       DB_PATH: ${DB_PATH:-/data/mpod.sqlite}
       DOWNLOADS_DIR: ${DOWNLOADS_DIR:-/data/downloads}
+      AUDIOBOOKS_DIR: ${AUDIOBOOKS_DIR:-/data/audiobooks}
       DAILY_REFRESH_TIME: ${DAILY_REFRESH_TIME:-03:00}
       SOCKS5_HOST: ${SOCKS5_HOST:-}
       SOCKS5_PORT: ${SOCKS5_PORT:-}
@@ -21,6 +22,7 @@ services:
       SOCKS5_PASSWORD: ${SOCKS5_PASSWORD:-}
     volumes:
       - mpod_data:/data
+      - ${AUDIOBOOKS_PATH:-./audiobooks}:/data/audiobooks
     restart: unless-stopped
 
 volumes:

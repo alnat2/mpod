@@ -2,16 +2,17 @@
 
 ## 1. Product Overview
 
-mpod is a simple personal web application to manage podcasts: import RSS or OPML feeds, download episodes, create playlists, and listen across devices with synced playback position.
+mpod is a simple personal web application to manage podcasts and audiobooks: import RSS or OPML feeds, scan local audiobooks, download episodes, create playlists, and listen across devices with synced playback position.
 
 ---
 
 ## 2. Goals
 
-- Simple personal podcast manager
+- Simple personal podcast and audiobook manager
 - RSS and OPML import/export
-- Cross-device playback resume
-- Episode downloading
+- Local audiobooks library scanning with automatic directory watching (inotify)
+- Cross-device playback resume for podcasts and audiobooks
+- Episode downloading for podcasts
 - Docker-based deployment
 - SOCKS5 proxy support
 - Minimal and fast interface
@@ -24,6 +25,7 @@ Single user (personal use)
 
 Needs:
 - Manage podcast subscriptions
+- Listen to local audiobooks with chapter navigation
 - Download and organize episodes
 - Resume playback across devices
 - Operate in restricted networks if needed
@@ -53,6 +55,25 @@ Needs:
 
 ---
 
+## Audiobook Management
+
+### Library Directory
+- Scans a configured local directory (`AUDIOBOOKS_DIR`, default `/data/audiobooks`)
+- Automatically detects changes via Linux `inotify` (`fsnotify`) with debounced rescanning
+- Supported audio formats: `.mp3`, `.m4b`, `.m4a`
+- Folder structure mapping:
+  - Subfolder with multiple audio files -> Audiobook with chapters (folder name = book title, parent folder = author, audio files = chapters sorted naturally)
+  - Standalone audio file -> Audiobook with 1 track (filename = book title, parent folder = author)
+- Automatic cover art extraction from `cover.jpg`, `cover.png`, or `folder.jpg`
+
+### Playlist Presentation & Chapters
+- An audiobook is represented in the playlist queue as a single compact item displaying current chapter and progress
+- Clicking the playlist item or "Show Chapters" in the player opens a modal with all chapters
+- Sequential playback automatically advances to the next chapter upon completion
+- Audiobook files on disk are permanent library assets and are never deleted when removed from playlist or finished
+
+---
+
 ## Episode Management
 
 - Download episodes
@@ -64,9 +85,9 @@ Needs:
 
 ## Playlist
 
-- Add/remove episodes
+- Add/remove episodes and audiobooks
 - Reorder playlist
-- Sequential playback
+- Sequential playback across items and audiobook chapters
 
 ---
 
@@ -77,6 +98,7 @@ Needs:
 - Skip forward/back
 - Speed control (0.5x–2x)
 - Track playback position
+- "Show Notes" for podcast episodes / "Show Chapters" for multi-track audiobooks
 
 ---
 
@@ -91,8 +113,8 @@ Needs:
 
 ## Auto Cleanup
 
-- Remove episode from playlist after completion
-- Deletion of downloaded file
+- Remove podcast episode or audiobook from playlist after completion
+- Deletion of downloaded podcast files (audiobook files are preserved)
 
 ---
 
@@ -121,6 +143,12 @@ Needs:
 - Manual refresh
 - Scheduled updates
 
+### Audiobooks
+- Scan local audiobooks directory
+- Automatic change detection via inotify
+- Browse audiobooks and chapter lists
+- Add/remove audiobooks to/from playlist
+
 ### Settings
 - Configure daily refresh time
 - Enable or disable use of the configured SOCKS5 proxy
@@ -135,6 +163,7 @@ Needs:
 - Speed control
 - Seek
 - Save playback progress
+- Chapter navigation for audiobooks
 
 ---
 
@@ -173,7 +202,8 @@ Environment variables:
 SOCKS5_HOST  
 SOCKS5_PORT  
 SOCKS5_USERNAME (optional)  
-SOCKS5_PASSWORD (optional)
+SOCKS5_PASSWORD (optional)  
+AUDIOBOOKS_DIR (default /data/audiobooks)
 
 Used for:
 - RSS feed fetching
@@ -235,11 +265,40 @@ Storage:
 
 ---
 
+### Audiobooks
+| Field | Type |
+|------|------|
+| id | integer |
+| title | text |
+| author | text |
+| rel_path | text |
+| cover_url | text |
+| total_duration | integer |
+| created_at | datetime |
+| updated_at | datetime |
+
+---
+
+### Audiobook Tracks
+| Field | Type |
+|------|------|
+| id | integer |
+| audiobook_id | integer |
+| track_number | integer |
+| title | text |
+| rel_path | text |
+| duration | integer |
+| is_listened | boolean |
+| created_at | datetime |
+
+---
+
 ### Playlist
 | Field | Type |
 |------|------|
 | id | integer |
-| episode_id | integer |
+| episode_id | integer (nullable) |
+| audiobook_id | integer (nullable) |
 | position | integer |
 
 ---
@@ -247,7 +306,8 @@ Storage:
 ### Playback
 | Field | Type |
 |------|------|
-| episode_id | integer |
+| episode_id | integer (nullable) |
+| audiobook_track_id | integer (nullable) |
 | position_seconds | integer |
 | last_updated | datetime |
 
