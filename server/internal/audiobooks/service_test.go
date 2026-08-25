@@ -1,0 +1,134 @@
+package audiobooks
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"testing"
+
+	"github.com/cross/mpod/server/internal/storage"
+	_ "github.com/mattn/go-sqlite3"
+)
+
+func setupTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("open in-memory db: %v", err)
+	}
+
+	if err := storage.Migrate(db, "../../migrations"); err != nil {
+		t.Fatalf("migrate db: %v", err)
+	}
+
+	return db
+}
+
+func TestServiceSyncAndCRUD(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	tempDir := t.TempDir()
+	svc := NewService(db, tempDir)
+
+	scanned := []ScannedBook{
+		{
+			Title:     "Ананасная вода",
+			Author:    "Пелевин",
+			RelPath:   "Пелевин/Ананасная вода",
+			CoverPath: "Пелевин/Ананасная вода/cover.jpg",
+			Tracks: []ScannedTrack{
+				{TrackNumber: 1, Title: "01", RelPath: "Пелевин/Ананасная вода/01.mp3", FilePath: "/abs/01.mp3"},
+				{TrackNumber: 2, Title: "02", RelPath: "Пелевин/Ананасная вода/02.mp3", FilePath: "/abs/02.mp3"},
+			},
+		},
+		{
+			Title:   "1984",
+			Author:  "",
+			RelPath: "1984.m4b",
+			Tracks: []ScannedTrack{
+				{TrackNumber: 1, Title: "1984", RelPath: "1984.m4b", FilePath: "/abs/1984.m4b"},
+			},
+		},
+	}
+
+	ctx := context.Background()
+	if err := svc.SyncWithScannedBooks(ctx, scanned); err != nil {
+		t.Fatalf("SyncWithScannedBooks failed: %v", err)
+	}
+
+	books, err := svc.List(ctx)
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(books) != 2 {
+		t.Fatalf("expected 2 books, got %d", len(books))
+	}
+
+	// Fetch detail of first book
+	b1, err := svc.Get(ctx, books[1].ID) // "Ананасная вода"
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if b1.Title != "Ананасная вода" || len(b1.Tracks) != 2 {
+		t.Fatalf("unexpected book details: %+v", b1)
+	}
+
+	// Test progress update
+	track1 := b1.Tracks[0]
+	nextTrack, err := svc.SaveTrackProgress(ctx, track1.ID, 120, false)
+	if err != nil {
+		t.Fatalf("SaveTrackProgress position failed: %v", err)
+	}
+	if nextTrack != nil {
+		t.Errorf("expected nextTrack nil on non-complete update")
+	}
+
+	// Verify track position saved
+	t1Updated, err := svc.GetTrack(ctx, track1.ID)
+	if err != nil {
+		t.Fatalf("GetTrack failed: %v", err)
+	}
+	if t1Updated.PositionSeconds != 120 {
+		t.Errorf("expected position 120, got %d", t1Updated.PositionSeconds)
+	}
+
+	// Add audiobook to playlist
+	if _, err := db.ExecContext(ctx, `INSERT INTO playlist (audiobook_id, position) VALUES (?, 1)`, b1.ID); err != nil {
+		t.Fatalf("add to playlist: %v", err)
+	}
+
+	// Complete track 1 -> should return track 2
+	nextTrack, err = svc.SaveTrackProgress(ctx, track1.ID, 300, true)
+	if err != nil {
+		t.Fatalf("SaveTrackProgress complete failed: %v", err)
+	}
+	if nextTrack == nil || *nextTrack != b1.Tracks[1].ID {
+		t.Fatalf("expected nextTrack %d, got %v", b1.Tracks[1].ID, nextTrack)
+	}
+
+	// Complete track 2 (final track of the book) -> should return nil and remove from playlist
+	nextTrack, err = svc.SaveTrackProgress(ctx, b1.Tracks[1].ID, 300, true)
+	if err != nil {
+		t.Fatalf("SaveTrackProgress complete final track failed: %v", err)
+	}
+	if nextTrack != nil {
+		t.Fatalf("expected nextTrack nil for final track, got %v", nextTrack)
+	}
+
+	// Verify playlist removal
+	var count int
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_id = ?`, b1.ID).Scan(&count)
+	if count != 0 {
+		t.Errorf("expected audiobook removed from playlist on full completion, got count %d", count)
+	}
+
+	// Test Delete book
+	if err := svc.Delete(ctx, b1.ID, false); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+	_, err = svc.Get(ctx, b1.ID)
+	if !errors.Is(err, ErrBookNotFound) {
+		t.Fatalf("expected ErrBookNotFound after delete, got %v", err)
+	}
+}
