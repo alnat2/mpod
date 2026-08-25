@@ -9,6 +9,7 @@ func TestLoadAppliesDefaultsAndEnv(t *testing.T) {
 	t.Setenv("DATA_DIR", "/custom/data")
 	t.Setenv("DB_PATH", "/custom/data/db.sqlite")
 	t.Setenv("DOWNLOADS_DIR", "/custom/data/downloads")
+	t.Setenv("AUDIOBOOKS_DIR", "/custom/data/audiobooks")
 	t.Setenv("DAILY_REFRESH_TIME", "09:15")
 	t.Setenv("APP_ENV", "development")
 
@@ -16,7 +17,7 @@ func TestLoadAppliesDefaultsAndEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
-	if cfg.Port != "9090" || cfg.TZ != "Europe/Moscow" || cfg.DBPath != "/custom/data/db.sqlite" {
+	if cfg.Port != "9090" || cfg.TZ != "Europe/Moscow" || cfg.DBPath != "/custom/data/db.sqlite" || cfg.AudiobooksDir != "/custom/data/audiobooks" {
 		t.Fatalf("unexpected config: %+v", cfg)
 	}
 	if cfg.DailyRefreshTime != "09:15" {

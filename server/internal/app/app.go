@@ -44,6 +44,9 @@ func New(logger *log.Logger) (*App, error) {
 	if err := storage.EnsureWritableDirectory(cfg.DownloadsDir); err != nil {
 		return nil, fmt.Errorf("prepare downloads directory: %w", err)
 	}
+	if err := storage.EnsureWritableDirectory(cfg.AudiobooksDir); err != nil {
+		logger.Printf("prepare audiobooks directory: %v", err)
+	}
 
 	db, err := storage.Open(cfg.DBPath)
 	if err != nil {
@@ -73,6 +76,12 @@ func New(logger *log.Logger) (*App, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("cleanup partial downloads: %w", err)
 	}
+
+	// Initial scan of audiobooks
+	if err := routerServices.Audiobooks.Rescan(context.Background()); err != nil {
+		logger.Printf("initial audiobooks scan: %v", err)
+	}
+
 	schedulerService, err := scheduler.NewService(db.SQL, logger, routerServices.Settings, routerServices.Podcasts.RefreshAll, cfg.TZ)
 	if err != nil {
 		_ = db.Close()
@@ -82,6 +91,11 @@ func New(logger *log.Logger) (*App, error) {
 	schedulerService.Start(runCtx)
 	smartListeningService := smartlistening.NewService(db.SQL, logger, routerServices.Downloads)
 	smartListeningService.Start(runCtx)
+
+	// Start inotify watcher for audiobooks
+	if err := routerServices.Audiobooks.StartWatcher(runCtx); err != nil {
+		logger.Printf("start audiobooks watcher: %v", err)
+	}
 
 	router := httpapi.NewRouterWithServices(logger, cfg, db.SQL, schedulerService, routerServices)
 	server := &http.Server{

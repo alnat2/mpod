@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cross/mpod/server/internal/audiobooks"
 	"github.com/cross/mpod/server/internal/auth"
 	"github.com/cross/mpod/server/internal/config"
 	"github.com/cross/mpod/server/internal/downloads"
@@ -3503,61 +3504,29 @@ func newSplitRouterWithClients(t *testing.T, cfg config.Config, authDB, appDB *s
 		t.Fatalf("scheduler.NewService failed: %v", err)
 	}
 
-	r := &Router{
-		logger:            log.New(io.Discard, "", 0),
-		config:            cfg,
-		db:                appDB.SQL,
-		auth:              auth.NewService(authDB.SQL),
-		episodes:          episodes.NewService(appDB.SQL),
-		episodeActions:    episodes.NewActions(appDB.SQL, downloadsService),
-		playback:          playback.NewService(appDB.SQL, episodes.NewActions(appDB.SQL, downloadsService), playlistService),
-		playlist:          playlistService,
-		playlistActions:   playlistActions,
-		downloads:         downloadsService,
-		podcasts:          podcastsService,
-		remoteClient:      client,
-		audioClient:       client,
-		directAudioClient: directAudioClient,
-		settings:          settingsService,
-		scheduler:         schedulerService,
-	}
+	audiobooksService := audiobooks.NewService(appDB.SQL, cfg.AudiobooksDir)
 
-	mux := nethttp.NewServeMux()
-	mux.HandleFunc("GET /api/health", r.handleHealth)
-	mux.HandleFunc("GET /api/auth/session", r.handleSession)
-	mux.HandleFunc("POST /api/auth/register", r.handleRegister)
-	mux.HandleFunc("POST /api/auth/login", r.handleLogin)
-	mux.HandleFunc("POST /api/auth/logout", r.handleLogout)
-	mux.HandleFunc("GET /api/podcasts", r.handlePodcastsList)
-	mux.HandleFunc("POST /api/podcasts", r.handlePodcastsCreate)
-	mux.HandleFunc("GET /api/podcasts/{id}", r.handlePodcastGet)
-	mux.HandleFunc("GET /api/podcasts/{id}/image", r.handlePodcastImage)
-	mux.HandleFunc("DELETE /api/podcasts/{id}", r.handlePodcastDelete)
-	mux.HandleFunc("POST /api/podcasts/{id}/refresh", r.handlePodcastRefresh)
-	mux.HandleFunc("POST /api/podcasts/{id}/mark-all-listened", r.handlePodcastMarkAllListened)
-	mux.HandleFunc("GET /api/podcasts/{id}/episodes", r.handlePodcastEpisodesList)
-	mux.HandleFunc("POST /api/podcasts/import-opml", r.handlePodcastsImportOPML)
-	mux.HandleFunc("GET /api/podcasts/export-opml", r.handlePodcastsExportOPML)
-	mux.HandleFunc("POST /api/podcasts/refresh-all", r.handlePodcastsRefreshAll)
-	mux.HandleFunc("GET /api/jobs/status", r.handleJobsStatus)
-	mux.HandleFunc("GET /api/playback/queue", r.handlePlaybackQueue)
-	mux.HandleFunc("PUT /api/playback/active", r.handlePlaybackActivePut)
-	mux.HandleFunc("GET /api/playback/{episodeId}", r.handlePlaybackGet)
-	mux.HandleFunc("POST /api/playback", r.handlePlaybackPost)
-	mux.HandleFunc("GET /api/playlist", r.handlePlaylistList)
-	mux.HandleFunc("POST /api/playlist", r.handlePlaylistAdd)
-	mux.HandleFunc("DELETE /api/playlist/{episodeId}", r.handlePlaylistRemove)
-	mux.HandleFunc("PATCH /api/playlist/reorder", r.handlePlaylistReorder)
-	mux.HandleFunc("GET /api/episodes", r.handleEpisodesList)
-	mux.HandleFunc("GET /api/episodes/{id}", r.handleEpisodeGet)
-	mux.HandleFunc("PATCH /api/episodes/{id}", r.handleEpisodePatch)
-	mux.HandleFunc("POST /api/episodes/{id}/download", r.handleEpisodeDownload)
-	mux.HandleFunc("DELETE /api/episodes/{id}/download", r.handleEpisodeDownloadDelete)
-	mux.HandleFunc("GET /api/episodes/{id}/audio", r.handleEpisodeAudio)
-	mux.HandleFunc("GET /api/settings", r.handleSettingsGet)
-	mux.HandleFunc("PATCH /api/settings", r.handleSettingsPatch)
-	mux.HandleFunc("GET /api/proxy/status", r.handleProxyStatus)
-	return r.securityHeaders(r.recoverAndLog(r.requireSameOrigin(mux)))
+	return NewRouterWithServices(
+		log.New(io.Discard, "", 0),
+		cfg,
+		appDB.SQL,
+		schedulerService,
+		&RouterServices{
+			Auth:              auth.NewService(authDB.SQL),
+			Episodes:          episodes.NewService(appDB.SQL),
+			EpisodeActions:    episodes.NewActions(appDB.SQL, downloadsService),
+			Playback:          playback.NewService(appDB.SQL, episodes.NewActions(appDB.SQL, downloadsService), playlistService),
+			Playlist:          playlistService,
+			PlaylistActions:   playlistActions,
+			Downloads:         downloadsService,
+			Podcasts:          podcastsService,
+			Audiobooks:        audiobooksService,
+			RemoteClient:      client,
+			AudioClient:       client,
+			DirectAudioClient: directAudioClient,
+			Settings:          settingsService,
+		},
+	)
 }
 
 func newRouterDefaultClient(t *testing.T, cfg config.Config, appDB *storage.DB) *nethttp.Client {

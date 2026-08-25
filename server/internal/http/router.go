@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cross/mpod/server/internal/audiobooks"
 	"github.com/cross/mpod/server/internal/auth"
 	"github.com/cross/mpod/server/internal/config"
 	"github.com/cross/mpod/server/internal/downloads"
@@ -47,6 +48,7 @@ type Router struct {
 	playlistActions   *playlist.Actions
 	downloads         *downloads.Service
 	podcasts          *podcasts.Service
+	audiobooks        *audiobooks.Service
 	remoteClient      *nethttp.Client
 	audioClient       *nethttp.Client
 	directAudioClient *nethttp.Client
@@ -63,6 +65,7 @@ type RouterServices struct {
 	PlaylistActions   *playlist.Actions
 	Downloads         *downloads.Service
 	Podcasts          *podcasts.Service
+	Audiobooks        *audiobooks.Service
 	RemoteClient      *nethttp.Client
 	AudioClient       *nethttp.Client
 	DirectAudioClient *nethttp.Client
@@ -150,6 +153,7 @@ func NewRouterServicesForRuntime(cfg config.Config, db *sql.DB) (*RouterServices
 	playlistService := playlist.NewService(db)
 	downloadsService := downloads.NewService(db, client, cfg.DownloadsDir)
 	episodeActions := episodes.NewActions(db, downloadsService)
+	audiobooksService := audiobooks.NewService(db, cfg.AudiobooksDir)
 
 	return &RouterServices{
 		Auth:              auth.NewService(db),
@@ -160,6 +164,7 @@ func NewRouterServicesForRuntime(cfg config.Config, db *sql.DB) (*RouterServices
 		PlaylistActions:   playlist.NewActions(db, downloadsService),
 		Downloads:         downloadsService,
 		Podcasts:          podcasts.NewService(db, client),
+		Audiobooks:        audiobooksService,
 		RemoteClient:      client,
 		AudioClient:       audioClient,
 		DirectAudioClient: directAudioClient,
@@ -188,6 +193,7 @@ func NewRouterWithServices(logger *log.Logger, cfg config.Config, db *sql.DB, sc
 		playlistActions:   services.PlaylistActions,
 		downloads:         services.Downloads,
 		podcasts:          services.Podcasts,
+		audiobooks:        services.Audiobooks,
 		remoteClient:      services.RemoteClient,
 		audioClient:       services.AudioClient,
 		directAudioClient: services.DirectAudioClient,
@@ -233,6 +239,17 @@ func NewRouterWithServices(logger *log.Logger, cfg config.Config, db *sql.DB, sc
 	mux.HandleFunc("PATCH /api/settings", r.handleSettingsPatch)
 	mux.HandleFunc("GET /api/proxy/status", r.handleProxyStatus)
 	mux.HandleFunc("GET /api/episodes/{id}/audio", r.handleEpisodeAudio)
+
+	// Audiobook routes
+	mux.HandleFunc("GET /api/audiobooks", r.handleAudiobooksList)
+	mux.HandleFunc("GET /api/audiobooks/{id}", r.handleAudiobookGet)
+	mux.HandleFunc("GET /api/audiobooks/{id}/cover", r.handleAudiobookCover)
+	mux.HandleFunc("POST /api/audiobooks/rescan", r.handleAudiobooksRescan)
+	mux.HandleFunc("DELETE /api/audiobooks/{id}", r.handleAudiobookDelete)
+	mux.HandleFunc("GET /api/audiobooks/{id}/tracks/{trackId}/audio", r.handleAudiobookTrackAudio)
+	mux.HandleFunc("POST /api/audiobooks/{id}/playlist", r.handleAudiobookPlaylistAdd)
+	mux.HandleFunc("DELETE /api/audiobooks/{id}/playlist", r.handleAudiobookPlaylistRemove)
+	mux.HandleFunc("POST /api/audiobooks/playback", r.handleAudiobookPlaybackPost)
 
 	staticDir := pathutil.FirstExistingDir("frontend/dist", "../frontend/dist")
 	fs := nethttp.FileServer(nethttp.Dir(staticDir))

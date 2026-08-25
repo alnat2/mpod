@@ -147,9 +147,24 @@ func (r *Router) handlePlaylistAdd(w nethttp.ResponseWriter, req *nethttp.Reques
 	}
 
 	var payload struct {
-		EpisodeID int64 `json:"episodeId"`
+		EpisodeID   int64 `json:"episodeId"`
+		AudiobookID int64 `json:"audiobookId"`
 	}
 	if !r.decodeJSON(w, req, &payload) {
+		return
+	}
+
+	if payload.AudiobookID > 0 {
+		if err := r.playlist.AddAudiobook(req.Context(), payload.AudiobookID); err != nil {
+			switch err {
+			case playlist.ErrAudiobookNotFound:
+				r.writeAPIError(w, nethttp.StatusNotFound, "AUDIOBOOK_NOT_FOUND", "Audiobook was not found")
+			default:
+				r.writeAPIError(w, nethttp.StatusInternalServerError, "PLAYLIST_ADD_FAILED", "Failed to add audiobook to playlist")
+			}
+			return
+		}
+		r.writeJSON(w, nethttp.StatusOK, map[string]any{"success": true})
 		return
 	}
 

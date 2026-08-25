@@ -152,6 +152,41 @@ func TestRemoveNormalizesPositions(t *testing.T) {
 	}
 }
 
+func TestAddAndRemoveAudiobook(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db, `INSERT INTO audiobooks (id, title, author, rel_path) VALUES (1, 'Book 1', 'Author', 'book1')`)
+
+	service := NewService(db.SQL)
+	if err := service.AddAudiobook(context.Background(), 1); err != nil {
+		t.Fatalf("AddAudiobook failed: %v", err)
+	}
+
+	items, err := service.List(context.Background())
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if items[0].Type != "audiobook" || items[0].Audiobook == nil || items[0].Audiobook.Title != "Book 1" {
+		t.Fatalf("unexpected audiobook playlist item: %+v", items[0])
+	}
+
+	if err := service.RemoveAudiobook(context.Background(), 1); err != nil {
+		t.Fatalf("RemoveAudiobook failed: %v", err)
+	}
+
+	items, err = service.List(context.Background())
+	if err != nil {
+		t.Fatalf("List after remove failed: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected 0 items after remove, got %d", len(items))
+	}
+}
+
 func newTestDB(t *testing.T) *storage.DB {
 	t.Helper()
 
