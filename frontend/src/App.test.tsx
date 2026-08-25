@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,8 +36,18 @@ const settingsScreenMock = vi.fn((props?: unknown) => {
   void props;
   return <div>Settings screen</div>;
 });
+const playbackProviderMountSpy = vi.fn();
+const playbackProviderUnmountSpy = vi.fn();
 const playbackProviderMock = vi.fn(
-  ({ children }: { children: ReactNode }) => <>{children}</>
+  ({ children }: { children: ReactNode }) => {
+    useEffect(() => {
+      playbackProviderMountSpy();
+      return () => {
+        playbackProviderUnmountSpy();
+      };
+    }, []);
+    return <>{children}</>;
+  }
 );
 
 vi.mock("@/lib/playback-context", () => ({
@@ -99,6 +109,8 @@ describe("App routing", () => {
     homeScreenMock.mockClear();
     settingsScreenMock.mockClear();
     playbackProviderMock.mockClear();
+    playbackProviderMountSpy.mockClear();
+    playbackProviderUnmountSpy.mockClear();
     window.history.replaceState({}, "", "/");
   });
 
@@ -299,5 +311,39 @@ describe("App routing", () => {
     });
     expect(screen.getByText("Subscriptions screen")).toBeInTheDocument();
     expect(screen.queryByText("Setup screen")).not.toBeInTheDocument();
+  });
+
+  it("does not unmount the playback provider or show loading screen on visibilitychange when authenticated", async () => {
+    mockSession({
+      authenticated: true,
+      user: { id: 1, username: "qa" },
+      setupRequired: false,
+    });
+
+    render(<App />);
+    expect(await screen.findByText("Subscriptions screen")).toBeInTheDocument();
+    expect(playbackProviderMountSpy).toHaveBeenCalledTimes(1);
+    expect(playbackProviderUnmountSpy).not.toHaveBeenCalled();
+
+    const sessionSpy = vi.spyOn(api.auth, "session").mockResolvedValueOnce({
+      authenticated: true,
+      user: { id: 1, username: "qa" },
+      setupRequired: false,
+    });
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    expect(sessionSpy).toHaveBeenCalled();
+    expect(screen.queryByText("Loading mpod")).not.toBeInTheDocument();
+    expect(screen.getByText("Subscriptions screen")).toBeInTheDocument();
+    expect(playbackProviderMountSpy).toHaveBeenCalledTimes(1);
+    expect(playbackProviderUnmountSpy).not.toHaveBeenCalled();
   });
 });

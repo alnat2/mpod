@@ -143,32 +143,42 @@ function AppRoutes() {
   const sessionRequests = useLatestRequest();
   const passiveSessionRefreshRef = useRef<Promise<void> | null>(null);
 
-  const loadSession = useCallback(async () => {
-    const requestGeneration = sessionRequests.beginRequest();
-    setLoading(true);
-    setSessionError(false);
-    try {
-      const nextSession = await api.auth.session();
-      if (sessionRequests.isLatestRequest(requestGeneration)) {
-        setSession(nextSession);
+  const loadSession = useCallback(
+    async (options: { background?: boolean } = {}) => {
+      const isBackground = options.background ?? false;
+      const requestGeneration = sessionRequests.beginRequest();
+      if (!isBackground) {
+        setLoading(true);
+        setSessionError(false);
       }
-    } catch {
-      if (sessionRequests.isLatestRequest(requestGeneration)) {
-        setSessionError(true);
+      try {
+        const nextSession = await api.auth.session();
+        if (sessionRequests.isLatestRequest(requestGeneration)) {
+          setSession(nextSession);
+        }
+      } catch {
+        if (sessionRequests.isLatestRequest(requestGeneration)) {
+          if (!isBackground) {
+            setSessionError(true);
+          }
+        }
+      } finally {
+        if (sessionRequests.isLatestRequest(requestGeneration)) {
+          if (!isBackground) {
+            setLoading(false);
+          }
+        }
       }
-    } finally {
-      if (sessionRequests.isLatestRequest(requestGeneration)) {
-        setLoading(false);
-      }
-    }
-  }, [sessionRequests]);
+    },
+    [sessionRequests]
+  );
 
   const refreshSessionOnce = useCallback(() => {
     if (passiveSessionRefreshRef.current) {
       return;
     }
 
-    const refresh = loadSession();
+    const refresh = loadSession({ background: true });
     passiveSessionRefreshRef.current = refresh;
     void refresh.finally(() => {
       if (passiveSessionRefreshRef.current === refresh) {

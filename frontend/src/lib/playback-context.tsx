@@ -185,7 +185,6 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     userInitiatedPlayRef,
     commitCurrentPlayback,
     setPlaying,
-    setPlaybackError,
     playToggle,
   });
 

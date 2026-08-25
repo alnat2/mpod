@@ -11,7 +11,6 @@ type UsePlaybackMediaSessionOptions = {
   userInitiatedPlayRef: RefObject<boolean>;
   commitCurrentPlayback: () => void;
   setPlaying: (playing: boolean) => void;
-  setPlaybackError: (error: string | null) => void;
   playToggle: () => void;
 };
 
@@ -24,7 +23,6 @@ export function usePlaybackMediaSession({
   userInitiatedPlayRef,
   commitCurrentPlayback,
   setPlaying,
-  setPlaybackError,
   playToggle,
 }: UsePlaybackMediaSessionOptions) {
   const handlePlayRef = useRef<(() => void) | null>(null);
