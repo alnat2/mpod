@@ -1,5 +1,6 @@
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
+  AudioBook04Icon,
   Playlist02Icon,
   PlusSignSquareIcon,
   Settings05Icon,
@@ -66,7 +67,12 @@ const defaultItems: BottomNavItem[] = [
   {
     href: "/subscriptions",
     icon: <SubscriptionsIcon />,
-    label: "Subscriptions",
+    label: "Podcasts",
+  },
+  {
+    href: "/audiobooks",
+    icon: <HugeiconsIcon icon={AudioBook04Icon} className="size-7" aria-hidden="true" />,
+    label: "Abooks",
   },
   {
     href: "/settings",
@@ -75,7 +81,7 @@ const defaultItems: BottomNavItem[] = [
   },
   {
     icon: <HugeiconsIcon icon={PlusSignSquareIcon} className="size-7" aria-hidden="true" />,
-    label: "Add podcast",
+    label: "Add",
   },
 ];
 
@@ -94,7 +100,10 @@ export function BottomNav({
     >
       <div className="flex h-[65px] w-full min-w-0 items-center justify-center gap-4">
         {defaultItems.map((item) => {
-          const isActive = item.label === activeItem;
+          const isActive =
+            item.label === activeItem ||
+            (item.label === "Podcasts" && activeItem === "Subscriptions") ||
+            (item.label === "Abooks" && activeItem === "Audiobooks");
           const content = (
             <>
               <span

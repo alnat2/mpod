@@ -21,7 +21,8 @@ type TopNavProps = {
 
 const defaultNavItems: NavItem[] = [
   { label: "Player", href: "/home" },
-  { label: "Subscriptions", href: "/subscriptions" },
+  { label: "Podcasts", href: "/subscriptions" },
+  { label: "Abooks", href: "/audiobooks" },
   { label: "Settings", href: "/settings" },
 ];
 
@@ -37,14 +38,17 @@ export function TopNav({
         <Logo />
         <nav className="flex h-[33px] shrink-0 items-start gap-1" aria-label="Primary navigation">
           {navItems.map((item) => {
-            const isActive = item.label === activeItem;
+            const isActive =
+              item.label === activeItem ||
+              (item.label === "Podcasts" && activeItem === "Subscriptions") ||
+              (item.label === "Abooks" && activeItem === "Audiobooks");
 
             return (
               <Button
                 key={item.href}
                 asChild
                 variant={isActive ? "secondary" : "ghost"}
-                className={cn("px-4 py-2", isActive && "font-semibold")}
+                className={cn("px-4 py-2 text-sm font-medium", isActive && "font-semibold")}
               >
                 <Link to={item.href}>{item.label}</Link>
               </Button>

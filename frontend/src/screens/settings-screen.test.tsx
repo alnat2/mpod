@@ -47,7 +47,7 @@ describe("SettingsScreen", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     navigateMock.mockReset();
-    window.localStorage.clear();
+    window.localStorage?.clear?.();
     document.documentElement.className = "";
 
     vi.spyOn(api.settings, "get").mockResolvedValue({
