@@ -117,6 +117,47 @@ export type SchedulerStatus = {
   lastError?: string | null;
 };
 
+export type AudiobookTrack = {
+  id: number;
+  audiobookId: number;
+  trackNumber: number;
+  title: string;
+  relPath: string;
+  filePath: string;
+  duration: number;
+  isListened: boolean;
+  positionSeconds: number;
+  lastUpdated?: string;
+};
+
+export type Audiobook = {
+  id: number;
+  title: string;
+  author: string;
+  relPath: string;
+  coverPath?: string;
+  hasCover: boolean;
+  totalDuration: number;
+  trackCount: number;
+  listenedCount: number;
+  isListened: boolean;
+  positionSeconds: number;
+  activeTrackId?: number;
+  tracks?: AudiobookTrack[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AudiobookPlaybackState = {
+  trackId: number;
+  positionSeconds: number;
+};
+
+export type AudiobookPlaybackResponse = {
+  playback: AudiobookPlaybackState;
+  nextTrackId: number | null;
+};
+
 type RequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
 };
@@ -310,6 +351,46 @@ export const api = {
           ...payload,
         },
       }),
+  },
+  audiobooks: {
+    list: (signal?: AbortSignal) =>
+      apiRequest<{ audiobooks: Audiobook[] }>("/api/audiobooks", { signal }),
+    get: (id: number, signal?: AbortSignal) =>
+      apiRequest<{ audiobook: Audiobook }>(`/api/audiobooks/${id}`, { signal }),
+    rescan: (signal?: AbortSignal) =>
+      apiRequest<{ success: boolean }>("/api/audiobooks/rescan", {
+        method: "POST",
+        signal,
+      }),
+    addToPlaylist: (id: number, signal?: AbortSignal) =>
+      apiRequest<{ success: boolean }>(`/api/audiobooks/${id}/playlist`, {
+        method: "POST",
+        signal,
+      }),
+    removeFromPlaylist: (id: number, signal?: AbortSignal) =>
+      apiRequest<{ success: boolean }>(`/api/audiobooks/${id}/playlist`, {
+        method: "DELETE",
+        signal,
+      }),
+    saveProgress: (
+      payload: {
+        trackId: number;
+        positionSeconds: number;
+        completed?: boolean;
+      },
+      signal?: AbortSignal
+    ) =>
+      apiRequest<AudiobookPlaybackResponse>("/api/audiobooks/playback", {
+        method: "POST",
+        body: {
+          completed: false,
+          ...payload,
+        },
+        signal,
+      }),
+    coverUrl: (id: number) => `/api/audiobooks/${id}/cover`,
+    trackAudioUrl: (id: number, trackId: number) =>
+      `/api/audiobooks/${id}/tracks/${trackId}/audio`,
   },
   settings: {
     get: () => apiRequest<{ settings: SettingsValues }>("/api/settings"),
