@@ -382,7 +382,7 @@ export function Player({
             <LabeledSeekControl
               label="Go back 15 seconds"
               caption="-15"
-              align="start"
+              align="center"
               onClick={onBack}
             />
             <TransportButton

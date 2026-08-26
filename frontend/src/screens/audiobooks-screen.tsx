@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { RefreshDotIcon } from "@hugeicons/core-free-icons";
 
-import { AppShell, FileManagerItem, PageHeader } from "@/components/mpod";
+import { AppShell, FileManagerItem } from "@/components/mpod";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -22,7 +22,7 @@ export type AudiobooksScreenProps = {
   onSessionChange?: () => void | Promise<void>;
 };
 
-export function AudiobooksScreen() {
+export function AudiobooksScreen(_props: AudiobooksScreenProps = {}) {
   const isMobile = useIsMobileViewport();
   const [audiobooks, setAudiobooks] = useState<Audiobook[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,7 +94,7 @@ export function AudiobooksScreen() {
       if (currentPath.length === 0) {
         if (path.includes("/")) {
           const topFolder = path.split("/")[0];
-          folderSet.add(topFolder);
+          if (topFolder) folderSet.add(topFolder);
         } else {
           directBooks.push(book);
         }
@@ -103,7 +103,7 @@ export function AudiobooksScreen() {
           const rest = path.slice(prefix.length);
           if (rest.includes("/")) {
             const subFolder = rest.split("/")[0];
-            folderSet.add(subFolder);
+            if (subFolder) folderSet.add(subFolder);
           } else {
             directBooks.push(book);
           }
@@ -126,32 +126,28 @@ export function AudiobooksScreen() {
 
   return (
     <AppShell
-      activeItem="Abooks"
-      onAdd={() => setAddModalMode("rss")}
+      activeNavItem="Abooks"
+      onAddPodcast={() => setAddModalMode("rss")}
+      pageTitle="Audiobooks"
+      pageSubtitle={`Local collection · ${totalItemsCount} items`}
+      pageActions={[
+        {
+          label: "Rescan library",
+          disabled: rescanning || loading,
+          icon: (
+            <HugeiconsIcon
+              icon={RefreshDotIcon}
+              className={rescanning ? "animate-spin" : ""}
+              data-icon-name="hugeicons/refresh-dot"
+            />
+          ),
+          onClick: () => void handleRescan(),
+        },
+      ]}
     >
       <ScreenBannerStack>
-        {error && <ErrorBanner message={error} />}
+        {error && <ErrorBanner>{error}</ErrorBanner>}
       </ScreenBannerStack>
-
-      <PageHeader
-        title="Audiobooks"
-        subtitle={`Local collection · ${totalItemsCount} items`}
-        actions={[
-          {
-            key: "refresh",
-            label: "Rescan library",
-            disabled: rescanning || loading,
-            icon: (
-              <HugeiconsIcon
-                icon={RefreshDotIcon}
-                className={rescanning ? "animate-spin" : ""}
-                data-icon-name="hugeicons/refresh-dot"
-              />
-            ),
-            onClick: () => void handleRescan(),
-          },
-        ]}
-      />
 
       <div className="flex flex-col gap-4">
         {/* Breadcrumb Navigation */}
