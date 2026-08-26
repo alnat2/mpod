@@ -57,6 +57,11 @@ const SubscriptionsScreen = lazy(async () => {
   return { default: module.SubscriptionsScreen };
 });
 
+const AudiobooksScreen = lazy(async () => {
+  const module = await import("@/screens/audiobooks-screen");
+  return { default: module.AudiobooksScreen };
+});
+
 function LoadingScreen() {
   return (
     <AuthShell headline="Loading mpod">
@@ -323,6 +328,24 @@ function AppRoutes() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/audiobooks"
+          element={
+            <ProtectedRoute
+              authenticated={authenticated}
+              setupRequired={setupRequired}
+            >
+              <ScreenErrorBoundary
+                activeNavItem="Abooks"
+                resetKey={location.pathname}
+                screenName="Audiobooks"
+              >
+                <AudiobooksScreen onSessionChange={loadSession} />
+              </ScreenErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/abooks" element={<Navigate to="/audiobooks" replace />} />
         <Route
           path="/settings"
           element={
