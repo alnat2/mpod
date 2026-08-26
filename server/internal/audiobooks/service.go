@@ -202,7 +202,8 @@ func (s *Service) List(ctx context.Context) ([]Audiobook, error) {
 		SELECT a.id, a.title, COALESCE(a.author, ''), a.rel_path, COALESCE(a.cover_path, ''),
 		       a.total_duration, a.created_at, a.updated_at,
 		       COUNT(t.id) as track_count,
-		       SUM(CASE WHEN t.is_listened = 1 THEN 1 ELSE 0 END) as listened_count
+		       SUM(CASE WHEN t.is_listened = 1 THEN 1 ELSE 0 END) as listened_count,
+		       EXISTS(SELECT 1 FROM playlist WHERE audiobook_id = a.id) as in_playlist
 		FROM audiobooks a
 		LEFT JOIN audiobook_tracks t ON t.audiobook_id = a.id
 		GROUP BY a.id
@@ -218,10 +219,11 @@ func (s *Service) List(ctx context.Context) ([]Audiobook, error) {
 		var b Audiobook
 		var author, coverPath string
 		var trackCount, listenedCount sql.NullInt64
+		var inPlaylist bool
 		if err := rows.Scan(
 			&b.ID, &b.Title, &author, &b.RelPath, &coverPath,
 			&b.TotalDuration, &b.CreatedAt, &b.UpdatedAt,
-			&trackCount, &listenedCount,
+			&trackCount, &listenedCount, &inPlaylist,
 		); err != nil {
 			return nil, fmt.Errorf("scan audiobook: %w", err)
 		}
@@ -231,6 +233,7 @@ func (s *Service) List(ctx context.Context) ([]Audiobook, error) {
 		b.TrackCount = int(trackCount.Int64)
 		b.ListenedCount = int(listenedCount.Int64)
 		b.IsListened = b.TrackCount > 0 && b.ListenedCount == b.TrackCount
+		b.InPlaylist = inPlaylist
 
 		books = append(books, b)
 	}
@@ -249,14 +252,16 @@ func (s *Service) List(ctx context.Context) ([]Audiobook, error) {
 func (s *Service) Get(ctx context.Context, id int64) (*Audiobook, error) {
 	var b Audiobook
 	var author, coverPath string
+	var inPlaylist bool
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, title, COALESCE(author, ''), rel_path, COALESCE(cover_path, ''),
-		       total_duration, created_at, updated_at
+		       total_duration, created_at, updated_at,
+		       EXISTS(SELECT 1 FROM playlist WHERE audiobook_id = audiobooks.id) as in_playlist
 		FROM audiobooks
 		WHERE id = ?
 	`, id).Scan(
 		&b.ID, &b.Title, &author, &b.RelPath, &coverPath,
-		&b.TotalDuration, &b.CreatedAt, &b.UpdatedAt,
+		&b.TotalDuration, &b.CreatedAt, &b.UpdatedAt, &inPlaylist,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrBookNotFound
@@ -267,6 +272,7 @@ func (s *Service) Get(ctx context.Context, id int64) (*Audiobook, error) {
 	b.Author = author
 	b.CoverPath = coverPath
 	b.HasCover = coverPath != ""
+	b.InPlaylist = inPlaylist
 
 	// Fetch tracks with playback progress
 	tRows, err := s.db.QueryContext(ctx, `

@@ -76,7 +76,12 @@ export function AudiobooksScreen(_props: AudiobooksScreenProps = {}) {
 
   const handleTogglePlaylist = async (book: Audiobook) => {
     try {
-      await api.audiobooks.addToPlaylist(book.id);
+      const isIn = book.inPlaylist ?? book.isInPlaylist ?? false;
+      if (isIn) {
+        await api.audiobooks.removeFromPlaylist(book.id);
+      } else {
+        await api.audiobooks.addToPlaylist(book.id);
+      }
       setReloadKey((prev) => prev + 1);
     } catch (caught) {
       setError(getErrorMessage(caught));
@@ -232,6 +237,7 @@ export function AudiobooksScreen(_props: AudiobooksScreenProps = {}) {
                   type={isMultiFile ? "audiobook" : "track"}
                   title={book.title}
                   duration={book.totalDuration}
+                  inPlaylist={book.inPlaylist ?? book.isInPlaylist ?? false}
                   isMobile={isMobile}
                   onOpen={() => {
                     if (isMultiFile) {

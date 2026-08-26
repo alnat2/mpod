@@ -141,6 +141,8 @@ export type Audiobook = {
   trackCount: number;
   listenedCount: number;
   isListened: boolean;
+  inPlaylist?: boolean;
+  isInPlaylist?: boolean;
   positionSeconds: number;
   activeTrackId?: number;
   tracks?: AudiobookTrack[];

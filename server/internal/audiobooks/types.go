@@ -42,6 +42,7 @@ type Audiobook struct {
 	TrackCount      int       `json:"trackCount"`
 	ListenedCount   int       `json:"listenedCount"`
 	IsListened      bool      `json:"isListened"`
+	InPlaylist      bool      `json:"inPlaylist"`
 	PositionSeconds int64     `json:"positionSeconds"`
 	ActiveTrackID   *int64    `json:"activeTrackId,omitempty"`
 	Tracks          []Track   `json:"tracks,omitempty"`
