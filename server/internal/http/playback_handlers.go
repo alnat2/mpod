@@ -55,13 +55,15 @@ func (r *Router) handlePlaybackActivePut(w nethttp.ResponseWriter, req *nethttp.
 	}
 
 	var payload struct {
-		EpisodeID int64 `json:"episodeId"`
+		EpisodeID   *int64 `json:"episodeId"`
+		AudiobookID *int64 `json:"audiobookId"`
+		TrackID     *int64 `json:"trackId"`
 	}
 	if !r.decodeJSON(w, req, &payload) {
 		return
 	}
 
-	active, err := r.playback.SetActive(req.Context(), payload.EpisodeID)
+	active, err := r.playback.SetActiveItem(req.Context(), payload.EpisodeID, payload.AudiobookID, payload.TrackID)
 	if err != nil {
 		switch err {
 		case playback.ErrEpisodeNotFound:
@@ -84,6 +86,7 @@ func (r *Router) handlePlaybackPost(w nethttp.ResponseWriter, req *nethttp.Reque
 
 	var payload struct {
 		EpisodeID       int64  `json:"episodeId"`
+		TrackID         *int64 `json:"trackId"`
 		PositionSeconds int64  `json:"positionSeconds"`
 		DurationSeconds int64  `json:"durationSeconds"`
 		Completed       bool   `json:"completed"`
@@ -106,6 +109,7 @@ func (r *Router) handlePlaybackPost(w nethttp.ResponseWriter, req *nethttp.Reque
 
 	result, err := r.playback.Update(req.Context(), playback.UpdateInput{
 		EpisodeID:       payload.EpisodeID,
+		TrackID:         payload.TrackID,
 		PositionSeconds: payload.PositionSeconds,
 		DurationSeconds: payload.DurationSeconds,
 		Completed:       payload.Completed,

@@ -2,7 +2,22 @@ import type { PlaybackSpeedLabel } from "@/components/mpod/playback";
 
 type AudioSourceEpisode = {
   id: number;
+  type?: "episode" | "audiobook";
+  audiobookId?: number;
+  trackId?: number;
+  audioUrl?: string;
 };
+
+export function getAudioSourceUrl(episode: AudioSourceEpisode) {
+  if (episode.type === "audiobook" || episode.audiobookId) {
+    const bookId = episode.audiobookId ?? episode.id;
+    const trId = episode.trackId;
+    if (trId) {
+      return `${window.location.origin}/api/audiobooks/${bookId}/tracks/${trId}/audio`;
+    }
+  }
+  return `${window.location.origin}/api/episodes/${episode.id}/audio`;
+}
 
 export function playbackRateFromLabel(label: PlaybackSpeedLabel) {
   return Number(label.replace("Speed ", "").replace("x", "")) || 1;
@@ -192,7 +207,7 @@ export function primeAudioSource(
   markPrimed: () => void,
   onReady: () => void
 ) {
-  const targetSrc = `${window.location.origin}/api/episodes/${episode.id}/audio`;
+  const targetSrc = getAudioSourceUrl(episode);
   const sourceChanged = !audio.src.includes(targetSrc);
   let settled = false;
 

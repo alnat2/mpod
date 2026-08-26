@@ -611,8 +611,12 @@ func episodeFromItem(item *gofeed.Item) (episodeRecord, bool) {
 
 func firstAudioURL(item *gofeed.Item) string {
 	for _, enclosure := range item.Enclosures {
-		if strings.TrimSpace(enclosure.URL) != "" && strings.HasPrefix(strings.ToLower(enclosure.Type), "audio/") {
-			return strings.TrimSpace(enclosure.URL)
+		url := strings.TrimSpace(enclosure.URL)
+		if url != "" {
+			t := strings.ToLower(enclosure.Type)
+			if t == "" || strings.HasPrefix(t, "audio/") || strings.HasSuffix(strings.ToLower(url), ".mp3") || strings.HasSuffix(strings.ToLower(url), ".m4a") || strings.HasSuffix(strings.ToLower(url), ".aac") {
+				return url
+			}
 		}
 	}
 	return ""

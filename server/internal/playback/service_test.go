@@ -164,7 +164,7 @@ func TestSetActiveStoresAndReplacesPlaylistEpisode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetActive first failed: %v", err)
 	}
-	if first.EpisodeID != 1 || !first.LastUpdated.Equal(now) {
+	if first.EpisodeID == nil || *first.EpisodeID != 1 || !first.LastUpdated.Equal(now) {
 		t.Fatalf("unexpected first active state: %+v", first)
 	}
 
@@ -173,7 +173,7 @@ func TestSetActiveStoresAndReplacesPlaylistEpisode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetActive repeat failed: %v", err)
 	}
-	if repeated.EpisodeID != 1 || !repeated.LastUpdated.Equal(now.Add(time.Minute)) {
+	if repeated.EpisodeID == nil || *repeated.EpisodeID != 1 || !repeated.LastUpdated.Equal(now.Add(time.Minute)) {
 		t.Fatalf("expected idempotent refresh of same episode, got %+v", repeated)
 	}
 
@@ -182,7 +182,7 @@ func TestSetActiveStoresAndReplacesPlaylistEpisode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetActive replacement failed: %v", err)
 	}
-	if replacement.EpisodeID != 2 || !replacement.LastUpdated.Equal(now.Add(2*time.Minute)) {
+	if replacement.EpisodeID == nil || *replacement.EpisodeID != 2 || !replacement.LastUpdated.Equal(now.Add(2*time.Minute)) {
 		t.Fatalf("expected episode 2 replacement, got %+v", replacement)
 	}
 
@@ -190,7 +190,7 @@ func TestSetActiveStoresAndReplacesPlaylistEpisode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActive failed: %v", err)
 	}
-	if active == nil || active.EpisodeID != 2 {
+	if active == nil || active.EpisodeID == nil || *active.EpisodeID != 2 {
 		t.Fatalf("expected active episode 2, got %+v", active)
 	}
 }

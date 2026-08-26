@@ -8,7 +8,7 @@ import {
 } from "react";
 
 import type { PlaybackSpeedLabel } from "@/components/mpod/playback";
-import { api, type PlaybackUpdateResponse } from "./api";
+import { api, type ActivePlaybackState, type PlaybackUpdateResponse } from "./api";
 import {
   applyPlaybackRate,
   attemptAudioPlay,
@@ -71,7 +71,7 @@ type UsePlaybackAudioOptions = {
   ) => Promise<QueueEpisode>;
   loadQueue: () => Promise<{
     queue: QueueEpisode[];
-    activePlayback?: { episodeId: number } | null;
+    activePlayback?: ActivePlaybackState | null;
   } | null>;
 };
 

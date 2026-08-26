@@ -403,17 +403,18 @@ describe("PlaybackProvider", () => {
     }));
     vi.spyOn(api.playback, "update").mockImplementation(async (payload) => ({
       playback: {
-        episodeId: payload.episodeId,
+        episodeId: payload.episodeId ?? 1,
         positionSeconds: payload.positionSeconds,
         lastUpdated: "2026-05-22T09:00:00Z",
       },
       nextEpisodeId: null,
     }));
-    vi.spyOn(api.playback, "setActive").mockImplementation(async (episodeId) => {
-      activePlaybackEpisodeId = episodeId;
+    vi.spyOn(api.playback, "setActive").mockImplementation(async (target) => {
+      const epId = typeof target === "number" ? target : (target.episodeId ?? 1);
+      activePlaybackEpisodeId = epId;
       return {
         activePlayback: {
-          episodeId,
+          episodeId: epId,
           lastUpdated: "2026-05-22T09:05:00Z",
         },
       };
@@ -1235,7 +1236,7 @@ describe("PlaybackProvider", () => {
     const updateSpy = vi.spyOn(api.playback, "update").mockImplementation(
       async (payload) => ({
         playback: {
-          episodeId: payload.episodeId,
+          episodeId: payload.episodeId ?? 1,
           positionSeconds: payload.positionSeconds,
           lastUpdated: "2026-05-22T09:00:00Z",
         },
@@ -1386,7 +1387,7 @@ describe("PlaybackProvider", () => {
       });
     vi.mocked(api.playback.update).mockImplementation(async (payload) => ({
       playback: {
-        episodeId: payload.episodeId,
+        episodeId: payload.episodeId ?? 1,
         positionSeconds: payload.positionSeconds,
         lastUpdated: "2026-05-22T09:10:00Z",
       },
@@ -1452,7 +1453,7 @@ describe("PlaybackProvider", () => {
     }));
     vi.spyOn(api.playback, "update").mockImplementation(async (payload) => ({
       playback: {
-        episodeId: payload.episodeId,
+        episodeId: payload.episodeId ?? 1,
         positionSeconds: payload.positionSeconds,
         lastUpdated: "2026-05-22T09:00:00Z",
       },
@@ -1488,7 +1489,7 @@ describe("PlaybackProvider", () => {
     playback.set(1, null);
     vi.spyOn(api.playback, "update").mockImplementation(async (payload) => ({
       playback: {
-        episodeId: payload.episodeId,
+        episodeId: payload.episodeId ?? 1,
         positionSeconds: payload.positionSeconds,
         lastUpdated: "2026-05-22T09:00:00Z",
       },

@@ -88,14 +88,17 @@ export function usePlaybackSync({
       } = {}
     ) => {
       const episode = currentEpisodeRef.current;
-      const episodeId = options.episodeId ?? episode?.id;
-      if (episodeId == null) return null;
+      const isAudiobook = episode?.type === "audiobook" || Boolean(episode?.audiobookId);
+      const trackId = isAudiobook ? episode?.trackId : undefined;
+      const episodeId = isAudiobook ? undefined : (options.episodeId ?? episode?.id);
+      if (!isAudiobook && episodeId == null) return null;
 
       try {
         const durationSeconds =
           options.durationSeconds ?? currentEpisodeDurationRef.current;
         return await api.playback.update({
           episodeId,
+          trackId,
           positionSeconds: Math.round(
             clampPosition(nextPositionSeconds, durationSeconds)
           ),
@@ -123,9 +126,11 @@ export function usePlaybackSync({
         return false;
       }
 
+      const isAudiobook = episode.type === "audiobook" || Boolean(episode.audiobookId);
       const durationSeconds = currentEpisodeDurationRef.current;
       const body = JSON.stringify({
-        episodeId: episode.id,
+        episodeId: isAudiobook ? undefined : episode.id,
+        trackId: isAudiobook ? episode.trackId : undefined,
         positionSeconds: Math.round(
           clampPosition(nextPositionSeconds, durationSeconds)
         ),
@@ -160,12 +165,21 @@ export function usePlaybackSync({
   );
 
   const commitActivePlayback = useCallback(async (episodeId: number) => {
+    const episode = currentEpisodeRef.current;
+    const isAudiobook = episode?.type === "audiobook" || Boolean(episode?.audiobookId);
     try {
-      await api.playback.setActive(episodeId);
+      if (isAudiobook) {
+        await api.playback.setActive({
+          audiobookId: episode?.audiobookId ?? episodeId,
+          trackId: episode?.trackId,
+        });
+      } else {
+        await api.playback.setActive(episodeId);
+      }
     } catch (error) {
       console.error("Failed to update active playback", error);
     }
-  }, []);
+  }, [currentEpisodeRef]);
 
   const refreshPlaybackState = useCallback(
     async (
@@ -240,7 +254,10 @@ export function usePlaybackSync({
         return null;
       }
       setQueue(response.queue);
-      const nextActiveEpisodeId = response.activePlayback?.episodeId ?? null;
+      const nextActiveEpisodeId =
+        response.activePlayback?.episodeId ??
+        response.activePlayback?.audiobookId ??
+        null;
       setActiveEpisodeId(
         nextActiveEpisodeId !== null &&
           response.queue.some((episode) => episode.id === nextActiveEpisodeId)
@@ -249,7 +266,7 @@ export function usePlaybackSync({
       );
       return response;
     } catch (error) {
-      console.error("Failed to load queue", error);
+      console.error("Failed to load playback queue", error);
       return null;
     } finally {
       if (queueRequests.isLatestRequest(requestGeneration)) {

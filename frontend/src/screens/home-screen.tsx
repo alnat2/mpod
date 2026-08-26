@@ -9,13 +9,14 @@ import {
 
 import {
   AppShell,
+  AudiobookChaptersModal,
   EpisodeRow,
   ModalScreen,
   Player,
   PlaylistQueue,
   ShowNotes,
 } from "@/components/mpod";
-import { api, type Episode } from "@/lib/api";
+import { api, type Audiobook, type AudiobookTrack, type Episode } from "@/lib/api";
 import { usePlayback, type QueueEpisode } from "@/lib/playback-context";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
@@ -40,10 +41,10 @@ function queueSummary(
   durationForEpisode: (episode: QueueEpisode) => number | null
 ) {
   const totalSeconds = episodes.reduce(
-    (total, episode) => total + (durationForEpisode(episode) ?? 0),
+    (total, episode) => total + (durationForEpisode(episode) ?? episode.duration ?? 0),
     0
   );
-  return `${episodes.length} ${episodes.length === 1 ? "episode" : "episodes"} · ${formatDuration(totalSeconds)}`;
+  return `${episodes.length} ${episodes.length === 1 ? "item" : "items"} · ${formatDuration(totalSeconds)}`;
 }
 
 export function HomeScreen() {
@@ -69,6 +70,7 @@ export function HomeScreen() {
   } = usePlayback();
   const [modal, setModal] = useState<AddPodcastModalMode | "show-notes">(null);
   const [showNotesEpisodeId, setShowNotesEpisodeId] = useState<number | null>(null);
+  const [selectedBookForChapters, setSelectedBookForChapters] = useState<Audiobook | null>(null);
   const error: string | null = null;
   const [actionError, setActionError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -100,6 +102,7 @@ export function HomeScreen() {
     (currentVisibleQueueEpisode
       ? durationForQueueEpisode(currentVisibleQueueEpisode)
       : null) ??
+    currentEpisode?.duration ??
     0;
   const displayDurationSeconds = durationSeconds || currentEpisodeDuration;
   const progressValue = useMemo(() => {
@@ -117,19 +120,33 @@ export function HomeScreen() {
     }
   }, [draggedEpisodeId, queue]);
 
-  async function removeFromPlaylist(episode: Pick<Episode, "id" | "title">) {
+  async function removeFromPlaylist(item: QueueEpisode) {
     setActionError(null);
     const previousQueue = queueRef.current;
-    setQueue(previousQueue.filter((item) => item.id !== episode.id));
+    setQueue(previousQueue.filter((q) => q.id !== item.id));
 
     try {
-      await api.playlist.remove(episode.id);
+      if (item.type === "audiobook" || item.audiobookId) {
+        await api.audiobooks.removeFromPlaylist(item.audiobookId ?? item.id);
+      } else {
+        await api.playlist.remove(item.id);
+      }
       setReloadKey((current) => current + 1);
     } catch (caught) {
       setQueue(previousQueue);
       setActionError(getErrorMessage(caught));
     }
   }
+
+  const handleOpenChapters = async (item: QueueEpisode) => {
+    try {
+      const bookId = item.audiobookId ?? item.id;
+      const res = await api.audiobooks.get(bookId);
+      setSelectedBookForChapters(res.audiobook);
+    } catch (caught) {
+      setActionError(getErrorMessage(caught));
+    }
+  };
 
   const moveQueueItem = useCallback((
     currentQueue: QueueEpisode[],
@@ -261,10 +278,18 @@ export function HomeScreen() {
             <div className="flex min-h-0 flex-1 flex-col items-center gap-4 overflow-hidden px-0 pt-4 pb-5 md:py-6">
               <Player
                 className="shrink-0"
+                mode={currentEpisode.type === "audiobook" ? "audiobook" : "episode"}
+                hasChapters={Boolean(currentEpisode.trackCount && currentEpisode.trackCount > 1)}
                 title={currentEpisode.title}
-                podcastTitle={currentEpisode.podcastTitle}
-                artworkUrl={currentEpisode.podcastImageUrl ?? undefined}
-                artworkAlt={`${currentEpisode.podcastTitle} artwork`}
+                podcastTitle={currentEpisode.podcastTitle || currentEpisode.author || "Audiobook"}
+                artworkUrl={
+                  currentEpisode.type === "audiobook"
+                    ? currentEpisode.hasCover
+                      ? `/api/audiobooks/${currentEpisode.audiobookId ?? currentEpisode.id}/cover`
+                      : "/audiobook-fallback.png"
+                    : (currentEpisode.podcastImageUrl ?? undefined)
+                }
+                artworkAlt={`${currentEpisode.title} artwork`}
                 elapsedLabel={formatClock(positionSeconds)}
                 durationLabel={formatClock(remainingSeconds)}
                 playing={playing}
@@ -282,6 +307,7 @@ export function HomeScreen() {
                     setModal("show-notes");
                   }
                 }}
+                onChapters={() => void handleOpenChapters(currentEpisode)}
                 notesDisabled={false}
                 onSpeedChange={setSpeedLabel}
               />
@@ -293,6 +319,17 @@ export function HomeScreen() {
                 {visibleQueue.map((episode) => {
                   const canReorder = !reordering;
                   const isCurrentEpisode = currentEpisode?.id === episode.id;
+                  const isAudiobook = episode.type === "audiobook" || Boolean(episode.audiobookId);
+                  const artwork = isAudiobook
+                    ? episode.hasCover
+                      ? `/api/audiobooks/${episode.audiobookId ?? episode.id}/cover`
+                      : "/audiobook-fallback.png"
+                    : (episode.podcastImageUrl ?? undefined);
+                  const subtitle = isAudiobook
+                    ? episode.trackCount && episode.trackCount > 1
+                      ? `${episode.author || "Audiobook"} · Chapter ${episode.trackNumber ?? 1} / ${episode.trackCount}`
+                      : episode.author || "Audiobook"
+                    : undefined;
 
                   return (
                     <EpisodeRow
@@ -301,15 +338,16 @@ export function HomeScreen() {
                       current={isCurrentEpisode}
                       downloaded={episode.downloaded}
                       title={episode.title}
-                      podcastTitle={episode.podcastTitle}
+                      podcastTitle={isAudiobook ? (episode.author || "Audiobook") : episode.podcastTitle}
+                      subtitle={subtitle}
                       dateLabel={
-                        isMobile
+                        isMobile || isAudiobook
                           ? undefined
                           : formatEpisodeDate(episode.publishedAt) || undefined
                       }
-                      durationLabel={formatDuration(durationForQueueEpisode(episode))}
-                      thumbnailUrl={episode.podcastImageUrl ?? undefined}
-                      thumbnailAlt={`${episode.podcastTitle} artwork`}
+                      durationLabel={formatDuration(episode.duration ?? durationForQueueEpisode(episode))}
+                      thumbnailUrl={artwork}
+                      thumbnailAlt={`${episode.title} artwork`}
                       episodeRowId={episode.id}
                       draggable={canReorder}
                       dragging={draggedEpisodeId === episode.id}
@@ -356,7 +394,7 @@ export function HomeScreen() {
                               onClick: () => void removeFromPlaylist(episode),
                             },
                           ]}
-                      key={episode.id}
+                      key={`${episode.type ?? "ep"}-${episode.id}`}
                     />
                   );
                 })}
@@ -366,7 +404,7 @@ export function HomeScreen() {
             <EmptyState
               className="mt-4"
               title="Playlist is empty"
-              description="Add episodes from Subscriptions to start listening."
+              description="Add episodes from Subscriptions or audiobooks from Abooks to start listening."
             />
           )}
         </div>
@@ -391,6 +429,21 @@ export function HomeScreen() {
           </ShowNotes>
         </ModalScreen>
       ) : null}
+      {selectedBookForChapters && (
+        <AudiobookChaptersModal
+          audiobook={selectedBookForChapters}
+          isMobile={isMobile}
+          onClose={() => setSelectedBookForChapters(null)}
+          onSelectTrack={async (track) => {
+            await api.playback.setActive({
+              audiobookId: selectedBookForChapters.id,
+              trackId: track.id,
+            });
+            setSelectedBookForChapters(null);
+            await reloadQueue();
+          }}
+        />
+      )}
       <AddPodcastModal
         mode={modal === "show-notes" ? null : modal}
         onClose={() => setModal(null)}

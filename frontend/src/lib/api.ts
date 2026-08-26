@@ -70,13 +70,23 @@ export type PlaybackState = {
 };
 
 export type ActivePlaybackState = {
-  episodeId: number;
+  episodeId?: number | null;
+  audiobookId?: number | null;
+  trackId?: number | null;
   lastUpdated: string;
 };
 
 export type PlaybackQueueEpisode = Episode & {
+  type?: "episode" | "audiobook";
+  audiobookId?: number;
+  trackId?: number;
+  trackNumber?: number;
+  trackCount?: number;
+  author?: string;
   podcastTitle: string;
   podcastImageUrl?: string | null;
+  coverUrl?: string | null;
+  hasCover?: boolean;
   playback: PlaybackState | null;
 };
 
@@ -324,20 +334,23 @@ export const api = {
   playback: {
     queue: () =>
       apiRequest<PlaybackQueueResponse>("/api/playback/queue"),
-    setActive: (episodeId: number) =>
-      apiRequest<{ activePlayback: ActivePlaybackState }>(
+    setActive: (target: number | { episodeId?: number; audiobookId?: number; trackId?: number }) => {
+      const body = typeof target === "number" ? { episodeId: target } : target;
+      return apiRequest<{ activePlayback: ActivePlaybackState }>(
         "/api/playback/active",
         {
           method: "PUT",
-          body: { episodeId },
+          body,
         }
-      ),
+      );
+    },
     get: (episodeId: number) =>
       apiRequest<{ playback: PlaybackState | null }>(
         `/api/playback/${episodeId}`
       ),
     update: (payload: {
-      episodeId: number;
+      episodeId?: number;
+      trackId?: number;
       positionSeconds: number;
       durationSeconds?: number;
       completed?: boolean;
