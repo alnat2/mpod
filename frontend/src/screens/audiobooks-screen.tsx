@@ -124,6 +124,19 @@ export function AudiobooksScreen(_props: AudiobooksScreenProps = {}) {
 
   const totalItemsCount = audiobooks.length;
 
+  const handleOpenBookModal = async (book: Audiobook) => {
+    try {
+      if (!book.tracks || book.tracks.length === 0) {
+        const response = await api.audiobooks.get(book.id);
+        setSelectedBookForModal(response.audiobook);
+      } else {
+        setSelectedBookForModal(book);
+      }
+    } catch {
+      setSelectedBookForModal(book);
+    }
+  };
+
   return (
     <AppShell
       activeNavItem="Abooks"
@@ -222,7 +235,7 @@ export function AudiobooksScreen(_props: AudiobooksScreenProps = {}) {
                   isMobile={isMobile}
                   onOpen={() => {
                     if (isMultiFile) {
-                      setSelectedBookForModal(book);
+                      void handleOpenBookModal(book);
                     }
                   }}
                   onTogglePlaylist={() => void handleTogglePlaylist(book)}
