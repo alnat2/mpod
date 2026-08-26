@@ -1334,9 +1334,6 @@ The scanner traverses `AUDIOBOOKS_DIR` using standard recursive directory walkin
    - The audio file itself represents the **Audiobook** (with 1 chapter/track).
    - The file name (without extension) is the book title.
    - The parent directory (if not the root `AUDIOBOOKS_DIR`) represents the **Author**.
-3. **Artwork:**
-   - If a file named `cover.jpg`, `cover.png`, or `folder.jpg` exists in the book's directory, it is served as the book's artwork.
-
 ### inotify Watcher Rules
 - On Linux, the backend starts a background file watcher using `fsnotify` (`inotify`) monitoring `AUDIOBOOKS_DIR` and its subfolders.
 - File system events (`Create`, `Write`, `Remove`, `Rename`) trigger a debounced rescan with a 2–3 second delay after the last write to prevent reading files while they are still being copied.
@@ -1356,6 +1353,16 @@ The scanner traverses `AUDIOBOOKS_DIR` using standard recursive directory walkin
 - When the final chapter of an audiobook finishes:
   - The entire audiobook is marked completed and removed from the playlist.
   - Playback advances to the next item in the playlist (if one exists).
+
+### Playback Speed & Default Speed
+- The default playback speed for audiobooks is **`Speed 1x`** (1.0x normal speed), preserving natural narrative pacing (in contrast to podcasts which default to `Speed 1.3x`).
+- Supported playback speeds: `Speed 0.5x`, `Speed 0.75x`, `Speed 1x`, `Speed 1.3x`, `Speed 1.5x`, `Speed 2x`.
+- When switching between podcast episodes and audiobooks, the player respects the content type default unless explicitly changed by the user.
+
+### Artwork & Cover Art Fallback
+1. **Priority 1 (Folder Image):** `cover.jpg`, `cover.png`, `folder.jpg`, `cover.jpeg`, `folder.jpeg` in the book directory.
+2. **Priority 2 (Embedded Artwork):** ID3v2 `APIC` frame for `.mp3` files or MP4 `covr` atom for `.m4b`/`.m4a` files extracted from the first audio track.
+3. **Priority 3 (Official Fallback):** When no local image or embedded artwork is present, the app renders the official 3D audiobook fallback artwork (`fallback-audio`).
 
 ### File Safety & Deletion Policy
 - Audiobook files on disk are permanent library media assets. mpod treats the audiobook directory as strictly read-only.
@@ -1380,5 +1387,5 @@ Serves the cover artwork image if present, or 404 if none.
 Forces a manual rescan of the audiobooks directory.
 
 #### `DELETE /api/audiobooks/:id`
-Deletes the audiobook records and optionally removes files from disk.
+Removes the audiobook metadata records from the database (does not touch files on disk).
 

@@ -299,9 +299,10 @@ Responsible for:
 Responsible for:
 - scanning `AUDIOBOOKS_DIR` (default `/share/audio/abooks/`) for `.mp3`, `.m4b`, `.m4a` files
 - grouping folders and single files into Audiobooks and Tracks/Chapters
-- parsing audio duration and detecting local cover art (`cover.jpg`, `cover.png`, `folder.jpg`)
+- parsing audio duration and extracting cover art (folder files `cover.jpg`/`png`, embedded ID3v2 APIC / MP4 `covr`, or 3D fallback `fallback-audio`)
 - running a background `fsnotify` (`inotify`) watcher with debounced rescanning
 - serving audiobook chapter audio with `Range` request support
+- enforcing default playback speed of `1.0x` (`Speed 1x`) for audiobook media
 - treating audiobook storage as strictly read-only (mpod never deletes audiobook files from disk)
 
 ## Data Model View

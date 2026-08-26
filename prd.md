@@ -65,7 +65,8 @@ Needs:
 - Folder structure mapping:
   - Subfolder with multiple audio files -> Audiobook with chapters (folder name = book title, parent folder = author, audio files = chapters sorted naturally)
   - Standalone audio file -> Audiobook with 1 track (filename = book title, parent folder = author)
-- Automatic cover art extraction from `cover.jpg`, `cover.png`, or `folder.jpg`
+- Automatic cover art extraction: folder images (`cover.jpg`/`png`), embedded ID3v2 APIC (MP3), MP4 `covr` (M4B/M4A), or official 3D fallback (`fallback-audio`)
+- Default playback speed for audiobooks is `1.0x` (`Speed 1x`), preserving natural narrative pacing (podcasts default to `Speed 1.3x`)
 
 ### Playlist Presentation & Chapters
 - An audiobook is represented in the playlist queue as a single compact item displaying current chapter and progress
