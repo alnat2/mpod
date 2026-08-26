@@ -24,17 +24,23 @@ func Open(path string) (*DB, error) {
 		return nil, fmt.Errorf("create db directory: %w", err)
 	}
 
+	journalMode := os.Getenv("SQLITE_JOURNAL_MODE")
+	if journalMode == "" {
+		journalMode = "WAL"
+	}
 	dsn := url.URL{Scheme: "file", Path: absolutePath}
 	query := dsn.Query()
-	query.Set("_busy_timeout", "5000")
+	query.Set("_busy_timeout", "10000")
 	query.Set("_foreign_keys", "on")
-	query.Set("_journal_mode", "WAL")
+	query.Set("_journal_mode", journalMode)
 	dsn.RawQuery = query.Encode()
 
 	db, err := sql.Open("sqlite3", dsn.String())
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite database: %w", err)
 	}
+
+	db.SetMaxOpenConns(1)
 
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
