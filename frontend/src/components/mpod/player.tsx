@@ -49,6 +49,9 @@ type PlayerProps = {
   progressValue?: number;
   speedLabel?: PlaybackSpeedLabel;
   notesDisabled?: boolean;
+  mode?: "episode" | "audiobook";
+  hasChapters?: boolean;
+  onChapters?: () => void;
   onBack?: () => void;
   onForward?: () => void;
   onPlay?: () => void;
@@ -239,6 +242,9 @@ export function Player({
   progressValue = 0,
   speedLabel = defaultPlaybackSpeed,
   notesDisabled = true,
+  mode = "episode",
+  hasChapters = false,
+  onChapters,
   onBack,
   onForward,
   onPlay,
@@ -246,6 +252,10 @@ export function Player({
   onNotes,
   onSpeedChange,
 }: PlayerProps) {
+  const isAudiobook = mode === "audiobook";
+  const showChaptersButton = isAudiobook && Boolean(hasChapters);
+  const showNotesButton = !isAudiobook;
+
   const isSpeedControlled = speedLabel !== undefined && onSpeedChange !== undefined;
   const [uncontrolledSpeedLabel, setUncontrolledSpeedLabel] =
     useState<PlaybackSpeedLabel>(speedLabel ?? defaultPlaybackSpeed);
@@ -369,6 +379,12 @@ export function Player({
                 </button>
               }
             />
+            <LabeledSeekControl
+              label="Go back 15 seconds"
+              caption="-15"
+              align="start"
+              onClick={onBack}
+            />
             <TransportButton
               label={playing ? "Pause" : "Play"}
               icon={playing ? PauseIcon : PlayIcon}
@@ -378,12 +394,6 @@ export function Player({
               primary
             />
             <LabeledSeekControl
-              label="Go back 15 seconds"
-              caption="-15"
-              align="center"
-              onClick={onBack}
-            />
-            <LabeledSeekControl
               label="Go forward 30 seconds"
               caption="+30"
               align="end"
@@ -391,30 +401,56 @@ export function Player({
               onClick={onForward}
             />
           </div>
+
           <div
             className="hidden h-14 w-full items-end justify-center gap-5 md:flex"
             data-player-controls="desktop"
           >
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  aria-label="Show notes"
-                  className="size-14 flex-col justify-end gap-0.5 rounded-full p-0 text-muted-foreground shadow-none"
-                  variant="ghost"
-                  disabled={notesDisabled}
-                  onClick={onNotes}
-                >
-                  <HugeiconsIcon
-                    icon={NoteIcon}
-                    className="size-5"
-                    aria-hidden="true"
-                  />
-                  <span className="text-xs leading-4 font-semibold">Notes</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Show notes</TooltipContent>
-            </Tooltip>
+            {showChaptersButton ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    aria-label="Show chapters"
+                    className="size-14 flex-col justify-end gap-0.5 rounded-full p-0 text-muted-foreground shadow-none"
+                    variant="ghost"
+                    onClick={onChapters}
+                  >
+                    <HugeiconsIcon
+                      icon={NoteIcon}
+                      className="size-5 text-primary"
+                      aria-hidden="true"
+                    />
+                    <span className="text-xs leading-4 font-semibold text-foreground">Chapters</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Show chapters</TooltipContent>
+              </Tooltip>
+            ) : showNotesButton ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    aria-label="Show notes"
+                    className="size-14 flex-col justify-end gap-0.5 rounded-full p-0 text-muted-foreground shadow-none"
+                    variant="ghost"
+                    disabled={notesDisabled}
+                    onClick={onNotes}
+                  >
+                    <HugeiconsIcon
+                      icon={NoteIcon}
+                      className="size-5"
+                      aria-hidden="true"
+                    />
+                    <span className="text-xs leading-4 font-semibold">Notes</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Show notes</TooltipContent>
+              </Tooltip>
+            ) : (
+              <div className="size-14" aria-hidden="true" />
+            )}
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -447,6 +483,7 @@ export function Player({
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
+
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -474,6 +511,7 @@ export function Player({
               </TooltipTrigger>
               <TooltipContent>{playing ? "Pause" : "Play"}</TooltipContent>
             </Tooltip>
+
             <LabeledSeekControl
               label="Go back 15 seconds"
               caption="-15"
@@ -489,21 +527,39 @@ export function Player({
             />
           </div>
         </div>
-        <button
-          type="button"
-          aria-label="Show notes"
-          disabled={notesDisabled}
-          data-player-action="mobile-notes"
-          className="inline-flex h-5 items-center justify-center gap-1 self-center rounded-sm text-sm leading-5 font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 md:hidden"
-          onClick={onNotes}
-        >
-          <HugeiconsIcon
-            icon={NoteIcon}
-            className="size-5 text-primary"
-            aria-hidden="true"
-          />
-          Show notes
-        </button>
+
+        {showChaptersButton ? (
+          <button
+            type="button"
+            aria-label="Show chapters"
+            data-player-action="mobile-chapters"
+            className="inline-flex h-5 items-center justify-center gap-1 self-center rounded-sm text-sm leading-5 font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 md:hidden cursor-pointer"
+            onClick={onChapters}
+          >
+            <HugeiconsIcon
+              icon={NoteIcon}
+              className="size-5 text-primary"
+              aria-hidden="true"
+            />
+            Show chapters
+          </button>
+        ) : showNotesButton ? (
+          <button
+            type="button"
+            aria-label="Show notes"
+            disabled={notesDisabled}
+            data-player-action="mobile-notes"
+            className="inline-flex h-5 items-center justify-center gap-1 self-center rounded-sm text-sm leading-5 font-medium text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 md:hidden cursor-pointer"
+            onClick={onNotes}
+          >
+            <HugeiconsIcon
+              icon={NoteIcon}
+              className="size-5 text-primary"
+              aria-hidden="true"
+            />
+            Show notes
+          </button>
+        ) : null}
       </div>
     </section>
   );

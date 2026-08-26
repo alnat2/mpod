@@ -205,4 +205,55 @@ describe("Player", () => {
     await user.keyboard("{Home}");
     expect(onProgressSeek).toHaveBeenLastCalledWith(0);
   });
+
+  it("renders Chapters button for multi-file audiobooks and triggers onChapters", async () => {
+    const user = userEvent.setup();
+    const onChapters = vi.fn();
+
+    const { container } = render(
+      <TooltipProvider>
+        <Player
+          title="Dune"
+          podcastTitle="Frank Herbert"
+          elapsedLabel="10:00"
+          durationLabel="40:00"
+          mode="audiobook"
+          hasChapters={true}
+          onChapters={onChapters}
+        />
+      </TooltipProvider>
+    );
+
+    const desktopControls = container.querySelector('[data-player-controls="desktop"]');
+    const desktop = within(desktopControls! as HTMLElement);
+    const chaptersBtn = desktop.getByRole("button", { name: "Show chapters" });
+    expect(chaptersBtn).toBeInTheDocument();
+    expect(desktop.getByText("Chapters")).toBeInTheDocument();
+
+    await user.click(chaptersBtn);
+    expect(onChapters).toHaveBeenCalledOnce();
+
+    const mobileChapters = container.querySelector('[data-player-action="mobile-chapters"]');
+    expect(mobileChapters).toBeInTheDocument();
+  });
+
+  it("hides chapters and notes buttons for single-track audiobooks", () => {
+    const { container } = render(
+      <TooltipProvider>
+        <Player
+          title="Short Story"
+          podcastTitle="Author"
+          elapsedLabel="05:00"
+          durationLabel="25:00"
+          mode="audiobook"
+          hasChapters={false}
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.queryByRole("button", { name: "Show chapters" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show notes" })).not.toBeInTheDocument();
+    expect(container.querySelector('[data-player-action="mobile-chapters"]')).toBeNull();
+    expect(container.querySelector('[data-player-action="mobile-notes"]')).toBeNull();
+  });
 });
