@@ -30,7 +30,7 @@ func Open(path string) (*DB, error) {
 	}
 	dsn := url.URL{Scheme: "file", Path: absolutePath}
 	query := dsn.Query()
-	query.Set("_busy_timeout", "10000")
+	query.Set("_busy_timeout", "5000")
 	query.Set("_foreign_keys", "on")
 	query.Set("_journal_mode", journalMode)
 	dsn.RawQuery = query.Encode()

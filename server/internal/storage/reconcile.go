@@ -12,26 +12,42 @@ func ReconcileDownloads(db *sql.DB, logger *log.Logger) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+
+	type missingDownload struct {
+		id   int64
+		path string
+	}
+	var missing []missingDownload
 
 	for rows.Next() {
 		var id int64
 		var path string
 		if err := rows.Scan(&id, &path); err != nil {
+			_ = rows.Close()
 			return err
 		}
 
 		if _, err := os.Stat(path); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
-				if _, clearErr := db.Exec(`UPDATE episodes SET downloaded_path = NULL WHERE id = ?`, id); clearErr != nil {
-					return clearErr
-				}
-				logger.Printf("reconciled missing download for episode %d: %s", id, path)
+				missing = append(missing, missingDownload{id: id, path: path})
 				continue
 			}
+			_ = rows.Close()
 			return err
 		}
 	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	_ = rows.Close()
 
-	return rows.Err()
+	for _, item := range missing {
+		if _, clearErr := db.Exec(`UPDATE episodes SET downloaded_path = NULL WHERE id = ?`, item.id); clearErr != nil {
+			return clearErr
+		}
+		logger.Printf("reconciled missing download for episode %d: %s", item.id, item.path)
+	}
+
+	return nil
 }
