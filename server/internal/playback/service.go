@@ -83,14 +83,35 @@ func (s *Service) Get(ctx context.Context, episodeID int64) (*State, error) {
 		FROM playback
 		WHERE episode_id = ?
 	`, episodeID).Scan(&state.EpisodeID, &state.PositionSeconds, &state.LastUpdated)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
+	if err == nil {
+		state.LastUpdated = state.LastUpdated.UTC()
+		return &state, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("load playback state: %w", err)
 	}
-	state.LastUpdated = state.LastUpdated.UTC()
-	return &state, nil
+
+	var abID, pos int64
+	var lastUpdated time.Time
+	abErr := s.db.QueryRowContext(ctx, `
+		SELECT audiobook_id, position_seconds, last_updated
+		FROM audiobook_playback
+		WHERE audiobook_id = ?
+		ORDER BY last_updated DESC
+		LIMIT 1
+	`, episodeID).Scan(&abID, &pos, &lastUpdated)
+	if abErr == nil {
+		return &State{
+			EpisodeID:       episodeID,
+			PositionSeconds: pos,
+			LastUpdated:     lastUpdated.UTC(),
+		}, nil
+	}
+	if !errors.Is(abErr, sql.ErrNoRows) {
+		return nil, fmt.Errorf("load audiobook playback state: %w", abErr)
+	}
+
+	return nil, nil
 }
 
 func (s *Service) GetActive(ctx context.Context) (*ActiveState, error) {
@@ -494,6 +515,20 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 		return UpdateResult{}, fmt.Errorf("check episode exists: %w", err)
 	}
 	if episodeExists == 0 {
+		var abExists int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audiobooks WHERE id = ?`, input.EpisodeID).Scan(&abExists); err == nil && abExists > 0 {
+			var trackID int64
+			err := s.db.QueryRowContext(ctx, `
+				SELECT COALESCE(
+					(SELECT ap.track_id FROM audiobook_playback ap WHERE ap.audiobook_id = ? ORDER BY ap.last_updated DESC LIMIT 1),
+					(SELECT t.id FROM audiobook_tracks t WHERE t.audiobook_id = ? ORDER BY t.track_number ASC LIMIT 1)
+				)
+			`, input.EpisodeID, input.EpisodeID).Scan(&trackID)
+			if err == nil && trackID > 0 {
+				input.TrackID = &trackID
+				return s.Update(ctx, input)
+			}
+		}
 		return UpdateResult{}, ErrEpisodeNotFound
 	}
 

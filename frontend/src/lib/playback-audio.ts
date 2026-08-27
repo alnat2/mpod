@@ -9,6 +9,9 @@ type AudioSourceEpisode = {
 };
 
 export function getAudioSourceUrl(episode: AudioSourceEpisode) {
+  if (episode.audioUrl && episode.audioUrl.startsWith("/api/")) {
+    return `${window.location.origin}${episode.audioUrl}`;
+  }
   if (episode.type === "audiobook" || episode.audiobookId) {
     const bookId = episode.audiobookId ?? episode.id;
     const trId = episode.trackId;

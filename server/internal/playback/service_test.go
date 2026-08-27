@@ -695,6 +695,42 @@ func TestUpdateCompletionKeepsEpisodeInPlaylistWhenDownloadDeletionFails(t *test
 	}
 }
 
+func TestAudiobookPlaybackGetAndUpdate(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path, total_duration) VALUES (1, 'Book 1', 'Author 1', 'Book 1', 3600)`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'Track 1', 'Book 1/1.mp3', '/path/1.mp3', 1800)`)
+	mustExec(t, db.SQL, `INSERT INTO playlist (position, audiobook_id) VALUES (1, 1)`)
+
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+
+	// 1. Update using EpisodeID = 1 (audiobook id)
+	result, err := service.Update(context.Background(), UpdateInput{
+		EpisodeID:       1,
+		PositionSeconds: 250,
+		DurationSeconds: 1800,
+	})
+	if err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+	if result.Playback.PositionSeconds != 250 {
+		t.Fatalf("expected position 250, got %d", result.Playback.PositionSeconds)
+	}
+
+	// 2. Get using EpisodeID = 1
+	state, err := service.Get(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if state == nil {
+		t.Fatalf("expected non-nil state")
+	}
+	if state.PositionSeconds != 250 {
+		t.Fatalf("expected position 250, got %d", state.PositionSeconds)
+	}
+}
+
 func newTestDB(t *testing.T) *storage.DB {
 	t.Helper()
 

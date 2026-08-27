@@ -23,6 +23,7 @@ type UsePlaybackSyncOptions = {
   currentEpisodeRef: RefObject<QueueEpisode | null>;
   currentEpisodeDurationRef: RefObject<number>;
   playingRef: RefObject<boolean>;
+  queueRef?: RefObject<QueueEpisode[]>;
   playing: boolean;
   currentEpisodeId: number | undefined;
   setQueue: Dispatch<SetStateAction<QueueEpisode[]>>;
@@ -56,6 +57,7 @@ export function usePlaybackSync({
   currentEpisodeRef,
   currentEpisodeDurationRef,
   playingRef,
+  queueRef,
   playing,
   currentEpisodeId,
   setQueue,
@@ -164,22 +166,27 @@ export function usePlaybackSync({
     [audioRef, commitPlayback, commitPlaybackBeacon, currentEpisodeRef]
   );
 
-  const commitActivePlayback = useCallback(async (episodeId: number) => {
-    const episode = currentEpisodeRef.current;
-    const isAudiobook = episode?.type === "audiobook" || Boolean(episode?.audiobookId);
-    try {
-      if (isAudiobook) {
-        await api.playback.setActive({
-          audiobookId: episode?.audiobookId ?? episodeId,
-          trackId: episode?.trackId,
-        });
-      } else {
-        await api.playback.setActive(episodeId);
+  const commitActivePlayback = useCallback(
+    async (episodeId: number) => {
+      const queued = queueRef?.current?.find((item) => item.id === episodeId);
+      const episode = queued ?? currentEpisodeRef.current;
+      const isAudiobook =
+        episode?.type === "audiobook" || Boolean(episode?.audiobookId);
+      try {
+        if (isAudiobook) {
+          await api.playback.setActive({
+            audiobookId: episode?.audiobookId ?? episodeId,
+            trackId: episode?.trackId,
+          });
+        } else {
+          await api.playback.setActive(episodeId);
+        }
+      } catch (error) {
+        console.error("Failed to update active playback", error);
       }
-    } catch (error) {
-      console.error("Failed to update active playback", error);
-    }
-  }, [currentEpisodeRef]);
+    },
+    [currentEpisodeRef, queueRef]
+  );
 
   const refreshPlaybackState = useCallback(
     async (

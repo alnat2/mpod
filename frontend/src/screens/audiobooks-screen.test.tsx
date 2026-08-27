@@ -143,4 +143,92 @@ describe("AudiobooksScreen", () => {
     const duneRow = screen.getByText("Dune").closest('[data-slot="fm-item"]');
     expect(duneRow?.querySelector('[data-icon-name="hugeicons/folder-audio"]')).toBeInTheDocument();
   });
+
+  it("sorts all folders first in alphabetical order followed by audio files in alphabetical order", async () => {
+    const mixedAudiobooks: Audiobook[] = [
+      {
+        id: 1,
+        title: "Zebra Story.mp3",
+        author: "",
+        relPath: "Zebra Story.mp3",
+        hasCover: false,
+        totalDuration: 1000,
+        trackCount: 1,
+        listenedCount: 0,
+        isListened: false,
+        positionSeconds: 0,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: 2,
+        title: "Apple Story.mp3",
+        author: "",
+        relPath: "Apple Story.mp3",
+        hasCover: false,
+        totalDuration: 1000,
+        trackCount: 1,
+        listenedCount: 0,
+        isListened: false,
+        positionSeconds: 0,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: 3,
+        title: "Beta Folder Book",
+        author: "",
+        relPath: "Beta Folder Book",
+        hasCover: false,
+        totalDuration: 5000,
+        trackCount: 2,
+        listenedCount: 0,
+        isListened: false,
+        positionSeconds: 0,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: 4,
+        title: "Sub Book",
+        author: "Alpha Category",
+        relPath: "Alpha Category/Sub Book",
+        hasCover: false,
+        totalDuration: 5000,
+        trackCount: 2,
+        listenedCount: 0,
+        isListened: false,
+        positionSeconds: 0,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      },
+    ];
+
+    vi.spyOn(api.audiobooks, "list").mockResolvedValue({ audiobooks: mixedAudiobooks });
+
+    render(
+      <MemoryRouter>
+        <AudiobooksScreen />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Alpha Category")).toBeInTheDocument();
+      expect(screen.getByText("Beta Folder Book")).toBeInTheDocument();
+      expect(screen.getByText("Apple Story.mp3")).toBeInTheDocument();
+      expect(screen.getByText("Zebra Story.mp3")).toBeInTheDocument();
+    });
+
+    const items = document.querySelectorAll('[data-slot="fm-item"]');
+    const titles = Array.from(items).map((el) => el.querySelector("span")?.textContent?.trim());
+
+    // Folders come first: Alpha Category (general folder), Beta Folder Book (audiobook folder)
+    // Audio files come second: Apple Story.mp3, Zebra Story.mp3
+    expect(titles).toEqual([
+      "Alpha Category",
+      "Beta Folder Book",
+      "Apple Story.mp3",
+      "Zebra Story.mp3",
+    ]);
+  });
 });

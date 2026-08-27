@@ -15,6 +15,7 @@ import {
   clampPosition,
   describeAudioError,
   describeMediaError,
+  getAudioSourceUrl,
   getPositiveDuration,
   primeAudioSource,
   readAudioDuration,
@@ -483,7 +484,7 @@ export function usePlaybackAudio({
       return;
     }
 
-    const targetSrc = `${window.location.origin}/api/episodes/${currentEpisode.id}/audio`;
+    const targetSrc = getAudioSourceUrl(currentEpisode);
     const currentSrc = audio.src;
     const shouldPrimeSource =
       pendingEpisodeId !== null || playing || sourcePrimedRef.current;

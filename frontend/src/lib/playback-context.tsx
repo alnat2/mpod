@@ -109,6 +109,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     currentEpisodeRef,
     currentEpisodeDurationRef,
     playingRef,
+    queueRef,
     playing,
     currentEpisodeId,
     setQueue,

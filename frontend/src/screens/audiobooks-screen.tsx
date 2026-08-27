@@ -108,11 +108,12 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
     }
   };
 
-  // Group items by currentPath level
+  // Group items by currentPath level: folders first (alphabetical), then files (alphabetical)
   const explorerItems = useMemo(() => {
     const prefix = currentPath.length > 0 ? currentPath.join("/") + "/" : "";
     const folderSet = new Set<string>();
-    const directBooks: Audiobook[] = [];
+    const directFolderBooks: Audiobook[] = [];
+    const directFileBooks: Audiobook[] = [];
 
     for (const book of audiobooks) {
       const path = book.relPath || "";
@@ -121,7 +122,12 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
           const topFolder = path.split("/")[0];
           if (topFolder) folderSet.add(topFolder);
         } else {
-          directBooks.push(book);
+          const isFile = isAudioFile(book.relPath) && book.trackCount <= 1;
+          if (isFile) {
+            directFileBooks.push(book);
+          } else {
+            directFolderBooks.push(book);
+          }
         }
       } else {
         if (path.startsWith(prefix)) {
@@ -130,20 +136,49 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
             const subFolder = rest.split("/")[0];
             if (subFolder) folderSet.add(subFolder);
           } else {
-            directBooks.push(book);
+            const isFile = isAudioFile(book.relPath) && book.trackCount <= 1;
+            if (isFile) {
+              directFileBooks.push(book);
+            } else {
+              directFolderBooks.push(book);
+            }
           }
         }
       }
     }
 
-    const folders = Array.from(folderSet).sort().map((folderName) => ({
-      type: "folder" as const,
+    const generalFolders = Array.from(folderSet).map((folderName) => ({
+      kind: "folder" as const,
       name: folderName,
+      title: folderName,
     }));
 
+    const audiobookFolders = directFolderBooks.map((book) => ({
+      kind: "audiobook" as const,
+      name: book.title,
+      title: book.title,
+      book,
+    }));
+
+    const sortedFolders = [...generalFolders, ...audiobookFolders].sort((a, b) =>
+      a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" })
+    );
+
+    const sortedFiles = directFileBooks
+      .map((book) => ({
+        kind: "track" as const,
+        name: book.title,
+        title: book.title,
+        book,
+      }))
+      .sort((a, b) =>
+        a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" })
+      );
+
     return {
-      folders,
-      books: directBooks,
+      folders: sortedFolders,
+      files: sortedFiles,
+      isEmpty: sortedFolders.length === 0 && sortedFiles.length === 0,
     };
   }, [audiobooks, currentPath]);
 
@@ -228,7 +263,7 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
           <div className="py-12 text-center text-sm text-muted-foreground" role="status">
             Scanning audiobooks...
           </div>
-        ) : explorerItems.folders.length === 0 && explorerItems.books.length === 0 ? (
+        ) : explorerItems.isEmpty ? (
           <div className="rounded-xl border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
             No audiobooks found in this folder.
           </div>
@@ -237,34 +272,47 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
             data-slot="filemanager"
             className={isMobile ? "flex flex-col gap-2.5" : "flex flex-col border-t border-border"}
           >
-            {/* Folders */}
-            {explorerItems.folders.map((folder) => (
-              <FileManagerItem
-                key={`folder-${folder.name}`}
-                type="folder"
-                title={folder.name}
-                isMobile={isMobile}
-                onOpen={() => setCurrentPath([...currentPath, folder.name])}
-              />
-            ))}
+            {/* 1. All Folders (general + audiobook folders) sorted alphabetically */}
+            {explorerItems.folders.map((item) => {
+              if (item.kind === "folder") {
+                return (
+                  <FileManagerItem
+                    key={`folder-${item.name}`}
+                    type="folder"
+                    title={item.name}
+                    isMobile={isMobile}
+                    onOpen={() => setCurrentPath([...currentPath, item.name])}
+                  />
+                );
+              }
 
-            {/* Books / Tracks */}
-            {explorerItems.books.map((book) => {
-              const isSingleAudioFile = isAudioFile(book.relPath) && book.trackCount <= 1;
-              const itemType = isSingleAudioFile ? "track" : "audiobook";
               return (
                 <FileManagerItem
-                  key={`book-${book.id}`}
-                  type={itemType}
-                  title={book.title}
-                  duration={book.totalDuration}
-                  inPlaylist={book.inPlaylist ?? book.isInPlaylist ?? false}
+                  key={`book-${item.book.id}`}
+                  type="audiobook"
+                  title={item.book.title}
+                  duration={item.book.totalDuration}
+                  inPlaylist={item.book.inPlaylist ?? item.book.isInPlaylist ?? false}
                   isMobile={isMobile}
-                  onOpen={() => void handleOpenBookModal(book)}
-                  onTogglePlaylist={() => void handleTogglePlaylist(book)}
+                  onOpen={() => void handleOpenBookModal(item.book)}
+                  onTogglePlaylist={() => void handleTogglePlaylist(item.book)}
                 />
               );
             })}
+
+            {/* 2. All Audio Files sorted alphabetically */}
+            {explorerItems.files.map((item) => (
+              <FileManagerItem
+                key={`file-${item.book.id}`}
+                type="track"
+                title={item.book.title}
+                duration={item.book.totalDuration}
+                inPlaylist={item.book.inPlaylist ?? item.book.isInPlaylist ?? false}
+                isMobile={isMobile}
+                onOpen={() => void handleOpenBookModal(item.book)}
+                onTogglePlaylist={() => void handleTogglePlaylist(item.book)}
+              />
+            ))}
           </div>
         )}
       </div>

@@ -1548,4 +1548,114 @@ describe("PlaybackProvider", () => {
 
     expect(dispatchHarnessProfilerCommits).toBe(commitsBeforeTimeUpdate);
   });
+
+  it("plays audiobook queue items using audiobook audio source url and saves track playback", async () => {
+    const user = userEvent.setup();
+    const updatePlaybackSpy = vi.spyOn(api.playback, "update").mockResolvedValue({
+      playback: {
+        episodeId: 100,
+        positionSeconds: 150,
+        lastUpdated: "2026-05-22T09:00:00Z",
+      },
+      nextEpisodeId: null,
+    });
+    const setActiveSpy = vi.spyOn(api.playback, "setActive").mockResolvedValue({
+      activePlayback: {
+        audiobookId: 100,
+        trackId: 501,
+        lastUpdated: "2026-05-22T09:00:00Z",
+      },
+    });
+
+    vi.spyOn(api.playback, "queue").mockResolvedValue({
+      queue: [
+        {
+          id: 1,
+          podcastId: 11,
+          title: "First queued episode",
+          description: "First notes",
+          audioUrl: "https://example.com/1.mp3",
+          duration: 1800,
+          downloaded: false,
+          isListened: false,
+          publishedAt: "2026-05-10T10:00:00Z",
+          podcastTitle: "First Podcast",
+          playback: {
+            episodeId: 1,
+            positionSeconds: 15,
+            lastUpdated: "2026-05-22T08:00:00Z",
+          },
+        },
+        {
+          id: 100,
+          podcastId: 0,
+          type: "audiobook",
+          audiobookId: 100,
+          trackId: 501,
+          title: "Sample Audiobook",
+          description: "",
+          podcastTitle: "Sample Author",
+          author: "Sample Author",
+          audioUrl: "/api/audiobooks/100/tracks/501/audio",
+          duration: 3600,
+          downloaded: true,
+          isListened: false,
+          publishedAt: null,
+          playback: {
+            episodeId: 100,
+            positionSeconds: 120,
+            lastUpdated: "2026-05-22T08:00:00Z",
+          },
+        },
+      ],
+      activePlayback: {
+        episodeId: 1,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    });
+
+    function AudiobookHarness() {
+      const { currentEpisode, playEpisode, playToggle } = usePlayback();
+      return (
+        <div>
+          <div data-testid="current-title">{currentEpisode?.title}</div>
+          <button type="button" onClick={() => playEpisode(100)}>
+            Play audiobook
+          </button>
+          <button type="button" onClick={playToggle}>
+            Pause
+          </button>
+        </div>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <AudiobookHarness />
+      </PlaybackProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent("First queued episode");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Play audiobook" }));
+
+    const audio = FakeAudio.first;
+    expect(audio.src).toContain("/api/audiobooks/100/tracks/501/audio");
+    expect(setActiveSpy).toHaveBeenCalledWith({
+      audiobookId: 100,
+      trackId: 501,
+    });
+
+    audio.currentTime = 150;
+    await user.click(screen.getByRole("button", { name: "Pause" }));
+
+    expect(updatePlaybackSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trackId: 501,
+        positionSeconds: 150,
+      })
+    );
+  });
 });
