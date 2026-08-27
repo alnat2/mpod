@@ -92,8 +92,10 @@ export function usePlaybackSync({
       const episode = currentEpisodeRef.current;
       const isAudiobook = episode?.type === "audiobook" || Boolean(episode?.audiobookId);
       const trackId = isAudiobook ? episode?.trackId : undefined;
-      const episodeId = isAudiobook ? undefined : (options.episodeId ?? episode?.id);
-      if (!isAudiobook && episodeId == null) return null;
+      const episodeId = isAudiobook
+        ? (episode?.audiobookId ?? episode?.id)
+        : (options.episodeId ?? episode?.id);
+      if (episodeId == null && trackId == null) return null;
 
       try {
         const durationSeconds =
@@ -131,7 +133,7 @@ export function usePlaybackSync({
       const isAudiobook = episode.type === "audiobook" || Boolean(episode.audiobookId);
       const durationSeconds = currentEpisodeDurationRef.current;
       const body = JSON.stringify({
-        episodeId: isAudiobook ? undefined : episode.id,
+        episodeId: isAudiobook ? (episode.audiobookId ?? episode.id) : episode.id,
         trackId: isAudiobook ? episode.trackId : undefined,
         positionSeconds: Math.round(
           clampPosition(nextPositionSeconds, durationSeconds)

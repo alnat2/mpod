@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { AudiobookChaptersModal } from "@/components/mpod/audiobook-chapters-modal";
 import { api, type Audiobook } from "@/lib/api";
+import { usePlayback, usePlaybackDispatch } from "@/lib/playback-context";
 import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
 import { ErrorBanner, ScreenBannerStack } from "./screen-states";
@@ -44,6 +45,8 @@ function isAudioFile(relPath?: string | null): boolean {
 export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
   void props;
   const isMobile = useIsMobileViewport();
+  const { currentEpisode, playing, positionSeconds } = usePlayback();
+  const { playEpisode, playToggle, reloadQueue } = usePlaybackDispatch();
   const [audiobooks, setAudiobooks] = useState<Audiobook[]>([]);
   const [loading, setLoading] = useState(true);
   const [rescanning, setRescanning] = useState(false);
@@ -222,9 +225,9 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
         {error && <ErrorBanner>{error}</ErrorBanner>}
       </ScreenBannerStack>
 
-      <div className="flex flex-col gap-4">
+      <div className="mpod-scroll flex h-full min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden pb-20 md:pb-6">
         {/* Breadcrumb Navigation */}
-        <Breadcrumb className="py-2">
+        <Breadcrumb className="py-2 shrink-0">
           <BreadcrumbList>
             <BreadcrumbItem>
               {currentPath.length === 0 ? (
@@ -321,10 +324,28 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
       {selectedBookForModal && (
         <AudiobookChaptersModal
           audiobook={selectedBookForModal}
+          activeTrackId={
+            (currentEpisode?.type === "audiobook" || Boolean(currentEpisode?.audiobookId)) &&
+            (currentEpisode?.audiobookId ?? currentEpisode?.id) === selectedBookForModal.id
+              ? currentEpisode?.trackId
+              : undefined
+          }
+          isPlaying={playing}
+          activePositionSeconds={positionSeconds}
+          onTogglePlayPause={playToggle}
           isMobile={isMobile}
           onClose={() => setSelectedBookForModal(null)}
-          onSelectTrack={() => {
+          onSelectTrack={async (track) => {
+            if (!selectedBookForModal.inPlaylist) {
+              await api.audiobooks.addToPlaylist(selectedBookForModal.id);
+            }
+            await api.playback.setActive({
+              audiobookId: selectedBookForModal.id,
+              trackId: track.id,
+            });
             setSelectedBookForModal(null);
+            await reloadQueue();
+            playEpisode(selectedBookForModal.id);
           }}
         />
       )}

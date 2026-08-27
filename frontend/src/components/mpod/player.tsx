@@ -406,83 +406,12 @@ export function Player({
             className="hidden h-14 w-full items-end justify-center gap-5 md:flex"
             data-player-controls="desktop"
           >
-            {showChaptersButton ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    aria-label="Show chapters"
-                    className="size-14 flex-col justify-end gap-0.5 rounded-full p-0 text-muted-foreground shadow-none"
-                    variant="ghost"
-                    onClick={onChapters}
-                  >
-                    <HugeiconsIcon
-                      icon={NoteIcon}
-                      className="size-5 text-primary"
-                      aria-hidden="true"
-                    />
-                    <span className="text-xs leading-4 font-semibold text-foreground">Chapters</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Show chapters</TooltipContent>
-              </Tooltip>
-            ) : showNotesButton ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    aria-label="Show notes"
-                    className="size-14 flex-col justify-end gap-0.5 rounded-full p-0 text-muted-foreground shadow-none"
-                    variant="ghost"
-                    disabled={notesDisabled}
-                    onClick={onNotes}
-                  >
-                    <HugeiconsIcon
-                      icon={NoteIcon}
-                      className="size-5"
-                      aria-hidden="true"
-                    />
-                    <span className="text-xs leading-4 font-semibold">Notes</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Show notes</TooltipContent>
-              </Tooltip>
-            ) : (
-              <div className="size-14" aria-hidden="true" />
-            )}
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  aria-label={activeSpeedLabel}
-                  className="size-14 flex-col justify-end gap-0.5 rounded-full p-0 text-muted-foreground shadow-none"
-                  variant="ghost"
-                >
-                  <PlayerAssetIcon
-                    src={playerSpeedIcon}
-                    name="speed"
-                    className="h-5 w-[25px]"
-                    assetClassName="inset-[-3.75%_-3%]"
-                  />
-                  <span className="text-xs leading-4 font-semibold">
-                    {compactSpeedLabel(activeSpeedLabel)}
-                  </span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="center">
-                <DropdownMenuRadioGroup
-                  value={activeSpeedLabel}
-                  onValueChange={handleSpeedChange}
-                >
-                  {playbackSpeedOptions.map((option) => (
-                    <DropdownMenuRadioItem value={option} key={option}>
-                      {option}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <LabeledSeekControl
+              label="Go back 15 seconds"
+              caption="-15"
+              align="center"
+              onClick={onBack}
+            />
 
             <Tooltip>
               <TooltipTrigger asChild>
@@ -513,18 +442,62 @@ export function Player({
             </Tooltip>
 
             <LabeledSeekControl
-              label="Go back 15 seconds"
-              caption="-15"
-              align="center"
-              onClick={onBack}
-            />
-            <LabeledSeekControl
               label="Go forward 30 seconds"
               caption="+30"
               align="center"
               mirrored
               onClick={onForward}
             />
+          </div>
+
+          <div
+            className="hidden w-full items-center justify-center gap-5 text-sm font-medium leading-5 text-foreground md:flex"
+            data-player-secondary="desktop"
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={activeSpeedLabel}
+                  className="cursor-pointer text-foreground underline decoration-dotted decoration-[10%] underline-offset-4 outline-none transition-colors hover:text-foreground/80 focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {activeSpeedLabel}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center">
+                <DropdownMenuRadioGroup
+                  value={activeSpeedLabel}
+                  onValueChange={handleSpeedChange}
+                >
+                  {playbackSpeedOptions.map((option) => (
+                    <DropdownMenuRadioItem value={option} key={option}>
+                      {option}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {showChaptersButton ? (
+              <button
+                type="button"
+                aria-label="Show chapters"
+                className="cursor-pointer text-foreground underline decoration-dotted decoration-[10%] underline-offset-4 outline-none transition-colors hover:text-foreground/80 focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={onChapters}
+              >
+                Show chapters
+              </button>
+            ) : showNotesButton ? (
+              <button
+                type="button"
+                aria-label="Show notes"
+                disabled={notesDisabled}
+                className="cursor-pointer text-foreground underline decoration-dotted decoration-[10%] underline-offset-4 outline-none transition-colors hover:text-foreground/80 focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+                onClick={onNotes}
+              >
+                Show notes
+              </button>
+            ) : null}
           </div>
         </div>
 

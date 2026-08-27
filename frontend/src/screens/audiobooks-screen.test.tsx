@@ -4,6 +4,19 @@ import { MemoryRouter } from "react-router-dom";
 import { AudiobooksScreen } from "./audiobooks-screen";
 import { api, type Audiobook } from "@/lib/api";
 
+vi.mock("@/lib/playback-context", () => ({
+  usePlayback: () => ({
+    currentEpisode: null,
+    playing: false,
+    positionSeconds: 0,
+  }),
+  usePlaybackDispatch: () => ({
+    playEpisode: vi.fn(),
+    playToggle: vi.fn(),
+    reloadQueue: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 const mockAudiobooks: Audiobook[] = [
   {
     id: 1,

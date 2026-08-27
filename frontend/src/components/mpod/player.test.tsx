@@ -132,14 +132,10 @@ describe("Player", () => {
     const desktop = within(desktopControls! as HTMLElement);
     const buttons = desktop.getAllByRole("button");
     expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual([
-      "Show notes",
-      "Speed 1.5x",
-      "Play",
       "Go back 15 seconds",
+      "Play",
       "Go forward 30 seconds",
     ]);
-    expect(desktop.getByText("Notes")).toBeInTheDocument();
-    expect(desktop.getByText("1.5")).toBeInTheDocument();
     expect(desktop.getByText("-15")).toBeInTheDocument();
     expect(desktop.getByText("+30")).toBeInTheDocument();
     expect(
@@ -148,7 +144,15 @@ describe("Player", () => {
       )
     ).not.toBeNull();
 
-    await user.click(desktop.getByRole("button", { name: "Show notes" }));
+    const desktopSecondary = container.querySelector(
+      '[data-player-secondary="desktop"]'
+    );
+    expect(desktopSecondary).not.toBeNull();
+    const secondary = within(desktopSecondary! as HTMLElement);
+    expect(secondary.getByRole("button", { name: "Speed 1.5x" })).toBeInTheDocument();
+    expect(secondary.getByRole("button", { name: "Show notes" })).toBeInTheDocument();
+
+    await user.click(secondary.getByRole("button", { name: "Show notes" }));
     await user.click(desktop.getByRole("button", { name: "Play" }));
     await user.click(
       desktop.getByRole("button", { name: "Go back 15 seconds" })
@@ -224,11 +228,10 @@ describe("Player", () => {
       </TooltipProvider>
     );
 
-    const desktopControls = container.querySelector('[data-player-controls="desktop"]');
-    const desktop = within(desktopControls! as HTMLElement);
-    const chaptersBtn = desktop.getByRole("button", { name: "Show chapters" });
+    const desktopSecondary = container.querySelector('[data-player-secondary="desktop"]');
+    const secondary = within(desktopSecondary! as HTMLElement);
+    const chaptersBtn = secondary.getByRole("button", { name: "Show chapters" });
     expect(chaptersBtn).toBeInTheDocument();
-    expect(desktop.getByText("Chapters")).toBeInTheDocument();
 
     await user.click(chaptersBtn);
     expect(onChapters).toHaveBeenCalledOnce();

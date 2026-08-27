@@ -94,12 +94,14 @@ func (s *Service) Get(ctx context.Context, episodeID int64) (*State, error) {
 	var abID, pos int64
 	var lastUpdated time.Time
 	abErr := s.db.QueryRowContext(ctx, `
-		SELECT audiobook_id, position_seconds, last_updated
-		FROM audiobook_playback
-		WHERE audiobook_id = ?
-		ORDER BY last_updated DESC
-		LIMIT 1
-	`, episodeID).Scan(&abID, &pos, &lastUpdated)
+		SELECT ap.audiobook_id, ap.position_seconds, ap.last_updated
+		FROM audiobook_playback ap
+		WHERE ap.track_id = COALESCE(
+			(SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = ?),
+			(SELECT ap2.track_id FROM audiobook_playback ap2 WHERE ap2.audiobook_id = ? ORDER BY ap2.last_updated DESC LIMIT 1),
+			(SELECT t.id FROM audiobook_tracks t WHERE t.audiobook_id = ? ORDER BY t.track_number ASC LIMIT 1)
+		)
+	`, episodeID, episodeID, episodeID).Scan(&abID, &pos, &lastUpdated)
 	if abErr == nil {
 		return &State{
 			EpisodeID:       episodeID,
@@ -232,9 +234,16 @@ func (s *Service) SetActiveItem(ctx context.Context, episodeID *int64, audiobook
 
 		actualTrackID := trackID
 		if actualTrackID == nil {
-			var firstTrID int64
-			if err := s.db.QueryRowContext(ctx, `SELECT id FROM audiobook_tracks WHERE audiobook_id = ? ORDER BY track_number ASC LIMIT 1`, *audiobookID).Scan(&firstTrID); err == nil {
-				actualTrackID = &firstTrID
+			var lastTrID int64
+			if err := s.db.QueryRowContext(ctx, `
+				SELECT track_id FROM audiobook_playback WHERE audiobook_id = ? ORDER BY last_updated DESC LIMIT 1
+			`, *audiobookID).Scan(&lastTrID); err == nil {
+				actualTrackID = &lastTrID
+			} else {
+				var firstTrID int64
+				if err := s.db.QueryRowContext(ctx, `SELECT id FROM audiobook_tracks WHERE audiobook_id = ? ORDER BY track_number ASC LIMIT 1`, *audiobookID).Scan(&firstTrID); err == nil {
+					actualTrackID = &firstTrID
+				}
 			}
 		}
 
@@ -291,23 +300,35 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 		       audiobooks.id, audiobooks.title, COALESCE(audiobooks.author, ''), COALESCE(audiobooks.cover_path, ''), audiobooks.total_duration,
 		       (SELECT COUNT(*) FROM audiobook_tracks WHERE audiobook_id = audiobooks.id) as ab_track_count,
 		       COALESCE(
-		         (SELECT t.id FROM audiobook_playback ap JOIN audiobook_tracks t ON t.id = ap.track_id WHERE ap.audiobook_id = audiobooks.id ORDER BY ap.last_updated DESC LIMIT 1),
+		         (SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = audiobooks.id),
+		         (SELECT ap.track_id FROM audiobook_playback ap WHERE ap.audiobook_id = audiobooks.id ORDER BY ap.last_updated DESC LIMIT 1),
 		         (SELECT t.id FROM audiobook_tracks t WHERE t.audiobook_id = audiobooks.id ORDER BY t.track_number ASC LIMIT 1)
 		       ) as ab_active_track_id,
-		       COALESCE(
-		         (SELECT t.track_number FROM audiobook_playback ap JOIN audiobook_tracks t ON t.id = ap.track_id WHERE ap.audiobook_id = audiobooks.id ORDER BY ap.last_updated DESC LIMIT 1),
-		         (SELECT t.track_number FROM audiobook_tracks t WHERE t.audiobook_id = audiobooks.id ORDER BY t.track_number ASC LIMIT 1)
-		       ) as ab_active_track_number,
-		       COALESCE(
-		         (SELECT t.title FROM audiobook_playback ap JOIN audiobook_tracks t ON t.id = ap.track_id WHERE ap.audiobook_id = audiobooks.id ORDER BY ap.last_updated DESC LIMIT 1),
-		         (SELECT t.title FROM audiobook_tracks t WHERE t.audiobook_id = audiobooks.id ORDER BY t.track_number ASC LIMIT 1)
-		       ) as ab_active_track_title,
-		       COALESCE(
-		         (SELECT t.duration FROM audiobook_playback ap JOIN audiobook_tracks t ON t.id = ap.track_id WHERE ap.audiobook_id = audiobooks.id ORDER BY ap.last_updated DESC LIMIT 1),
-		         (SELECT t.duration FROM audiobook_tracks t WHERE t.audiobook_id = audiobooks.id ORDER BY t.track_number ASC LIMIT 1)
-		       ) as ab_active_track_duration,
-		       (SELECT ap.position_seconds FROM audiobook_playback ap WHERE ap.audiobook_id = audiobooks.id ORDER BY ap.last_updated DESC LIMIT 1) as ab_track_pos,
-		       (SELECT ap.last_updated FROM audiobook_playback ap WHERE ap.audiobook_id = audiobooks.id ORDER BY ap.last_updated DESC LIMIT 1) as ab_track_updated
+		       (SELECT t.track_number FROM audiobook_tracks t WHERE t.id = COALESCE(
+		         (SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = audiobooks.id),
+		         (SELECT ap.track_id FROM audiobook_playback ap WHERE ap.audiobook_id = audiobooks.id ORDER BY ap.last_updated DESC LIMIT 1),
+		         (SELECT t2.id FROM audiobook_tracks t2 WHERE t2.audiobook_id = audiobooks.id ORDER BY t2.track_number ASC LIMIT 1)
+		       )) as ab_active_track_number,
+		       (SELECT t.title FROM audiobook_tracks t WHERE t.id = COALESCE(
+		         (SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = audiobooks.id),
+		         (SELECT ap.track_id FROM audiobook_playback ap WHERE ap.audiobook_id = audiobooks.id ORDER BY ap.last_updated DESC LIMIT 1),
+		         (SELECT t2.id FROM audiobook_tracks t2 WHERE t2.audiobook_id = audiobooks.id ORDER BY t2.track_number ASC LIMIT 1)
+		       )) as ab_active_track_title,
+		       (SELECT t.duration FROM audiobook_tracks t WHERE t.id = COALESCE(
+		         (SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = audiobooks.id),
+		         (SELECT ap.track_id FROM audiobook_playback ap WHERE ap.audiobook_id = audiobooks.id ORDER BY ap.last_updated DESC LIMIT 1),
+		         (SELECT t2.id FROM audiobook_tracks t2 WHERE t2.audiobook_id = audiobooks.id ORDER BY t2.track_number ASC LIMIT 1)
+		       )) as ab_active_track_duration,
+		       (SELECT ap.position_seconds FROM audiobook_playback ap WHERE ap.track_id = COALESCE(
+		         (SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = audiobooks.id),
+		         (SELECT ap2.track_id FROM audiobook_playback ap2 WHERE ap2.audiobook_id = audiobooks.id ORDER BY ap2.last_updated DESC LIMIT 1),
+		         (SELECT t2.id FROM audiobook_tracks t2 WHERE t2.audiobook_id = audiobooks.id ORDER BY t2.track_number ASC LIMIT 1)
+		       )) as ab_track_pos,
+		       (SELECT ap.last_updated FROM audiobook_playback ap WHERE ap.track_id = COALESCE(
+		         (SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = audiobooks.id),
+		         (SELECT ap2.track_id FROM audiobook_playback ap2 WHERE ap2.audiobook_id = audiobooks.id ORDER BY ap2.last_updated DESC LIMIT 1),
+		         (SELECT t2.id FROM audiobook_tracks t2 WHERE t2.audiobook_id = audiobooks.id ORDER BY t2.track_number ASC LIMIT 1)
+		       )) as ab_track_updated
 		FROM playlist
 		LEFT JOIN episodes ON episodes.id = playlist.episode_id
 		LEFT JOIN podcasts ON podcasts.id = episodes.podcast_id

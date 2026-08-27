@@ -105,6 +105,29 @@ describe("AudiobookChaptersModal", () => {
     expect(onSelect).toHaveBeenCalledWith(mockAudiobook.tracks![2]);
   });
 
+  it("renders listened chapter with muted text, no duration and replay icon", () => {
+    const bookWithListenedTrack: Audiobook = {
+      ...mockAudiobook,
+      tracks: (mockAudiobook.tracks ?? []).map((t, idx) =>
+        idx === 0 ? { ...t, isListened: true } : t
+      ),
+    };
+
+    render(
+      <AudiobookChaptersModal
+        audiobook={bookWithListenedTrack}
+        onSelectTrack={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(document.querySelector('[data-listened="true"]')).toBeInTheDocument();
+    const title = screen.getByText("Chapter 1.mp3");
+    expect(title).toHaveClass("text-muted-foreground");
+    expect(screen.getAllByText("40m")).toHaveLength(2); // Only for unplayed tracks 2 and 3
+    expect(document.querySelector('[data-icon-name="hugeicons/replay"]')).toBeInTheDocument();
+  });
+
   it("calls onClose when clicking close button", () => {
     const onClose = vi.fn();
     render(

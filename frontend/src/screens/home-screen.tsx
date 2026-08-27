@@ -437,6 +437,15 @@ export function HomeScreen() {
       {selectedBookForChapters && (
         <AudiobookChaptersModal
           audiobook={selectedBookForChapters}
+          activeTrackId={
+            (currentEpisode?.type === "audiobook" || Boolean(currentEpisode?.audiobookId)) &&
+            (currentEpisode?.audiobookId ?? currentEpisode?.id) === selectedBookForChapters.id
+              ? currentEpisode?.trackId
+              : undefined
+          }
+          isPlaying={playing}
+          activePositionSeconds={positionSeconds}
+          onTogglePlayPause={playToggle}
           isMobile={isMobile}
           onClose={() => setSelectedBookForChapters(null)}
           onSelectTrack={async (track) => {
@@ -446,6 +455,7 @@ export function HomeScreen() {
             });
             setSelectedBookForChapters(null);
             await reloadQueue();
+            playEpisode(selectedBookForChapters.id);
           }}
         />
       )}

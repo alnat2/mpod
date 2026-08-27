@@ -4,6 +4,7 @@ import {
   MultiplicationSignIcon,
   PlayIcon,
   PauseIcon,
+  ReplayIcon,
 } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
@@ -99,11 +100,13 @@ export function AudiobookChaptersModal({
             tracks.map((track) => {
               const isActive = activeTrackId === track.id;
               const isTrackPlaying = isActive && isPlaying;
+              const isListened = Boolean(track.isListened && !isActive);
               const trackDurationFormatted = formatDuration(track.duration);
 
-              const progressFormatted =
-                isActive && (activePositionSeconds !== undefined || track.positionSeconds > 0)
-                  ? `${formatDuration(activePositionSeconds ?? track.positionSeconds, "0m")} / ${trackDurationFormatted}`
+              const progressFormatted = isActive
+                ? `${formatDuration(activePositionSeconds ?? track.positionSeconds ?? 0, "0m")} / ${trackDurationFormatted}`
+                : isListened
+                  ? null
                   : trackDurationFormatted;
 
               return (
@@ -111,6 +114,7 @@ export function AudiobookChaptersModal({
                   key={track.id}
                   data-slot="chapter-item"
                   data-active={isActive ? "true" : undefined}
+                  data-listened={isListened ? "true" : undefined}
                   className={cn(
                     "flex items-center justify-between gap-3 rounded-lg border p-3 transition-colors",
                     isActive
@@ -126,7 +130,12 @@ export function AudiobookChaptersModal({
                       data-icon-name="hugeicons/audio-book-01"
                       className="text-primary shrink-0"
                     />
-                    <span className="truncate text-sm font-semibold">
+                    <span
+                      className={cn(
+                        "truncate text-sm font-semibold",
+                        isListened ? "text-muted-foreground" : "text-foreground"
+                      )}
+                    >
                       {track.title}
                     </span>
                   </div>
@@ -143,7 +152,13 @@ export function AudiobookChaptersModal({
                       variant="outline"
                       size="icon"
                       className="size-9 rounded-lg border-border bg-card text-primary hover:bg-accent hover:text-primary sm:size-10"
-                      aria-label={isTrackPlaying ? `Pause ${track.title}` : `Play ${track.title}`}
+                      aria-label={
+                        isTrackPlaying
+                          ? `Pause ${track.title}`
+                          : isListened
+                            ? `Replay ${track.title}`
+                            : `Play ${track.title}`
+                      }
                       onClick={() => {
                         if (isActive && onTogglePlayPause) {
                           onTogglePlayPause();
@@ -153,10 +168,22 @@ export function AudiobookChaptersModal({
                       }}
                     >
                       <HugeiconsIcon
-                        icon={isTrackPlaying ? PauseIcon : PlayIcon}
+                        icon={
+                          isTrackPlaying
+                            ? PauseIcon
+                            : isListened
+                              ? ReplayIcon
+                              : PlayIcon
+                        }
                         size={18}
                         strokeWidth={1.5}
-                        data-icon-name={isTrackPlaying ? "hugeicons/pause" : "hugeicons/play"}
+                        data-icon-name={
+                          isTrackPlaying
+                            ? "hugeicons/pause"
+                            : isListened
+                              ? "hugeicons/replay"
+                              : "hugeicons/play"
+                        }
                       />
                     </Button>
                   </div>

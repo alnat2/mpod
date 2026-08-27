@@ -731,6 +731,111 @@ func TestAudiobookPlaybackGetAndUpdate(t *testing.T) {
 	}
 }
 
+func TestMultiTrackAudiobookPlaybackAndTrackSwitching(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path, total_duration) VALUES (1, 'Book 1', 'Author 1', 'Book 1', 5400)`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'Track 1', 'Book 1/1.mp3', '/path/1.mp3', 1800)`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (11, 1, 2, 'Track 2', 'Book 1/2.mp3', '/path/2.mp3', 1800)`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (12, 1, 3, 'Track 3', 'Book 1/3.mp3', '/path/3.mp3', 1800)`)
+	mustExec(t, db.SQL, `INSERT INTO playlist (position, audiobook_id) VALUES (1, 1)`)
+
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+
+	// 1. Initial queue returns first track (10) at 0s
+	queue, err := service.ListQueue(context.Background())
+	if err != nil {
+		t.Fatalf("ListQueue error: %v", err)
+	}
+	if len(queue) != 1 || *queue[0].TrackID != 10 || queue[0].Playback.PositionSeconds != 0 {
+		t.Fatalf("expected track 10 at 0s, got track %v at %v", queue[0].TrackID, queue[0].Playback.PositionSeconds)
+	}
+
+	// 2. Play Track 10 and save 350s
+	track10ID := int64(10)
+	_, err = service.Update(context.Background(), UpdateInput{
+		TrackID:         &track10ID,
+		PositionSeconds: 350,
+		DurationSeconds: 1800,
+	})
+	if err != nil {
+		t.Fatalf("Update Track 10 error: %v", err)
+	}
+
+	// 3. User switches to Track 11 (Chapter 2)
+	abID := int64(1)
+	track11ID := int64(11)
+	_, err = service.SetActiveItem(context.Background(), nil, &abID, &track11ID)
+	if err != nil {
+		t.Fatalf("SetActiveItem Track 11 error: %v", err)
+	}
+
+	// 4. Queue should now return Track 11 at 0s (NOT 350s from Track 10!)
+	queue, err = service.ListQueue(context.Background())
+	if err != nil {
+		t.Fatalf("ListQueue error: %v", err)
+	}
+	if len(queue) != 1 || *queue[0].TrackID != 11 || queue[0].Playback.PositionSeconds != 0 {
+		t.Fatalf("expected track 11 at 0s, got track %v at %v", queue[0].TrackID, queue[0].Playback.PositionSeconds)
+	}
+
+	// 5. Play Track 11 and save 120s
+	_, err = service.Update(context.Background(), UpdateInput{
+		TrackID:         &track11ID,
+		PositionSeconds: 120,
+		DurationSeconds: 1800,
+	})
+	if err != nil {
+		t.Fatalf("Update Track 11 error: %v", err)
+	}
+
+	// 6. Get for book ID 1 should return 120s (active Track 11's position)
+	state, err := service.Get(context.Background(), 1)
+	if err != nil || state == nil || state.PositionSeconds != 120 {
+		t.Fatalf("expected active book position 120, got %v", state)
+	}
+
+	// 7. Switch back to Track 10 (Chapter 1)
+	_, err = service.SetActiveItem(context.Background(), nil, &abID, &track10ID)
+	if err != nil {
+		t.Fatalf("SetActiveItem Track 10 error: %v", err)
+	}
+
+	// 8. Queue should now return Track 10 at 350s
+	queue, err = service.ListQueue(context.Background())
+	if err != nil {
+		t.Fatalf("ListQueue error: %v", err)
+	}
+	if len(queue) != 1 || *queue[0].TrackID != 10 || queue[0].Playback.PositionSeconds != 350 {
+		t.Fatalf("expected track 10 at 350s, got track %v at %v", queue[0].TrackID, queue[0].Playback.PositionSeconds)
+	}
+
+	// 9. Complete Track 10 -> should auto-advance active track to Track 11
+	updateRes, err := service.Update(context.Background(), UpdateInput{
+		TrackID:         &track10ID,
+		PositionSeconds: 1800,
+		DurationSeconds: 1800,
+		Completed:       true,
+	})
+	if err != nil {
+		t.Fatalf("Update completed Track 10 error: %v", err)
+	}
+	if updateRes.NextEpisodeID == nil || *updateRes.NextEpisodeID != 11 {
+		t.Fatalf("expected next track 11, got %v", updateRes.NextEpisodeID)
+	}
+
+	// 10. Queue should now return Track 11 with its previously saved 120s
+	queue, err = service.ListQueue(context.Background())
+	if err != nil {
+		t.Fatalf("ListQueue error: %v", err)
+	}
+	if len(queue) != 1 || *queue[0].TrackID != 11 || queue[0].Playback.PositionSeconds != 120 {
+		t.Fatalf("expected track 11 at 120s, got track %v at %v", queue[0].TrackID, queue[0].Playback.PositionSeconds)
+	}
+}
+
+
 func newTestDB(t *testing.T) *storage.DB {
 	t.Helper()
 

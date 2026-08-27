@@ -188,10 +188,14 @@ export function usePlaybackAudio({
       const refreshedQueue = await loadQueue();
       const fallbackEpisode =
         refreshedQueue?.queue.find(
-          (episode) => episode.id === response.nextEpisodeId
+          (episode) =>
+            episode.id === response.nextEpisodeId ||
+            episode.trackId === response.nextEpisodeId
         ) ??
         queueRef.current.find(
-          (episode) => episode.id === response.nextEpisodeId
+          (episode) =>
+            episode.id === response.nextEpisodeId ||
+            episode.trackId === response.nextEpisodeId
         );
       if (!fallbackEpisode) {
         return;

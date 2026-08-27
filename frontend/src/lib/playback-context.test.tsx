@@ -1658,4 +1658,109 @@ describe("PlaybackProvider", () => {
       })
     );
   });
+
+  it("switches audiobook chapters and updates audio source url accordingly", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api.playback, "update").mockResolvedValue({
+      playback: {
+        episodeId: 100,
+        positionSeconds: 200,
+        lastUpdated: "2026-05-22T09:00:00Z",
+      },
+      nextEpisodeId: null,
+    });
+
+    let currentQueueItem = {
+      id: 100,
+      podcastId: 0,
+      type: "audiobook" as const,
+      audiobookId: 100,
+      trackId: 501,
+      trackNumber: 1,
+      trackCount: 3,
+      title: "Sample Audiobook",
+      description: "",
+      podcastTitle: "Sample Author",
+      author: "Sample Author",
+      audioUrl: "/api/audiobooks/100/tracks/501/audio",
+      duration: 1800,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: {
+        episodeId: 100,
+        positionSeconds: 50,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    };
+
+    vi.spyOn(api.playback, "queue").mockImplementation(async () => ({
+      queue: [currentQueueItem],
+      activePlayback: {
+        audiobookId: 100,
+        trackId: currentQueueItem.trackId,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    }));
+
+    function MultiChapterHarness() {
+      const { currentEpisode, playEpisode, playToggle } = usePlayback();
+      const { reloadQueue } = usePlaybackDispatch();
+      return (
+        <div>
+          <div data-testid="track-id">{currentEpisode?.trackId}</div>
+          <button type="button" onClick={() => playEpisode(100)}>
+            Play
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              currentQueueItem = {
+                ...currentQueueItem,
+                trackId: 502,
+                trackNumber: 2,
+                audioUrl: "/api/audiobooks/100/tracks/502/audio",
+                playback: {
+                  episodeId: 100,
+                  positionSeconds: 0,
+                  lastUpdated: "2026-05-22T08:05:00Z",
+                },
+              };
+              await reloadQueue();
+            }}
+          >
+            Change to Chapter 2
+          </button>
+          <button type="button" onClick={playToggle}>
+            Toggle
+          </button>
+        </div>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <MultiChapterHarness />
+      </PlaybackProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("track-id")).toHaveTextContent("501");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Play" }));
+
+    const audio = FakeAudio.first;
+    expect(audio.src).toContain("/api/audiobooks/100/tracks/501/audio");
+
+    await user.click(screen.getByRole("button", { name: "Change to Chapter 2" }));
+    // Trigger queue refresh
+    await user.click(screen.getByRole("button", { name: "Play" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("track-id")).toHaveTextContent("502");
+    });
+
+    expect(audio.src).toContain("/api/audiobooks/100/tracks/502/audio");
+  });
 });
