@@ -223,6 +223,45 @@ func (s *Service) SetActiveItem(ctx context.Context, episodeID *int64, audiobook
 		}, nil
 	}
 
+	if trackID != nil && *trackID > 0 {
+		var bookID int64
+		if err := s.db.QueryRowContext(ctx, `SELECT audiobook_id FROM audiobook_tracks WHERE id = ?`, *trackID).Scan(&bookID); err != nil {
+			return nil, fmt.Errorf("find track audiobook: %w", err)
+		}
+
+		var count int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_id = ? OR audiobook_track_id = ?`, bookID, *trackID).Scan(&count); err != nil {
+			return nil, fmt.Errorf("check track in playlist: %w", err)
+		}
+		if count == 0 {
+			return nil, errors.New("audiobook track not in playlist")
+		}
+
+		_, _ = s.db.ExecContext(ctx, `
+			INSERT INTO audiobook_playback (track_id, audiobook_id, position_seconds, last_updated)
+			VALUES (?, ?, 0, ?)
+			ON CONFLICT (track_id) DO UPDATE SET last_updated = excluded.last_updated
+		`, *trackID, bookID, now)
+
+		if _, err := s.db.ExecContext(ctx, `
+			INSERT INTO active_playback (singleton_id, episode_id, audiobook_id, audiobook_track_id, last_updated)
+			VALUES (1, NULL, ?, ?, ?)
+			ON CONFLICT (singleton_id) DO UPDATE SET
+				episode_id = NULL,
+				audiobook_id = excluded.audiobook_id,
+				audiobook_track_id = excluded.audiobook_track_id,
+				last_updated = excluded.last_updated
+		`, bookID, *trackID, now); err != nil {
+			return nil, fmt.Errorf("save active playback: %w", err)
+		}
+
+		return &ActiveState{
+			AudiobookID:      &bookID,
+			AudiobookTrackID: trackID,
+			LastUpdated:      now,
+		}, nil
+	}
+
 	if audiobookID != nil && *audiobookID > 0 {
 		var count int
 		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_id = ?`, *audiobookID).Scan(&count); err != nil {
@@ -291,7 +330,7 @@ func (s *Service) ClearActiveIfEpisode(ctx context.Context, episodeID int64) err
 
 func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT playlist.id, playlist.position, playlist.episode_id, playlist.audiobook_id,
+		SELECT playlist.id, playlist.position, playlist.episode_id, playlist.audiobook_id, playlist.audiobook_track_id,
 		       episodes.id, episodes.podcast_id, episodes.title, episodes.description,
 		       episodes.audio_url, episodes.duration, episodes.downloaded_path,
 		       episodes.is_listened, episodes.published_at,
@@ -328,12 +367,18 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 		         (SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = audiobooks.id),
 		         (SELECT ap2.track_id FROM audiobook_playback ap2 WHERE ap2.audiobook_id = audiobooks.id ORDER BY ap2.last_updated DESC LIMIT 1),
 		         (SELECT t2.id FROM audiobook_tracks t2 WHERE t2.audiobook_id = audiobooks.id ORDER BY t2.track_number ASC LIMIT 1)
-		       )) as ab_track_updated
+		       )) as ab_track_updated,
+		       single_track.id as st_id, single_track.audiobook_id as st_ab_id, single_track.track_number as st_num, single_track.title as st_title, single_track.duration as st_duration, single_track.is_listened as st_listened,
+		       single_ab.title as st_ab_title, COALESCE(single_ab.author, '') as st_ab_author, COALESCE(single_ab.cover_path, '') as st_ab_cover,
+		       (SELECT ap.position_seconds FROM audiobook_playback ap WHERE ap.track_id = single_track.id) as st_pos,
+		       (SELECT ap.last_updated FROM audiobook_playback ap WHERE ap.track_id = single_track.id) as st_updated
 		FROM playlist
 		LEFT JOIN episodes ON episodes.id = playlist.episode_id
 		LEFT JOIN podcasts ON podcasts.id = episodes.podcast_id
 		LEFT JOIN playback ON playback.episode_id = episodes.id
 		LEFT JOIN audiobooks ON audiobooks.id = playlist.audiobook_id
+		LEFT JOIN audiobook_tracks single_track ON single_track.id = playlist.audiobook_track_id
+		LEFT JOIN audiobooks single_ab ON single_ab.id = single_track.audiobook_id
 		ORDER BY playlist.position ASC, playlist.id ASC
 	`)
 	if err != nil {
@@ -344,7 +389,7 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 	items := make([]QueueEpisode, 0)
 	for rows.Next() {
 		var playlistID, position int64
-		var epID, abID sql.NullInt64
+		var epID, abID, abTrackID sql.NullInt64
 		var epRowID, epPodcastID sql.NullInt64
 		var epTitle, description, downloadedPath, epAudioURL, podcastTitle, podcastImageURL sql.NullString
 		var epDuration, playbackEpisodeID, playbackPosition sql.NullInt64
@@ -353,9 +398,14 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 		var abRowID, abTotalDuration, abTrackCount, abActiveTrackID, abActiveTrackNumber, abActiveTrackDuration, abTrackPos sql.NullInt64
 		var abTitle, abAuthor, abCoverPath, abActiveTrackTitle sql.NullString
 		var abTrackUpdated sql.NullTime
+		var stID, stAbID, stNum, stDuration sql.NullInt64
+		var stTitle, stAbTitle, stAbAuthor, stAbCover sql.NullString
+		var stListened sql.NullBool
+		var stPos sql.NullInt64
+		var stUpdated sql.NullTime
 
 		if err := rows.Scan(
-			&playlistID, &position, &epID, &abID,
+			&playlistID, &position, &epID, &abID, &abTrackID,
 			&epRowID, &epPodcastID, &epTitle, &description,
 			&epAudioURL, &epDuration, &downloadedPath,
 			&epIsListened, &publishedAt,
@@ -364,6 +414,9 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 			&abRowID, &abTitle, &abAuthor, &abCoverPath, &abTotalDuration,
 			&abTrackCount, &abActiveTrackID, &abActiveTrackNumber, &abActiveTrackTitle, &abActiveTrackDuration,
 			&abTrackPos, &abTrackUpdated,
+			&stID, &stAbID, &stNum, &stTitle, &stDuration, &stListened,
+			&stAbTitle, &stAbAuthor, &stAbCover,
+			&stPos, &stUpdated,
 		); err != nil {
 			return nil, fmt.Errorf("scan playback queue: %w", err)
 		}
@@ -444,6 +497,49 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 			}
 			item.Downloaded = true
 
+			items = append(items, item)
+		} else if stID.Valid {
+			var item QueueEpisode
+			item.Type = "audiobook"
+			trID := stID.Int64
+			bookID := stAbID.Int64
+			item.ID = trID
+			item.TrackID = &trID
+			item.AudiobookID = &bookID
+			item.Title = stTitle.String
+			item.Author = stAbAuthor.String
+			item.PodcastTitle = stAbAuthor.String
+			if item.PodcastTitle == "" {
+				item.PodcastTitle = stAbTitle.String
+			}
+			item.TrackNumber = int(stNum.Int64)
+			item.TrackCount = 1
+			item.IsListened = stListened.Bool
+			dur := stDuration.Int64
+			item.Duration = &dur
+			item.AudioURL = fmt.Sprintf("/api/audiobooks/%d/tracks/%d/audio", bookID, trID)
+			item.Downloaded = true
+
+			pos := int64(0)
+			if stPos.Valid {
+				pos = stPos.Int64
+			}
+			upd := time.Now().UTC()
+			if stUpdated.Valid {
+				upd = stUpdated.Time.UTC()
+			}
+			item.Playback = &State{
+				EpisodeID:       trID,
+				PositionSeconds: pos,
+				LastUpdated:     upd,
+			}
+
+			if stAbCover.Valid && stAbCover.String != "" {
+				item.HasCover = true
+				coverURL := fmt.Sprintf("/api/audiobooks/%d/cover", bookID)
+				item.CoverURL = &coverURL
+				item.PodcastImageURL = &coverURL
+			}
 			items = append(items, item)
 		}
 	}

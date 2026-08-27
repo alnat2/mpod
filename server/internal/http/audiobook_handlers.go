@@ -209,6 +209,46 @@ func (r *Router) handleAudiobookPlaylistRemove(w nethttp.ResponseWriter, req *ne
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{"success": true})
 }
 
+func (r *Router) handleAudiobookTrackPlaylistAdd(w nethttp.ResponseWriter, req *nethttp.Request) {
+	if _, ok := r.requireUser(w, req); !ok {
+		return
+	}
+
+	trackID, ok := r.pathInt64(w, req, "trackId")
+	if !ok {
+		return
+	}
+
+	if err := r.audiobooks.AddTrackToPlaylist(req.Context(), trackID); err != nil {
+		if errors.Is(err, audiobooks.ErrTrackNotFound) {
+			r.writeAPIError(w, nethttp.StatusNotFound, "TRACK_NOT_FOUND", "Audiobook track not found")
+			return
+		}
+		r.writeAPIError(w, nethttp.StatusInternalServerError, "PLAYLIST_ADD_FAILED", "Failed to add track to playlist")
+		return
+	}
+
+	r.writeJSON(w, nethttp.StatusOK, map[string]any{"success": true})
+}
+
+func (r *Router) handleAudiobookTrackPlaylistRemove(w nethttp.ResponseWriter, req *nethttp.Request) {
+	if _, ok := r.requireUser(w, req); !ok {
+		return
+	}
+
+	trackID, ok := r.pathInt64(w, req, "trackId")
+	if !ok {
+		return
+	}
+
+	if err := r.audiobooks.RemoveTrackFromPlaylist(req.Context(), trackID); err != nil {
+		r.writeAPIError(w, nethttp.StatusInternalServerError, "PLAYLIST_REMOVE_FAILED", "Failed to remove track from playlist")
+		return
+	}
+
+	r.writeJSON(w, nethttp.StatusOK, map[string]any{"success": true})
+}
+
 func (r *Router) handleAudiobookPlaybackPost(w nethttp.ResponseWriter, req *nethttp.Request) {
 	if _, ok := r.requireUser(w, req); !ok {
 		return

@@ -16,7 +16,7 @@ import {
   PlaylistQueue,
   ShowNotes,
 } from "@/components/mpod";
-import { api, type Audiobook } from "@/lib/api";
+import { api, type Audiobook, type AudiobookTrack } from "@/lib/api";
 import { usePlayback, type QueueEpisode } from "@/lib/playback-context";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
@@ -126,7 +126,9 @@ export function HomeScreen() {
     setQueue(previousQueue.filter((q) => q.id !== item.id));
 
     try {
-      if (item.type === "audiobook" || item.audiobookId) {
+      if (item.trackId && item.audiobookId && item.trackCount === 1) {
+        await api.audiobooks.removeTrackFromPlaylist(item.audiobookId, item.trackId);
+      } else if (item.type === "audiobook" || item.audiobookId) {
         await api.audiobooks.removeFromPlaylist(item.audiobookId ?? item.id);
       } else {
         await api.playlist.remove(item.id);
@@ -137,6 +139,32 @@ export function HomeScreen() {
       setActionError(getErrorMessage(caught));
     }
   }
+
+  const handleToggleTrackPlaylist = async (track: AudiobookTrack) => {
+    if (!selectedBookForChapters) return;
+    try {
+      const inPlaylist = Boolean(track.inPlaylist ?? track.isInPlaylist);
+      if (inPlaylist) {
+        await api.audiobooks.removeTrackFromPlaylist(selectedBookForChapters.id, track.id);
+      } else {
+        await api.audiobooks.addTrackToPlaylist(selectedBookForChapters.id, track.id);
+      }
+      setSelectedBookForChapters((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          tracks: prev.tracks?.map((t) =>
+            t.id === track.id
+              ? { ...t, inPlaylist: !inPlaylist, isInPlaylist: !inPlaylist }
+              : t
+          ),
+        };
+      });
+      await reloadQueue();
+    } catch (e) {
+      setActionError(getErrorMessage(e));
+    }
+  };
 
   const handleOpenChapters = async (item: QueueEpisode) => {
     try {
@@ -437,26 +465,9 @@ export function HomeScreen() {
       {selectedBookForChapters && (
         <AudiobookChaptersModal
           audiobook={selectedBookForChapters}
-          activeTrackId={
-            (currentEpisode?.type === "audiobook" || Boolean(currentEpisode?.audiobookId)) &&
-            (currentEpisode?.audiobookId ?? currentEpisode?.id) === selectedBookForChapters.id
-              ? currentEpisode?.trackId
-              : undefined
-          }
-          isPlaying={playing}
-          activePositionSeconds={positionSeconds}
-          onTogglePlayPause={playToggle}
           isMobile={isMobile}
           onClose={() => setSelectedBookForChapters(null)}
-          onSelectTrack={async (track) => {
-            await api.playback.setActive({
-              audiobookId: selectedBookForChapters.id,
-              trackId: track.id,
-            });
-            setSelectedBookForChapters(null);
-            await reloadQueue();
-            playEpisode(selectedBookForChapters.id);
-          }}
+          onToggleTrackPlaylist={handleToggleTrackPlaylist}
         />
       )}
       <AddPodcastModal

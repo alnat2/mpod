@@ -2,9 +2,8 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   AudioBook01Icon,
   MultiplicationSignIcon,
-  PlayIcon,
-  PauseIcon,
-  ReplayIcon,
+  PlayListAddIcon,
+  PlayListRemoveIcon,
 } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
@@ -16,11 +15,7 @@ import { formatDuration } from "@/screens/screen-utils";
 
 export type AudiobookChaptersModalProps = {
   audiobook: Audiobook;
-  activeTrackId?: number | null;
-  isPlaying?: boolean;
-  activePositionSeconds?: number;
-  onSelectTrack: (track: AudiobookTrack) => void;
-  onTogglePlayPause?: () => void;
+  onToggleTrackPlaylist?: (track: AudiobookTrack) => void | Promise<void>;
   onClose: () => void;
   isMobile?: boolean;
   className?: string;
@@ -28,11 +23,7 @@ export type AudiobookChaptersModalProps = {
 
 export function AudiobookChaptersModal({
   audiobook,
-  activeTrackId,
-  isPlaying = false,
-  activePositionSeconds,
-  onSelectTrack,
-  onTogglePlayPause,
+  onToggleTrackPlaylist,
   onClose,
   isMobile = false,
   className,
@@ -98,29 +89,15 @@ export function AudiobookChaptersModal({
             </p>
           ) : (
             tracks.map((track) => {
-              const isActive = activeTrackId === track.id;
-              const isTrackPlaying = isActive && isPlaying;
-              const isListened = Boolean(track.isListened && !isActive);
+              const inPlaylist = Boolean(track.inPlaylist ?? track.isInPlaylist);
               const trackDurationFormatted = formatDuration(track.duration);
-
-              const progressFormatted = isActive
-                ? `${formatDuration(activePositionSeconds ?? track.positionSeconds ?? 0, "0m")} / ${trackDurationFormatted}`
-                : isListened
-                  ? null
-                  : trackDurationFormatted;
 
               return (
                 <div
                   key={track.id}
                   data-slot="chapter-item"
-                  data-active={isActive ? "true" : undefined}
-                  data-listened={isListened ? "true" : undefined}
-                  className={cn(
-                    "flex items-center justify-between gap-3 rounded-lg border p-3 transition-colors",
-                    isActive
-                      ? "border-border bg-accent text-accent-foreground shadow-2xs"
-                      : "border-transparent text-foreground hover:bg-accent/40"
-                  )}
+                  data-in-playlist={inPlaylist ? "true" : undefined}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-transparent p-3 text-foreground transition-colors hover:bg-accent/40"
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     <HugeiconsIcon
@@ -130,20 +107,15 @@ export function AudiobookChaptersModal({
                       data-icon-name="hugeicons/audio-book-01"
                       className="text-primary shrink-0"
                     />
-                    <span
-                      className={cn(
-                        "truncate text-sm font-semibold",
-                        isListened ? "text-muted-foreground" : "text-foreground"
-                      )}
-                    >
+                    <span className="truncate text-sm font-semibold text-foreground">
                       {track.title}
                     </span>
                   </div>
 
                   <div className="flex shrink-0 items-center gap-3">
-                    {progressFormatted && (
+                    {trackDurationFormatted && (
                       <span className="text-xs text-muted-foreground whitespace-nowrap sm:text-sm">
-                        {progressFormatted}
+                        {trackDurationFormatted}
                       </span>
                     )}
 
@@ -153,36 +125,20 @@ export function AudiobookChaptersModal({
                       size="icon"
                       className="size-9 rounded-lg border-border bg-card text-primary hover:bg-accent hover:text-primary sm:size-10"
                       aria-label={
-                        isTrackPlaying
-                          ? `Pause ${track.title}`
-                          : isListened
-                            ? `Replay ${track.title}`
-                            : `Play ${track.title}`
+                        inPlaylist
+                          ? `Remove ${track.title} from playlist`
+                          : `Add ${track.title} to playlist`
                       }
-                      onClick={() => {
-                        if (isActive && onTogglePlayPause) {
-                          onTogglePlayPause();
-                        } else {
-                          onSelectTrack(track);
-                        }
-                      }}
+                      onClick={() => onToggleTrackPlaylist?.(track)}
                     >
                       <HugeiconsIcon
-                        icon={
-                          isTrackPlaying
-                            ? PauseIcon
-                            : isListened
-                              ? ReplayIcon
-                              : PlayIcon
-                        }
+                        icon={inPlaylist ? PlayListRemoveIcon : PlayListAddIcon}
                         size={18}
                         strokeWidth={1.5}
                         data-icon-name={
-                          isTrackPlaying
-                            ? "hugeicons/pause"
-                            : isListened
-                              ? "hugeicons/replay"
-                              : "hugeicons/play"
+                          inPlaylist
+                            ? "hugeicons/play-list-remove"
+                            : "hugeicons/play-list-add"
                         }
                       />
                     </Button>

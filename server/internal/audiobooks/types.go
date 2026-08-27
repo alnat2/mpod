@@ -27,6 +27,7 @@ type Track struct {
 	FilePath        string     `json:"filePath"`
 	Duration        int64      `json:"duration"`
 	IsListened      bool       `json:"isListened"`
+	InPlaylist      bool       `json:"inPlaylist"`
 	PositionSeconds int64      `json:"positionSeconds"`
 	LastUpdated     *time.Time `json:"lastUpdated,omitempty"`
 }

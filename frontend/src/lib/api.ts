@@ -136,6 +136,8 @@ export type AudiobookTrack = {
   filePath: string;
   duration: number;
   isListened: boolean;
+  inPlaylist?: boolean;
+  isInPlaylist?: boolean;
   positionSeconds: number;
   lastUpdated?: string;
 };
@@ -387,6 +389,30 @@ export const api = {
         method: "DELETE",
         signal,
       }),
+    addTrackToPlaylist: (
+      bookId: number,
+      trackId: number,
+      signal?: AbortSignal
+    ) =>
+      apiRequest<{ success: boolean }>(
+        `/api/audiobooks/${bookId}/tracks/${trackId}/playlist`,
+        {
+          method: "POST",
+          signal,
+        }
+      ),
+    removeTrackFromPlaylist: (
+      bookId: number,
+      trackId: number,
+      signal?: AbortSignal
+    ) =>
+      apiRequest<{ success: boolean }>(
+        `/api/audiobooks/${bookId}/tracks/${trackId}/playlist`,
+        {
+          method: "DELETE",
+          signal,
+        }
+      ),
     saveProgress: (
       payload: {
         trackId: number;

@@ -54,11 +54,10 @@ const mockAudiobook: Audiobook = {
 };
 
 describe("AudiobookChaptersModal", () => {
-  it("renders audiobook header and chapter list", () => {
+  it("renders audiobook header and chapter list with durations", () => {
     render(
       <AudiobookChaptersModal
         audiobook={mockAudiobook}
-        onSelectTrack={vi.fn()}
         onClose={vi.fn()}
       />
     );
@@ -68,64 +67,46 @@ describe("AudiobookChaptersModal", () => {
     expect(screen.getByText("Chapter 1.mp3")).toBeInTheDocument();
     expect(screen.getByText("Chapter 2.mp3")).toBeInTheDocument();
     expect(screen.getByText("Chapter 3.mp3")).toBeInTheDocument();
+    expect(screen.getAllByText("40m")).toHaveLength(3);
   });
 
-  it("highlights active track with bg-accent and displays progress", () => {
+  it("calls onToggleTrackPlaylist when clicking Add to playlist on a chapter", () => {
+    const onToggle = vi.fn();
     render(
       <AudiobookChaptersModal
         audiobook={mockAudiobook}
-        activeTrackId={102}
-        isPlaying={true}
-        activePositionSeconds={720}
-        onSelectTrack={vi.fn()}
+        onToggleTrackPlaylist={onToggle}
         onClose={vi.fn()}
       />
     );
 
-    const activeItem = document.querySelector('[data-active="true"]');
-    expect(activeItem).toBeInTheDocument();
-    expect(activeItem).toHaveClass("bg-accent");
-    expect(screen.getByText("12m / 40m")).toBeInTheDocument();
-    expect(document.querySelector('[data-icon-name="hugeicons/pause"]')).toBeInTheDocument();
+    const addBtn = screen.getByRole("button", { name: "Add Chapter 2.mp3 to playlist" });
+    expect(addBtn).toBeInTheDocument();
+    fireEvent.click(addBtn);
+    expect(onToggle).toHaveBeenCalledWith(mockAudiobook.tracks![1]);
   });
 
-  it("calls onSelectTrack when clicking play on inactive track", () => {
-    const onSelect = vi.fn();
-    render(
-      <AudiobookChaptersModal
-        audiobook={mockAudiobook}
-        activeTrackId={101}
-        onSelectTrack={onSelect}
-        onClose={vi.fn()}
-      />
-    );
-
-    const playBtn = screen.getByRole("button", { name: "Play Chapter 3.mp3" });
-    fireEvent.click(playBtn);
-    expect(onSelect).toHaveBeenCalledWith(mockAudiobook.tracks![2]);
-  });
-
-  it("renders listened chapter with muted text, no duration and replay icon", () => {
-    const bookWithListenedTrack: Audiobook = {
+  it("renders Remove from playlist button when chapter is in playlist", () => {
+    const bookWithTrackInPlaylist: Audiobook = {
       ...mockAudiobook,
       tracks: (mockAudiobook.tracks ?? []).map((t, idx) =>
-        idx === 0 ? { ...t, isListened: true } : t
+        idx === 0 ? { ...t, inPlaylist: true } : t
       ),
     };
 
+    const onToggle = vi.fn();
     render(
       <AudiobookChaptersModal
-        audiobook={bookWithListenedTrack}
-        onSelectTrack={vi.fn()}
+        audiobook={bookWithTrackInPlaylist}
+        onToggleTrackPlaylist={onToggle}
         onClose={vi.fn()}
       />
     );
 
-    expect(document.querySelector('[data-listened="true"]')).toBeInTheDocument();
-    const title = screen.getByText("Chapter 1.mp3");
-    expect(title).toHaveClass("text-muted-foreground");
-    expect(screen.getAllByText("40m")).toHaveLength(2); // Only for unplayed tracks 2 and 3
-    expect(document.querySelector('[data-icon-name="hugeicons/replay"]')).toBeInTheDocument();
+    const removeBtn = screen.getByRole("button", { name: "Remove Chapter 1.mp3 from playlist" });
+    expect(removeBtn).toBeInTheDocument();
+    fireEvent.click(removeBtn);
+    expect(onToggle).toHaveBeenCalledWith(bookWithTrackInPlaylist.tracks![0]);
   });
 
   it("calls onClose when clicking close button", () => {
@@ -133,7 +114,6 @@ describe("AudiobookChaptersModal", () => {
     render(
       <AudiobookChaptersModal
         audiobook={mockAudiobook}
-        onSelectTrack={vi.fn()}
         onClose={onClose}
       />
     );

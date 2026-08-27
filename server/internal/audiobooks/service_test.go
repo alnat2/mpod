@@ -132,3 +132,70 @@ func TestServiceSyncAndCRUD(t *testing.T) {
 		t.Fatalf("expected ErrBookNotFound after delete, got %v", err)
 	}
 }
+
+func TestTrackPlaylistAdditionAndRemoval(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	svc := NewService(db, t.TempDir())
+	ctx := context.Background()
+
+	scanned := []ScannedBook{
+		{
+			Title:   "Dune",
+			Author:  "Frank Herbert",
+			RelPath: "Frank Herbert/Dune",
+			Tracks: []ScannedTrack{
+				{TrackNumber: 1, Title: "Chapter 1", RelPath: "Frank Herbert/Dune/01.mp3", FilePath: "/abs/01.mp3", Duration: 1000},
+				{TrackNumber: 2, Title: "Chapter 2", RelPath: "Frank Herbert/Dune/02.mp3", FilePath: "/abs/02.mp3", Duration: 1200},
+			},
+		},
+	}
+	if err := svc.SyncWithScannedBooks(ctx, scanned); err != nil {
+		t.Fatalf("SyncWithScannedBooks failed: %v", err)
+	}
+
+	books, err := svc.List(ctx)
+	if err != nil || len(books) == 0 {
+		t.Fatalf("List failed: %v", err)
+	}
+	book, err := svc.Get(ctx, books[0].ID)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+
+	track1 := book.Tracks[0]
+	if track1.InPlaylist {
+		t.Fatalf("expected track1 not in playlist initially")
+	}
+
+	// Add track 1 to playlist
+	if err := svc.AddTrackToPlaylist(ctx, track1.ID); err != nil {
+		t.Fatalf("AddTrackToPlaylist failed: %v", err)
+	}
+
+	// Verify track is in playlist
+	bookUpdated, err := svc.Get(ctx, book.ID)
+	if err != nil {
+		t.Fatalf("Get updated failed: %v", err)
+	}
+	if !bookUpdated.Tracks[0].InPlaylist {
+		t.Errorf("expected track 1 in playlist after AddTrackToPlaylist")
+	}
+	if bookUpdated.Tracks[1].InPlaylist {
+		t.Errorf("expected track 2 NOT in playlist")
+	}
+
+	// Remove track 1 from playlist
+	if err := svc.RemoveTrackFromPlaylist(ctx, track1.ID); err != nil {
+		t.Fatalf("RemoveTrackFromPlaylist failed: %v", err)
+	}
+
+	bookAfterRemove, err := svc.Get(ctx, book.ID)
+	if err != nil {
+		t.Fatalf("Get after remove failed: %v", err)
+	}
+	if bookAfterRemove.Tracks[0].InPlaylist {
+		t.Errorf("expected track 1 not in playlist after RemoveTrackFromPlaylist")
+	}
+}

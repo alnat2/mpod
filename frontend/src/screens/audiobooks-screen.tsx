@@ -12,8 +12,8 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { AudiobookChaptersModal } from "@/components/mpod/audiobook-chapters-modal";
-import { api, type Audiobook } from "@/lib/api";
-import { usePlayback, usePlaybackDispatch } from "@/lib/playback-context";
+import { api, type Audiobook, type AudiobookTrack } from "@/lib/api";
+import { usePlaybackDispatch } from "@/lib/playback-context";
 import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
 import { ErrorBanner, ScreenBannerStack } from "./screen-states";
@@ -45,8 +45,7 @@ function isAudioFile(relPath?: string | null): boolean {
 export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
   void props;
   const isMobile = useIsMobileViewport();
-  const { currentEpisode, playing, positionSeconds } = usePlayback();
-  const { playEpisode, playToggle, reloadQueue } = usePlaybackDispatch();
+  const { reloadQueue } = usePlaybackDispatch();
   const [audiobooks, setAudiobooks] = useState<Audiobook[]>([]);
   const [loading, setLoading] = useState(true);
   const [rescanning, setRescanning] = useState(false);
@@ -200,6 +199,32 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
     }
   };
 
+  const handleToggleTrackPlaylist = async (track: AudiobookTrack) => {
+    if (!selectedBookForModal) return;
+    try {
+      const inPlaylist = Boolean(track.inPlaylist ?? track.isInPlaylist);
+      if (inPlaylist) {
+        await api.audiobooks.removeTrackFromPlaylist(selectedBookForModal.id, track.id);
+      } else {
+        await api.audiobooks.addTrackToPlaylist(selectedBookForModal.id, track.id);
+      }
+      setSelectedBookForModal((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          tracks: prev.tracks?.map((t) =>
+            t.id === track.id
+              ? { ...t, inPlaylist: !inPlaylist, isInPlaylist: !inPlaylist }
+              : t
+          ),
+        };
+      });
+      await reloadQueue();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update track playlist");
+    }
+  };
+
   return (
     <AppShell
       activeNavItem="Abooks"
@@ -324,29 +349,9 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
       {selectedBookForModal && (
         <AudiobookChaptersModal
           audiobook={selectedBookForModal}
-          activeTrackId={
-            (currentEpisode?.type === "audiobook" || Boolean(currentEpisode?.audiobookId)) &&
-            (currentEpisode?.audiobookId ?? currentEpisode?.id) === selectedBookForModal.id
-              ? currentEpisode?.trackId
-              : undefined
-          }
-          isPlaying={playing}
-          activePositionSeconds={positionSeconds}
-          onTogglePlayPause={playToggle}
           isMobile={isMobile}
           onClose={() => setSelectedBookForModal(null)}
-          onSelectTrack={async (track) => {
-            if (!selectedBookForModal.inPlaylist) {
-              await api.audiobooks.addToPlaylist(selectedBookForModal.id);
-            }
-            await api.playback.setActive({
-              audiobookId: selectedBookForModal.id,
-              trackId: track.id,
-            });
-            setSelectedBookForModal(null);
-            await reloadQueue();
-            playEpisode(selectedBookForModal.id);
-          }}
+          onToggleTrackPlaylist={handleToggleTrackPlaylist}
         />
       )}
 

@@ -249,6 +249,8 @@ func NewRouterWithServices(logger *log.Logger, cfg config.Config, db *sql.DB, sc
 	mux.HandleFunc("GET /api/audiobooks/{id}/tracks/{trackId}/audio", r.handleAudiobookTrackAudio)
 	mux.HandleFunc("POST /api/audiobooks/{id}/playlist", r.handleAudiobookPlaylistAdd)
 	mux.HandleFunc("DELETE /api/audiobooks/{id}/playlist", r.handleAudiobookPlaylistRemove)
+	mux.HandleFunc("POST /api/audiobooks/{id}/tracks/{trackId}/playlist", r.handleAudiobookTrackPlaylistAdd)
+	mux.HandleFunc("DELETE /api/audiobooks/{id}/tracks/{trackId}/playlist", r.handleAudiobookTrackPlaylistRemove)
 	mux.HandleFunc("POST /api/audiobooks/playback", r.handleAudiobookPlaybackPost)
 
 	staticDir := pathutil.FirstExistingDir("frontend/dist", "../frontend/dist")

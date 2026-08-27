@@ -835,6 +835,50 @@ func TestMultiTrackAudiobookPlaybackAndTrackSwitching(t *testing.T) {
 	}
 }
 
+func TestIndividualTrackInQueue(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `
+		INSERT INTO audiobooks (id, title, author, rel_path, total_duration)
+		VALUES (1, 'Dune', 'Frank Herbert', 'Frank Herbert/Dune', 3600);
+	`)
+	mustExec(t, db.SQL, `
+		INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration)
+		VALUES
+			(10, 1, 1, 'Chapter 1', 'Frank Herbert/Dune/01.mp3', '/abs/01.mp3', 1800),
+			(11, 1, 2, 'Chapter 2', 'Frank Herbert/Dune/02.mp3', '/abs/02.mp3', 1800);
+	`)
+
+	// Add individual track 11 to playlist
+	mustExec(t, db.SQL, `INSERT INTO playlist (audiobook_track_id, position) VALUES (11, 1);`)
+
+	downloadsService := downloads.NewService(db.SQL, nil, t.TempDir())
+	episodeActions := episodes.NewActions(db.SQL, downloadsService)
+	playlistService := playlist.NewService(db.SQL)
+	service := NewService(db.SQL, episodeActions, playlistService)
+
+	queue, err := service.ListQueue(context.Background())
+	if err != nil {
+		t.Fatalf("ListQueue error: %v", err)
+	}
+	if len(queue) != 1 {
+		t.Fatalf("expected 1 queue item, got %d", len(queue))
+	}
+	if queue[0].Title != "Chapter 2" || *queue[0].TrackID != 11 || queue[0].TrackCount != 1 {
+		t.Fatalf("unexpected queue item for individual track: %+v", queue[0])
+	}
+
+	// Set active
+	tr11 := int64(11)
+	active, err := service.SetActiveItem(context.Background(), nil, nil, &tr11)
+	if err != nil {
+		t.Fatalf("SetActiveItem for track 11 error: %v", err)
+	}
+	if active == nil || active.AudiobookTrackID == nil || *active.AudiobookTrackID != 11 {
+		t.Fatalf("unexpected active state: %+v", active)
+	}
+}
 
 func newTestDB(t *testing.T) *storage.DB {
 	t.Helper()
