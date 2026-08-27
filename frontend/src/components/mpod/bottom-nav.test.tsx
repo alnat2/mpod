@@ -19,8 +19,8 @@ describe("BottomNav", () => {
     expect(screen.getByRole("button", { name: /Add/i })).toBeInTheDocument();
 
     const podcasts = screen.getByRole("link", { name: /Podcasts/i });
-    const icon = podcasts.querySelector('[data-icon-name="hugeicons/rss"]');
+    const icon = podcasts.querySelector('[data-icon-name="hugeicons/podcast"]');
     expect(icon).not.toBeNull();
-    expect(icon).toHaveAttribute("data-icon-name", "hugeicons/rss");
+    expect(icon).toHaveAttribute("data-icon-name", "hugeicons/podcast");
   });
 });
