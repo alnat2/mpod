@@ -379,12 +379,6 @@ export function Player({
                 </button>
               }
             />
-            <LabeledSeekControl
-              label="Go back 15 seconds"
-              caption="-15"
-              align="center"
-              onClick={onBack}
-            />
             <TransportButton
               label={playing ? "Pause" : "Play"}
               icon={playing ? PauseIcon : PlayIcon}
@@ -392,6 +386,12 @@ export function Player({
               iconClassName="size-9 md:size-8"
               onClick={onPlay}
               primary
+            />
+            <LabeledSeekControl
+              label="Go back 15 seconds"
+              caption="-15"
+              align="center"
+              onClick={onBack}
             />
             <LabeledSeekControl
               label="Go forward 30 seconds"
