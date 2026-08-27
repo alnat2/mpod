@@ -239,26 +239,34 @@ func (s *Service) RemoveAudiobook(ctx context.Context, audiobookID int64) error 
 	return s.normalizePositions(ctx)
 }
 
-func (s *Service) Reorder(ctx context.Context, episodeIDs []int64) error {
+type ReorderItem struct {
+	Type string
+	ID   int64
+}
+
+func (s *Service) Reorder(ctx context.Context, items []ReorderItem) error {
 	current, err := s.List(ctx)
 	if err != nil {
 		return err
 	}
-	if len(current) != len(episodeIDs) {
+	if len(current) != len(items) {
 		return ErrInvalidReorder
 	}
 
-	currentSet := make(map[int64]struct{}, len(current))
+	currentSet := make(map[string]struct{}, len(current))
 	for _, item := range current {
 		if item.EpisodeID != nil {
-			currentSet[*item.EpisodeID] = struct{}{}
+			currentSet[fmt.Sprintf("episode:%d", *item.EpisodeID)] = struct{}{}
+		} else if item.AudiobookID != nil {
+			currentSet[fmt.Sprintf("audiobook:%d", *item.AudiobookID)] = struct{}{}
 		}
 	}
-	for _, id := range episodeIDs {
-		if _, ok := currentSet[id]; !ok {
+	for _, item := range items {
+		key := fmt.Sprintf("%s:%d", item.Type, item.ID)
+		if _, ok := currentSet[key]; !ok {
 			return ErrInvalidReorder
 		}
-		delete(currentSet, id)
+		delete(currentSet, key)
 	}
 	if len(currentSet) != 0 {
 		return ErrInvalidReorder
@@ -270,9 +278,15 @@ func (s *Service) Reorder(ctx context.Context, episodeIDs []int64) error {
 	}
 	defer tx.Rollback()
 
-	for i, id := range episodeIDs {
-		if _, err := tx.ExecContext(ctx, `UPDATE playlist SET position = ? WHERE episode_id = ?`, i+1, id); err != nil {
-			return fmt.Errorf("update playlist position: %w", err)
+	for i, item := range items {
+		if item.Type == "episode" {
+			if _, err := tx.ExecContext(ctx, `UPDATE playlist SET position = ? WHERE episode_id = ?`, i+1, item.ID); err != nil {
+				return fmt.Errorf("update playlist position: %w", err)
+			}
+		} else {
+			if _, err := tx.ExecContext(ctx, `UPDATE playlist SET position = ? WHERE audiobook_id = ?`, i+1, item.ID); err != nil {
+				return fmt.Errorf("update playlist position: %w", err)
+			}
 		}
 	}
 

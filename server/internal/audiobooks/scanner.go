@@ -127,7 +127,14 @@ func ScanDirectory(rootDir string) ([]ScannedBook, error) {
 
 	err = filepath.WalkDir(cleanRoot, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return walkErr
+			// Skip unreadable files or directories, but fail if root is unreadable
+			if path == cleanRoot {
+				return walkErr
+			}
+			if d != nil && d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 
 		// Skip hidden files and directories

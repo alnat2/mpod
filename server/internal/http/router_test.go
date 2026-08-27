@@ -1343,7 +1343,7 @@ func TestPlaylistEndpoints(t *testing.T) {
 		t.Fatalf("expected playlist add to mark episode unlistened")
 	}
 
-	reorderReq := httptest.NewRequest(nethttp.MethodPatch, "/api/playlist/reorder", bytes.NewReader([]byte(`{"episodeIds":[1]}`)))
+	reorderReq := httptest.NewRequest(nethttp.MethodPatch, "/api/playlist/reorder", bytes.NewReader([]byte(`{"items":[{"type":"episode","id":1}]}`)))
 	reorderReq.AddCookie(cookie)
 	reorderRec := httptest.NewRecorder()
 	handler.ServeHTTP(reorderRec, reorderReq)
@@ -1432,7 +1432,7 @@ func TestPlaylistReorderReturnsStableInternalErrorContractOnUnexpectedFailure(t 
 		t.Fatalf("appDB.Close failed: %v", err)
 	}
 
-	req := httptest.NewRequest(nethttp.MethodPatch, "/api/playlist/reorder", bytes.NewReader([]byte(`{"episodeIds":[1]}`)))
+	req := httptest.NewRequest(nethttp.MethodPatch, "/api/playlist/reorder", bytes.NewReader([]byte(`{"items":[{"type":"episode","id":1}]}`)))
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -1447,7 +1447,7 @@ func TestPlaylistReorderRejectsInvalidOrder(t *testing.T) {
 	seedEpisode(t, db, 2, 1)
 	mustExecHTTP(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1), (2, 2)`)
 
-	req := httptest.NewRequest(nethttp.MethodPatch, "/api/playlist/reorder", bytes.NewReader([]byte(`{"episodeIds":[1]}`)))
+	req := httptest.NewRequest(nethttp.MethodPatch, "/api/playlist/reorder", bytes.NewReader([]byte(`{"items":[{"type":"episode","id":1}]}`)))
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

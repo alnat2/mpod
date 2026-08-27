@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Episode } from "@/lib/api";
 
-type EpisodeDurationSource = Pick<Episode, "id" | "duration">;
+type EpisodeDurationSource = Pick<Episode, "id" | "duration"> & {
+  type?: "episode" | "audiobook";
+  audioUrl?: string;
+};
 
 function isPositiveDuration(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -15,25 +18,26 @@ function readDuration(audio: HTMLAudioElement) {
 export function useAudioMetadataDurations(
   episodes: EpisodeDurationSource[]
 ) {
-  const [durationsByEpisodeId, setDurationsByEpisodeId] = useState<
-    Record<number, number>
+  const [durationsByKey, setDurationsByKey] = useState<
+    Record<string, number>
   >({});
   const audioProbesRef = useRef(
-    new Map<number, { audio: HTMLAudioElement; cleanup: () => void }>()
+    new Map<string, { audio: HTMLAudioElement; cleanup: () => void }>()
   );
 
   const missingDurationKey = useMemo(
     () =>
       episodes
         .filter(
-          (episode) =>
-            !isPositiveDuration(episode.duration) &&
-            !durationsByEpisodeId[episode.id]
+          (episode) => {
+            const key = `${episode.type || "episode"}:${episode.id}`;
+            return !isPositiveDuration(episode.duration) && !durationsByKey[key];
+          }
         )
-        .map((episode) => episode.id)
-        .sort((a, b) => a - b)
+        .map((episode) => `${episode.type || "episode"}:${episode.id}:${episode.audioUrl || ""}`)
+        .sort()
         .join(","),
-    [durationsByEpisodeId, episodes]
+    [durationsByKey, episodes]
   );
 
   useEffect(() => {
@@ -41,23 +45,28 @@ export function useAudioMetadataDurations(
       return;
     }
 
-    const missingEpisodeIds = new Set(
-      missingDurationKey
-        .split(",")
-        .filter(Boolean)
-        .map(Number)
-        .filter(Number.isFinite)
-    );
+    const missingItems = missingDurationKey
+      .split(",")
+      .filter(Boolean)
+      .map((str) => {
+        const parts = str.split(":");
+        const type = parts[0];
+        const id = parts[1];
+        const audioUrl = parts.slice(2).join(":"); // reconstruct URL
+        return { key: `${type}:${id}`, type, id, audioUrl };
+      });
 
-    for (const [episodeId, probe] of audioProbesRef.current) {
-      if (!missingEpisodeIds.has(episodeId)) {
+    const missingKeys = new Set(missingItems.map(item => item.key));
+
+    for (const [key, probe] of audioProbesRef.current) {
+      if (!missingKeys.has(key)) {
         probe.cleanup();
-        audioProbesRef.current.delete(episodeId);
+        audioProbesRef.current.delete(key);
       }
     }
 
-    for (const episodeId of missingEpisodeIds) {
-      if (audioProbesRef.current.has(episodeId)) {
+    for (const item of missingItems) {
+      if (audioProbesRef.current.has(item.key)) {
         continue;
       }
 
@@ -68,10 +77,10 @@ export function useAudioMetadataDurations(
           return;
         }
 
-        setDurationsByEpisodeId((current) =>
-          current[episodeId] === nextDuration
+        setDurationsByKey((current) =>
+          current[item.key] === nextDuration
             ? current
-            : { ...current, [episodeId]: nextDuration }
+            : { ...current, [item.key]: nextDuration }
         );
       };
       const ignoreError = () => {};
@@ -80,9 +89,14 @@ export function useAudioMetadataDurations(
       audio.addEventListener("loadedmetadata", handleDuration);
       audio.addEventListener("durationchange", handleDuration);
       audio.addEventListener("error", ignoreError);
-      audio.src = `/api/episodes/${episodeId}/audio`;
+      
+      const url = item.type === "audiobook" && item.audioUrl 
+        ? item.audioUrl 
+        : `/api/episodes/${item.id}/audio`;
+        
+      audio.src = url;
 
-      audioProbesRef.current.set(episodeId, {
+      audioProbesRef.current.set(item.key, {
         audio,
         cleanup: () => {
           audio.removeEventListener("loadedmetadata", handleDuration);
@@ -106,10 +120,13 @@ export function useAudioMetadataDurations(
   );
 
   return useCallback(
-    (episode: EpisodeDurationSource) =>
-      isPositiveDuration(episode.duration)
-        ? episode.duration
-        : durationsByEpisodeId[episode.id] ?? null,
-    [durationsByEpisodeId]
+    (episode: EpisodeDurationSource) => {
+      if (isPositiveDuration(episode.duration)) {
+        return episode.duration;
+      }
+      const key = `${episode.type || "episode"}:${episode.id}`;
+      return durationsByKey[key] ?? null;
+    },
+    [durationsByKey]
   );
 }

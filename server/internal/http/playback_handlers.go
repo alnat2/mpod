@@ -209,16 +209,16 @@ func (r *Router) handlePlaylistReorder(w nethttp.ResponseWriter, req *nethttp.Re
 	}
 
 	var payload struct {
-		EpisodeIDs []int64 `json:"episodeIds"`
+		Items []playlist.ReorderItem `json:"items"`
 	}
 	if !r.decodeJSON(w, req, &payload) {
 		return
 	}
 
-	if err := r.playlist.Reorder(req.Context(), payload.EpisodeIDs); err != nil {
+	if err := r.playlist.Reorder(req.Context(), payload.Items); err != nil {
 		switch err {
 		case playlist.ErrInvalidReorder:
-			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_PLAYLIST_ORDER", "episodeIds must match the full playlist contents")
+			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_PLAYLIST_ORDER", "items must match the full playlist contents")
 		default:
 			r.writeAPIError(w, nethttp.StatusInternalServerError, "PLAYLIST_REORDER_FAILED", "Failed to reorder playlist")
 		}

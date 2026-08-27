@@ -97,6 +97,7 @@ func (r *Router) handleAudiobooksRescan(w nethttp.ResponseWriter, req *nethttp.R
 	}
 
 	if err := r.audiobooks.Rescan(req.Context()); err != nil {
+		r.logger.Printf("Failed to rescan audiobooks: %v", err)
 		r.writeAPIError(w, nethttp.StatusInternalServerError, "RESCAN_FAILED", "Failed to rescan audiobooks")
 		return
 	}

@@ -239,11 +239,7 @@ export function AudiobooksScreen(_props: AudiobooksScreenProps = {}) {
                   duration={book.totalDuration}
                   inPlaylist={book.inPlaylist ?? book.isInPlaylist ?? false}
                   isMobile={isMobile}
-                  onOpen={() => {
-                    if (isMultiFile) {
-                      void handleOpenBookModal(book);
-                    }
-                  }}
+                  onOpen={() => void handleOpenBookModal(book)}
                   onTogglePlaylist={() => void handleTogglePlaylist(book)}
                 />
               );

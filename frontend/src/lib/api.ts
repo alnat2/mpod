@@ -325,10 +325,10 @@ export const api = {
       apiRequest<{ success: true }>(`/api/playlist/${episodeId}`, {
         method: "DELETE",
       }),
-    reorder: (episodeIds: number[]) =>
+    reorder: (items: { id: number; type: "episode" | "audiobook" }[]) =>
       apiRequest<{ success: true }>("/api/playlist/reorder", {
         method: "PATCH",
-        body: { episodeIds },
+        body: { items },
       }),
   },
   playback: {

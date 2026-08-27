@@ -182,7 +182,12 @@ export function HomeScreen() {
     setReordering(true);
 
     try {
-      await api.playlist.reorder(nextQueue.map((episode) => episode.id));
+      await api.playlist.reorder(
+        nextQueue.map((episode) => ({
+          id: episode.id,
+          type: episode.type || "episode",
+        }))
+      );
     } catch (caught) {
       setQueue(previousQueue);
       queueRef.current = previousQueue;

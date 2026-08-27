@@ -400,6 +400,7 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 				item.CoverURL = &coverURL
 				item.PodcastImageURL = &coverURL
 			}
+			item.Downloaded = true
 
 			items = append(items, item)
 		}
