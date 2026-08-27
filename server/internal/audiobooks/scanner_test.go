@@ -116,6 +116,43 @@ func TestScanDirectory(t *testing.T) {
 	}
 }
 
+func TestScanDirectory_MultipleRootAudioFiles(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Multiple separate audio files in the root directory
+	mustWriteFile(t, filepath.Join(tempDir, "Story A.mp3"), "fake-audio-a")
+	mustWriteFile(t, filepath.Join(tempDir, "Story B.m4b"), "fake-audio-b")
+	mustWriteFile(t, filepath.Join(tempDir, "Story C.m4a"), "fake-audio-c")
+
+	books, err := ScanDirectory(tempDir)
+	if err != nil {
+		t.Fatalf("ScanDirectory failed: %v", err)
+	}
+
+	if len(books) != 3 {
+		t.Fatalf("expected 3 separate books for root audio files, got %d", len(books))
+	}
+
+	titles := make(map[string]ScannedBook)
+	for _, b := range books {
+		titles[b.Title] = b
+	}
+
+	for _, expectedTitle := range []string{"Story A", "Story B", "Story C"} {
+		b, ok := titles[expectedTitle]
+		if !ok {
+			t.Errorf("book %q not found", expectedTitle)
+			continue
+		}
+		if b.Author != "" {
+			t.Errorf("expected empty author for root file %q, got %q", expectedTitle, b.Author)
+		}
+		if len(b.Tracks) != 1 {
+			t.Errorf("expected 1 track for %q, got %d", expectedTitle, len(b.Tracks))
+		}
+	}
+}
+
 func mustMkdir(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(path, 0o755); err != nil {

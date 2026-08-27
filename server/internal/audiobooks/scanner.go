@@ -203,8 +203,6 @@ func ScanDirectory(rootDir string) ([]ScannedBook, error) {
 			continue
 		}
 
-		// Check if this directory is a multi-track book (contains 2 or more audio files)
-		// OR if it contains 1 audio file and no subdirectories with audio
 		hasSubdirWithAudio := false
 		for _, sub := range content.subDirs {
 			if subContent, ok := dirMap[sub]; ok && (len(subContent.audioFiles) > 0 || len(subContent.subDirs) > 0) {
@@ -213,7 +211,9 @@ func ScanDirectory(rootDir string) ([]ScannedBook, error) {
 			}
 		}
 
-		isLeafMultiTrackBook := len(content.audioFiles) > 1 || (len(content.audioFiles) == 1 && !hasSubdirWithAudio && path != cleanRoot)
+		// A directory is treated as a single multi-track or single-track book only if
+		// it is not the root library folder and contains no subdirectories with audio.
+		isLeafMultiTrackBook := path != cleanRoot && !hasSubdirWithAudio && len(content.audioFiles) > 0
 
 		if isLeafMultiTrackBook {
 			// Directory itself is the book
