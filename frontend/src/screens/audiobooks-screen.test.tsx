@@ -111,4 +111,36 @@ describe("AudiobooksScreen", () => {
       expect(rescanSpy).toHaveBeenCalled();
     });
   });
+
+  it("renders correct icons for general folders, audio files, and audio folders", async () => {
+    render(
+      <MemoryRouter>
+        <AudiobooksScreen />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Frank Herbert")).toBeInTheDocument();
+      expect(screen.getByText("Single Story")).toBeInTheDocument();
+    });
+
+    // 1. General folder has folder-03 icon
+    const authorRow = screen.getByText("Frank Herbert").closest('[data-slot="fm-item"]');
+    expect(authorRow?.querySelector('[data-icon-name="hugeicons/folder-03"]')).toBeInTheDocument();
+
+    // 2. Standalone audio file has audio-book-01 icon
+    const storyRow = screen.getByText("Single Story").closest('[data-slot="fm-item"]');
+    expect(storyRow?.querySelector('[data-icon-name="hugeicons/audio-book-01"]')).toBeInTheDocument();
+
+    // Navigate into author folder to check audio folder icon
+    fireEvent.click(screen.getByText("Frank Herbert"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Dune")).toBeInTheDocument();
+    });
+
+    // 3. Audio folder (multi-track / directory book) has folder-audio icon
+    const duneRow = screen.getByText("Dune").closest('[data-slot="fm-item"]');
+    expect(duneRow?.querySelector('[data-icon-name="hugeicons/folder-audio"]')).toBeInTheDocument();
+  });
 });

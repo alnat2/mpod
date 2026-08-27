@@ -16,7 +16,7 @@ import {
   PlaylistQueue,
   ShowNotes,
 } from "@/components/mpod";
-import { api, type Audiobook, type AudiobookTrack, type Episode } from "@/lib/api";
+import { api, type Audiobook } from "@/lib/api";
 import { usePlayback, type QueueEpisode } from "@/lib/playback-context";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";

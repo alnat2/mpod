@@ -22,7 +22,27 @@ export type AudiobooksScreenProps = {
   onSessionChange?: () => void | Promise<void>;
 };
 
-export function AudiobooksScreen(_props: AudiobooksScreenProps = {}) {
+const AUDIO_FILE_EXTENSIONS = new Set([
+  ".mp3",
+  ".m4b",
+  ".m4a",
+  ".aac",
+  ".ogg",
+  ".opus",
+  ".flac",
+  ".wav",
+  ".wma",
+]);
+
+function isAudioFile(relPath?: string | null): boolean {
+  if (!relPath) return false;
+  const lastDot = relPath.lastIndexOf(".");
+  if (lastDot === -1) return false;
+  return AUDIO_FILE_EXTENSIONS.has(relPath.slice(lastDot).toLowerCase());
+}
+
+export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
+  void props;
   const isMobile = useIsMobileViewport();
   const [audiobooks, setAudiobooks] = useState<Audiobook[]>([]);
   const [loading, setLoading] = useState(true);
@@ -230,11 +250,12 @@ export function AudiobooksScreen(_props: AudiobooksScreenProps = {}) {
 
             {/* Books / Tracks */}
             {explorerItems.books.map((book) => {
-              const isMultiFile = book.trackCount > 1;
+              const isSingleAudioFile = isAudioFile(book.relPath) && book.trackCount <= 1;
+              const itemType = isSingleAudioFile ? "track" : "audiobook";
               return (
                 <FileManagerItem
                   key={`book-${book.id}`}
-                  type={isMultiFile ? "audiobook" : "track"}
+                  type={itemType}
                   title={book.title}
                   duration={book.totalDuration}
                   inPlaylist={book.inPlaylist ?? book.isInPlaylist ?? false}
