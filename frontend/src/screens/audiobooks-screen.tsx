@@ -188,12 +188,8 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
 
   const handleOpenBookModal = async (book: Audiobook) => {
     try {
-      if (!book.tracks || book.tracks.length === 0) {
-        const response = await api.audiobooks.get(book.id);
-        setSelectedBookForModal(response.audiobook);
-      } else {
-        setSelectedBookForModal(book);
-      }
+      const response = await api.audiobooks.get(book.id);
+      setSelectedBookForModal(response.audiobook);
     } catch {
       setSelectedBookForModal(book);
     }

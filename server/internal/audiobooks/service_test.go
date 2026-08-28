@@ -199,3 +199,68 @@ func TestTrackPlaylistAdditionAndRemoval(t *testing.T) {
 		t.Errorf("expected track 1 not in playlist after RemoveTrackFromPlaylist")
 	}
 }
+
+func TestBookInPlaylistReflectsOnTracks(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	svc := NewService(db, t.TempDir())
+	ctx := context.Background()
+
+	scanned := []ScannedBook{
+		{
+			Title:   "Dune",
+			Author:  "Frank Herbert",
+			RelPath: "Frank Herbert/Dune",
+			Tracks: []ScannedTrack{
+				{TrackNumber: 1, Title: "Chapter 1", RelPath: "Frank Herbert/Dune/01.mp3", FilePath: "/abs/01.mp3", Duration: 1000},
+				{TrackNumber: 2, Title: "Chapter 2", RelPath: "Frank Herbert/Dune/02.mp3", FilePath: "/abs/02.mp3", Duration: 1200},
+			},
+		},
+	}
+	if err := svc.SyncWithScannedBooks(ctx, scanned); err != nil {
+		t.Fatalf("SyncWithScannedBooks failed: %v", err)
+	}
+
+	books, err := svc.List(ctx)
+	if err != nil || len(books) == 0 {
+		t.Fatalf("List failed: %v", err)
+	}
+	bookID := books[0].ID
+
+	// Add whole book to playlist
+	if _, err := db.ExecContext(ctx, `INSERT INTO playlist (audiobook_id, position) VALUES (?, 1)`, bookID); err != nil {
+		t.Fatalf("add book to playlist: %v", err)
+	}
+
+	// Verify both tracks report InPlaylist = true
+	b, err := svc.Get(ctx, bookID)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if !b.InPlaylist {
+		t.Errorf("expected book in playlist")
+	}
+	if !b.Tracks[0].InPlaylist {
+		t.Errorf("expected track 1 in playlist when whole book is in playlist")
+	}
+	if !b.Tracks[1].InPlaylist {
+		t.Errorf("expected track 2 in playlist when whole book is in playlist")
+	}
+
+	// Remove track 1 -> book entry is removed and track 2 remains in playlist
+	if err := svc.RemoveTrackFromPlaylist(ctx, b.Tracks[0].ID); err != nil {
+		t.Fatalf("RemoveTrackFromPlaylist failed: %v", err)
+	}
+
+	bAfter, err := svc.Get(ctx, bookID)
+	if err != nil {
+		t.Fatalf("Get after track removal failed: %v", err)
+	}
+	if bAfter.Tracks[0].InPlaylist {
+		t.Errorf("expected track 1 NOT in playlist after removal")
+	}
+	if !bAfter.Tracks[1].InPlaylist {
+		t.Errorf("expected track 2 still in playlist after removing track 1 from book playlist")
+	}
+}
