@@ -244,12 +244,6 @@ func (s *Service) Delete(ctx context.Context, podcastID int64) error {
 		return err
 	}
 
-	for _, path := range files {
-		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("delete podcast download: %w", err)
-		}
-	}
-
 	result, err := s.db.ExecContext(ctx, `DELETE FROM podcasts WHERE id = ?`, podcastID)
 	if err != nil {
 		return fmt.Errorf("delete podcast: %w", err)
@@ -260,6 +254,12 @@ func (s *Service) Delete(ctx context.Context, podcastID int64) error {
 	}
 	if rowsAffected == 0 {
 		return ErrPodcastNotFound
+	}
+
+	for _, path := range files {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("delete podcast download: %w", err)
+		}
 	}
 
 	for _, path := range files {

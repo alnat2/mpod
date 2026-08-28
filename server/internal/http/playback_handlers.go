@@ -158,6 +158,11 @@ func (r *Router) handlePlaylistAdd(w nethttp.ResponseWriter, req *nethttp.Reques
 		return
 	}
 
+	if payload.AudiobookID <= 0 && payload.EpisodeID <= 0 {
+		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_REQUEST", "Either episodeId or audiobookId must be provided")
+		return
+	}
+
 	if payload.AudiobookID > 0 {
 		if err := r.playlist.AddAudiobook(req.Context(), payload.AudiobookID); err != nil {
 			switch err {

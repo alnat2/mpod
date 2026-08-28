@@ -43,7 +43,7 @@ func (r *Router) handleEpisodeGet(w nethttp.ResponseWriter, req *nethttp.Request
 
 	episode, err := r.episodes.GetByID(req.Context(), episodeID)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			r.writeAPIError(w, nethttp.StatusNotFound, "EPISODE_NOT_FOUND", "Episode was not found")
 			return
 		}

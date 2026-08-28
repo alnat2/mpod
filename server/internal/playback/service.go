@@ -743,9 +743,9 @@ func (s *Service) applyCompletionSideEffects(ctx context.Context, episodeID int6
 
 func (s *Service) findCompletionFallback(ctx context.Context, completedEpisodeID int64) (*int64, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT playlist.episode_id, episodes.is_listened
+		SELECT playlist.episode_id, COALESCE(episodes.is_listened, 0)
 		FROM playlist
-		JOIN episodes ON episodes.id = playlist.episode_id
+		LEFT JOIN episodes ON episodes.id = playlist.episode_id
 		ORDER BY playlist.position ASC, playlist.id ASC
 	`)
 	if err != nil {
@@ -754,19 +754,26 @@ func (s *Service) findCompletionFallback(ctx context.Context, completedEpisodeID
 	defer rows.Close()
 
 	type candidate struct {
-		episodeID int64
+		episodeID *int64
 		listened  bool
 	}
 
 	var items []candidate
 	currentIndex := -1
 	for rows.Next() {
-		var item candidate
-		if err := rows.Scan(&item.episodeID, &item.listened); err != nil {
+		var epID sql.NullInt64
+		var listened bool
+		if err := rows.Scan(&epID, &listened); err != nil {
 			return nil, fmt.Errorf("scan completion fallback candidate: %w", err)
 		}
-		if item.episodeID == completedEpisodeID {
-			currentIndex = len(items)
+		var item candidate
+		if epID.Valid {
+			id := epID.Int64
+			item.episodeID = &id
+			item.listened = listened
+			if id == completedEpisodeID {
+				currentIndex = len(items)
+			}
 		}
 		items = append(items, item)
 	}
@@ -780,12 +787,10 @@ func (s *Service) findCompletionFallback(ctx context.Context, completedEpisodeID
 
 	for i := 0; i < currentIndex; i++ {
 		item := items[i]
-		if item.listened {
-			continue
+		if item.episodeID != nil && !item.listened {
+			nextEpisodeID := *item.episodeID
+			return &nextEpisodeID, nil
 		}
-
-		nextEpisodeID := item.episodeID
-		return &nextEpisodeID, nil
 	}
 
 	return nil, nil
