@@ -2,9 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import {
   GoToTimeModal,
-  formatDigitsToTime,
-  parseDigitsToSeconds,
 } from "./go-to-time-modal";
+import { formatDigitsToTime, parseDigitsToSeconds } from "./go-to-time-utils";
 
 describe("GoToTimeModal helpers", () => {
   it("formats digits to time string correctly", () => {

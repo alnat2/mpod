@@ -37,27 +37,13 @@ type AudiobookItem struct {
 	TotalDuration int64  `json:"totalDuration"`
 }
 
-type AudiobookTrackItem struct {
-	ID          int64  `json:"id"`
-	AudiobookID int64  `json:"audiobookId"`
-	TrackNumber int    `json:"trackNumber"`
-	Title       string `json:"title"`
-	Author      string `json:"author"`
-	BookTitle   string `json:"bookTitle"`
-	Duration    int64  `json:"duration"`
-	CoverPath   string `json:"coverPath,omitempty"`
-	HasCover    bool   `json:"hasCover"`
-}
-
 type Item struct {
-	EpisodeID        *int64              `json:"episodeId,omitempty"`
-	AudiobookID      *int64              `json:"audiobookId,omitempty"`
-	AudiobookTrackID *int64              `json:"audiobookTrackId,omitempty"`
-	Position         int64               `json:"position"`
-	Type             string              `json:"type"`
-	Episode          *Episode            `json:"episode,omitempty"`
-	Audiobook        *AudiobookItem      `json:"audiobook,omitempty"`
-	AudiobookTrack   *AudiobookTrackItem `json:"audiobookTrack,omitempty"`
+	EpisodeID   *int64         `json:"episodeId,omitempty"`
+	AudiobookID *int64         `json:"audiobookId,omitempty"`
+	Position    int64          `json:"position"`
+	Type        string         `json:"type"`
+	Episode     *Episode       `json:"episode,omitempty"`
+	Audiobook   *AudiobookItem `json:"audiobook,omitempty"`
 }
 
 func NewService(db *sql.DB) *Service {
@@ -66,17 +52,14 @@ func NewService(db *sql.DB) *Service {
 
 func (s *Service) List(ctx context.Context) ([]Item, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT playlist.position, playlist.episode_id, playlist.audiobook_id, playlist.audiobook_track_id,
+		SELECT playlist.position, playlist.episode_id, playlist.audiobook_id,
 		       episodes.id, episodes.title, episodes.podcast_id, episodes.is_listened, episodes.downloaded_path,
 		       audiobooks.id, audiobooks.title, COALESCE(audiobooks.author, ''), COALESCE(audiobooks.cover_path, ''), audiobooks.total_duration,
-		       (SELECT COUNT(*) FROM audiobook_tracks WHERE audiobook_id = audiobooks.id),
-		       single_track.id, single_track.audiobook_id, single_track.track_number, single_track.title, single_track.duration,
-		       single_ab.title, COALESCE(single_ab.author, ''), COALESCE(single_ab.cover_path, '')
+		       (SELECT COUNT(*) FROM audiobook_playlist_tracks WHERE audiobook_id = audiobooks.id)
 		FROM playlist
 		LEFT JOIN episodes ON episodes.id = playlist.episode_id
 		LEFT JOIN audiobooks ON audiobooks.id = playlist.audiobook_id
-		LEFT JOIN audiobook_tracks single_track ON single_track.id = playlist.audiobook_track_id
-		LEFT JOIN audiobooks single_ab ON single_ab.id = single_track.audiobook_id
+		WHERE playlist.audiobook_track_id IS NULL
 		ORDER BY playlist.position ASC, playlist.id ASC
 	`)
 	if err != nil {
@@ -87,7 +70,7 @@ func (s *Service) List(ctx context.Context) ([]Item, error) {
 	items := make([]Item, 0)
 	for rows.Next() {
 		var item Item
-		var epID, abID, abTrackID sql.NullInt64
+		var epID, abID sql.NullInt64
 		var epRowID, epPodcastID sql.NullInt64
 		var epTitle sql.NullString
 		var epIsListened sql.NullBool
@@ -95,14 +78,10 @@ func (s *Service) List(ctx context.Context) ([]Item, error) {
 		var abRowID, abTotalDuration sql.NullInt64
 		var abTitle, abAuthor, abCoverPath sql.NullString
 		var abTrackCount sql.NullInt64
-		var stID, stAbID, stNum, stDuration sql.NullInt64
-		var stTitle, stAbTitle, stAbAuthor, stAbCover sql.NullString
-
 		if err := rows.Scan(
 			&item.Position,
 			&epID,
 			&abID,
-			&abTrackID,
 			&epRowID,
 			&epTitle,
 			&epPodcastID,
@@ -114,14 +93,6 @@ func (s *Service) List(ctx context.Context) ([]Item, error) {
 			&abCoverPath,
 			&abTotalDuration,
 			&abTrackCount,
-			&stID,
-			&stAbID,
-			&stNum,
-			&stTitle,
-			&stDuration,
-			&stAbTitle,
-			&stAbAuthor,
-			&stAbCover,
 		); err != nil {
 			return nil, fmt.Errorf("scan playlist item: %w", err)
 		}
@@ -149,21 +120,6 @@ func (s *Service) List(ctx context.Context) ([]Item, error) {
 				CoverPath:     abCoverPath.String,
 				HasCover:      abCoverPath.String != "",
 				TotalDuration: abTotalDuration.Int64,
-			}
-		} else if abTrackID.Valid {
-			idVal := abTrackID.Int64
-			item.AudiobookTrackID = &idVal
-			item.Type = "audiobook_track"
-			item.AudiobookTrack = &AudiobookTrackItem{
-				ID:          stID.Int64,
-				AudiobookID: stAbID.Int64,
-				TrackNumber: int(stNum.Int64),
-				Title:       stTitle.String,
-				Author:      stAbAuthor.String,
-				BookTitle:   stAbTitle.String,
-				Duration:    stDuration.Int64,
-				CoverPath:   stAbCover.String,
-				HasCover:    stAbCover.String != "",
 			}
 		}
 
@@ -231,38 +187,29 @@ func (s *Service) AddAudiobook(ctx context.Context, audiobookID int64) error {
 		return ErrAudiobookNotFound
 	}
 
-	// Remove any individual tracks of this audiobook from playlist
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM playlist 
-		WHERE audiobook_track_id IN (SELECT id FROM audiobook_tracks WHERE audiobook_id = ?)
-	`, audiobookID); err != nil {
-		return fmt.Errorf("remove individual tracks for audiobook: %w", err)
-	}
-
-	// Clear any exclusions for this book
-	if _, err := tx.ExecContext(ctx, `DELETE FROM audiobook_track_exclusions WHERE audiobook_id = ?`, audiobookID); err != nil {
-		return fmt.Errorf("clean track exclusions: %w", err)
-	}
-
 	var existing int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_id = ?`, audiobookID).Scan(&existing); err != nil {
 		return fmt.Errorf("check playlist item exists: %w", err)
 	}
-	if existing > 0 {
-		return tx.Commit()
-	}
-
-	var nextPosition int64 = 1
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(position), 0) + 1 FROM playlist`).Scan(&nextPosition); err != nil {
-		return fmt.Errorf("load next playlist position: %w", err)
-	}
-
 	addedAt := s.now().UTC()
+	if existing == 0 {
+		var nextPosition int64 = 1
+		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(position), 0) + 1 FROM playlist`).Scan(&nextPosition); err != nil {
+			return fmt.Errorf("load next playlist position: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO playlist (audiobook_id, position, added_at)
+			VALUES (?, ?, ?)
+		`, audiobookID, nextPosition, addedAt); err != nil {
+			return fmt.Errorf("insert playlist audiobook item: %w", err)
+		}
+	}
+
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO playlist (audiobook_id, position, added_at)
-		VALUES (?, ?, ?)
-	`, audiobookID, nextPosition, addedAt); err != nil {
-		return fmt.Errorf("insert playlist audiobook item: %w", err)
+		INSERT OR IGNORE INTO audiobook_playlist_tracks (audiobook_id, track_id, added_at)
+		SELECT audiobook_id, id, ? FROM audiobook_tracks WHERE audiobook_id = ?
+	`, addedAt, audiobookID); err != nil {
+		return fmt.Errorf("select all audiobook tracks: %w", err)
 	}
 
 	return tx.Commit()
@@ -289,20 +236,23 @@ func (s *Service) RemoveAudiobook(ctx context.Context, audiobookID int64) error 
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM playlist 
-		WHERE audiobook_id = ? OR audiobook_track_id IN (SELECT id FROM audiobook_tracks WHERE audiobook_id = ?)
-	`, audiobookID, audiobookID); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM playlist WHERE audiobook_id = ?`, audiobookID); err != nil {
 		return fmt.Errorf("delete playlist audiobook item: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM audiobook_track_exclusions WHERE audiobook_id = ?`, audiobookID); err != nil {
-		return fmt.Errorf("delete track exclusions: %w", err)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM audiobook_playlist_tracks WHERE audiobook_id = ?`, audiobookID); err != nil {
+		return fmt.Errorf("clear selected audiobook tracks: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM audiobook_playback WHERE audiobook_id = ?`, audiobookID); err != nil {
+		return fmt.Errorf("reset audiobook playback: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE audiobook_tracks SET is_listened = 0 WHERE audiobook_id = ?`, audiobookID); err != nil {
+		return fmt.Errorf("reset audiobook listened state: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE active_playback
 		SET audiobook_id = NULL, audiobook_track_id = NULL, last_updated = ?
-		WHERE singleton_id = 1 AND (audiobook_id = ? OR audiobook_track_id IN (SELECT id FROM audiobook_tracks WHERE audiobook_id = ?))
-	`, time.Now().UTC(), audiobookID, audiobookID); err != nil {
+		WHERE singleton_id = 1 AND audiobook_id = ?
+	`, time.Now().UTC(), audiobookID); err != nil {
 		return fmt.Errorf("clear active playback audiobook: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -331,8 +281,6 @@ func (s *Service) Reorder(ctx context.Context, items []ReorderItem) error {
 			currentSet[fmt.Sprintf("episode:%d", *item.EpisodeID)] = struct{}{}
 		} else if item.AudiobookID != nil {
 			currentSet[fmt.Sprintf("audiobook:%d", *item.AudiobookID)] = struct{}{}
-		} else if item.AudiobookTrackID != nil {
-			currentSet[fmt.Sprintf("audiobook_track:%d", *item.AudiobookTrackID)] = struct{}{}
 		}
 	}
 	for _, item := range items {
@@ -355,10 +303,6 @@ func (s *Service) Reorder(ctx context.Context, items []ReorderItem) error {
 	for i, item := range items {
 		if item.Type == "episode" {
 			if _, err := tx.ExecContext(ctx, `UPDATE playlist SET position = ? WHERE episode_id = ?`, i+1, item.ID); err != nil {
-				return fmt.Errorf("update playlist position: %w", err)
-			}
-		} else if item.Type == "audiobook_track" {
-			if _, err := tx.ExecContext(ctx, `UPDATE playlist SET position = ? WHERE audiobook_track_id = ?`, i+1, item.ID); err != nil {
 				return fmt.Errorf("update playlist position: %w", err)
 			}
 		} else {

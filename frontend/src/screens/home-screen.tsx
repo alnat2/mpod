@@ -9,7 +9,7 @@ import {
 
 import {
   AppShell,
-  AudiobookChaptersModal,
+  AudiobookPlaybackChaptersModal,
   EpisodeRow,
   ModalScreen,
   Player,
@@ -59,6 +59,7 @@ export function HomeScreen() {
     playing,
     playToggle,
     playEpisode,
+    playAudiobookTrack,
     positionSeconds,
     durationSeconds,
     speedLabel,
@@ -140,27 +141,35 @@ export function HomeScreen() {
     }
   }
 
-  const handleToggleTrackPlaylist = async (track: AudiobookTrack) => {
+	const handlePlayChapter = async (track: AudiobookTrack) => {
     if (!selectedBookForChapters) return;
     try {
-      const inPlaylist = Boolean(track.inPlaylist ?? track.isInPlaylist);
-      if (inPlaylist) {
-        await api.audiobooks.removeTrackFromPlaylist(selectedBookForChapters.id, track.id);
-      } else {
-        await api.audiobooks.addTrackToPlaylist(selectedBookForChapters.id, track.id);
-      }
-      setSelectedBookForChapters((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          tracks: prev.tracks?.map((t) =>
-            t.id === track.id
-              ? { ...t, inPlaylist: !inPlaylist, isInPlaylist: !inPlaylist }
-              : t
-          ),
-        };
-      });
-      await reloadQueue();
+	  const isCurrentTrack =
+		(currentEpisode?.audiobookId ?? currentEpisode?.id) ===
+		  selectedBookForChapters.id && currentEpisode?.trackId === track.id;
+	  if (isCurrentTrack) {
+		playToggle();
+		return;
+	  }
+	  await playAudiobookTrack(selectedBookForChapters.id, track);
+	  setSelectedBookForChapters((current) =>
+		current
+		  ? {
+			  ...current,
+			  tracks: current.tracks?.map((item) =>
+				item.id === track.id
+				  ? {
+					  ...item,
+					  isListened: false,
+					  positionSeconds: track.isListened
+						? 0
+						: track.positionSeconds,
+					}
+				  : item
+			  ),
+			}
+		  : null
+	  );
     } catch (e) {
       setActionError(getErrorMessage(e));
     }
@@ -308,7 +317,7 @@ export function HomeScreen() {
           {loading ? (
             <CenterLoadingState className="mt-4" label="Loading playlist" />
           ) : currentEpisode ? (
-            <div className="flex min-h-0 flex-1 flex-col items-center gap-4 overflow-hidden px-0 pt-4 pb-5 md:py-6">
+            <div className="mpod-scroll flex min-h-0 flex-1 flex-col items-center gap-4 overflow-y-auto px-0 pt-4 pb-5 md:py-6">
               <Player
                 className="shrink-0"
                 mode={currentEpisode.type === "audiobook" ? "audiobook" : "episode"}
@@ -347,8 +356,8 @@ export function HomeScreen() {
               />
               <PlaylistQueue
                 summary={queueSummary(visibleQueue, durationForQueueEpisode)}
-                className="min-h-0 w-full flex-1 md:max-w-[1040px]"
-                bodyClassName="mpod-scroll min-h-0 flex-1 overflow-y-auto pb-20 md:max-h-none md:pb-0"
+                className="w-full shrink-0 md:max-w-[1040px]"
+                bodyClassName="mpod-scroll h-[236px] shrink-0 overflow-y-auto overscroll-contain pb-20 md:h-[218px] md:pb-0"
               >
                 {visibleQueue.map((episode) => {
                   const canReorder = !reordering;
@@ -464,12 +473,14 @@ export function HomeScreen() {
         </ModalScreen>
       ) : null}
       {selectedBookForChapters && (
-        <AudiobookChaptersModal
-          audiobook={selectedBookForChapters}
-          isMobile={isMobile}
-          onClose={() => setSelectedBookForChapters(null)}
-          onToggleTrackPlaylist={handleToggleTrackPlaylist}
-        />
+		<AudiobookPlaybackChaptersModal
+		  audiobook={selectedBookForChapters}
+		  currentTrackId={currentEpisode?.trackId}
+		  currentDurationSeconds={displayDurationSeconds}
+		  playing={playing}
+		  onClose={() => setSelectedBookForChapters(null)}
+		  onPlayTrack={handlePlayChapter}
+		/>
       )}
       <AddPodcastModal
         mode={modal === "show-notes" ? null : modal}

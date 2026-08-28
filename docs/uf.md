@@ -12,7 +12,7 @@ If this document conflicts with higher-priority project documents, follow:
 
 ## Product Shape
 
-mpod is a single-user browser-based podcast app.
+mpod is a single-user browser-based podcast and local-audiobook app.
 For MVP, the UI should be compact and task-first.
 It should feel like a personal "library + queue + player," not a large platform.
 
@@ -20,10 +20,10 @@ The main product loop is:
 
 1. get access to the app
 2. add or import podcasts
-3. browse episodes
-4. download or queue episodes
-5. stream or play downloaded audio and resume across devices
-6. let the app handle refresh and cleanup in the background
+3. browse podcast episodes or the read-only local audiobook collection
+4. queue podcast episodes, whole books, or selected audiobook chapters
+5. stream podcasts or play local audiobook files and resume across devices
+6. let the app handle podcast refresh, disposable downloads, and cleanup in the background
 
 The frontend should keep this loop simple, visible, and clearly backed by server state.
 
@@ -265,14 +265,17 @@ Backend rules:
 ## Playlist Building Flow
 
 Goal:
-- create an ordered queue of episodes for listening
+- create an ordered mixed queue for listening
 
 User steps:
-1. User adds episodes to the playlist from podcast or episode views.
-2. The playlist becomes the listening queue.
-3. User reviews order and current queue state in the Player screen playlist area.
-4. User reorders items when priorities change.
-5. User starts playback from any queued episode.
+1. User adds podcast episodes from Podcasts or adds audiobook content from Abooks.
+2. For a standalone audiobook file, the user adds one book item.
+3. For a folder-backed audiobook, the user may add the whole book or selected chapters.
+4. Selected chapters from the same folder are merged into one book item and follow natural filename order.
+5. The playlist becomes the listening queue.
+6. User reviews order and current queue state in the Player screen playlist area.
+7. User reorders top-level podcast and audiobook items when priorities change.
+8. User starts playback from any queued item.
 
 Design intent:
 - the playlist is not a secondary feature, it is a core listening workflow
@@ -281,11 +284,39 @@ Design intent:
 - queue management should feel lightweight and fast
 - playlist order should be obvious and manipulable
 - the playlist should feel like an actionable queue, not just a passive list
+- a folder-backed audiobook should never fragment into separately reorderable queue rows
 
 Backend rules:
 - duplicate playlist entries are prevented by the backend
 - playlist order is stored explicitly by the backend
 - removing an episode from the playlist deletes its local file by default
+- removing audiobook content from the playlist never deletes source files
+
+## Audiobook Library Flow
+
+Goal:
+- browse and queue books from the configured read-only filesystem library
+
+User steps:
+1. User opens the separate `Abooks` screen.
+2. User navigates collection folders through breadcrumb-based levels.
+3. A standalone supported audio file is presented as a single-track book that can be added directly.
+4. A folder containing direct supported audio files is presented as one folder-backed book.
+5. User may add that whole book or open its chapter list and select individual chapters.
+6. Adding more chapters updates the same playlist item; adding the whole book fills it with every missing chapter.
+7. User may manually rescan the library when needed.
+
+Design intent:
+- collection folders are navigation only and have no playlist action
+- chapter selection supports both sequential books and collections of stories stored in one folder
+- newly scanned chapters appear in the library but do not silently change an existing playlist item
+- there is no delete-book action in the library UI
+
+Backend rules:
+- `AUDIOBOOKS_DIR` defaults to `/share/audio/abooks/`
+- supported audio formats are `.mp3`, `.m4b`, and `.m4a`
+- source files are strictly read-only
+- automatic and manual rescans update library metadata without deleting or modifying media
 
 ## Download Flow
 
@@ -329,8 +360,22 @@ Playback speed:
 - on mobile, choosing the playback speed opens a bottom sheet; selecting an option applies it and closes the sheet
 - playback speed is the only mobile Player control that uses the bottom sheet
 - on desktop, playback speed remains available from the dropdown menu
-- playback speed selection should be restored from backend-owned state so it stays consistent across devices
+- podcast and audiobook speed selections should be restored independently from backend-owned state so they stay consistent across devices
+- podcast speed defaults to `Speed 1.3x`; audiobook speed defaults to `Speed 1x`
+- changing one content-type speed must not change the other
 - backend playback progress remains stored in seconds
+
+Player content actions:
+- a podcast episode exposes `Show notes`
+- a folder-backed multi-track audiobook exposes `Show chapters`
+- a standalone audiobook file exposes neither of these secondary actions
+- selecting the current playback time opens `Go to time`, with hour-and-minute input for long-form audio
+
+Audiobook chapter dialogs:
+- opening a folder-backed audiobook from `Abooks` opens the library chapter-selection dialog
+- the library dialog shows each chapter's name, duration, and add/remove-from-playlist action; it has no Play, Pause, Replay, or current-position controls
+- opening a folder-backed audiobook from the Player queue, or choosing `Show chapters`, opens the playback chapters dialog
+- the playback dialog distinguishes completed/replay, current playing, current paused, and upcoming chapters
 
 When playback reaches completion:
 - the client sends `POST /api/playback` with `completed: true` only after the audio engine reports actual completion
@@ -340,6 +385,9 @@ When playback reaches completion:
 - playback advances to the next playlist item if one exists
 - if completion finishes the last playlist item, the backend may return the topmost earlier unlistened playlist episode as `nextEpisodeId`
 - if that fallback has no playback state, playback starts from `0:00`
+- for an audiobook, the completed chapter remains visible in the chapter list and playback advances to the next selected chapter
+- when the final selected audiobook chapter becomes listened, the book is removed from the playlist and the next top-level item may start
+- a later re-add starts the completed or manually removed book from a clean state at `0:00`
 
 Design intent:
 - listening should not trap the user in a separate player-only screen
@@ -508,11 +556,12 @@ Backend rules:
 
 ## Recommended Navigation Model
 
-The authenticated app should revolve around three main sections:
+The authenticated app should revolve around four main sections:
 
 1. Player
-2. Subscriptions
-3. Settings
+2. Podcasts
+3. Abooks
+4. Settings
 
 Persistent UI:
 - player bar for current playback
@@ -530,6 +579,9 @@ This document does not force a final route map, but a reasonable first-pass scre
 - login screen
 - Subscriptions screen
 - selected podcast episode list inside Subscriptions
+- Abooks library screen with nested collection navigation
+- audiobook library chapter-selection modal on desktop and bottom sheet on mobile
+- audiobook playback chapters modal on desktop and bottom sheet on mobile
 - Player screen playlist/queue area
 - settings screen
 - persistent or semi-persistent player UI
@@ -541,6 +593,11 @@ This screen set is intentionally small and aligned with the MVP scope.
 The frontend should explicitly support these states:
 
 - empty podcasts state
+- empty audiobook library state
+- audiobook collection-folder state
+- audiobook scan/rescan state
+- audiobook library chapter-selection states: not selected and selected in the playlist item
+- audiobook playback chapter states: completed/replay, current playing, current paused, and not started
 - empty playlist state
 - loading state for add/import
 - loading state for refresh
@@ -555,7 +612,6 @@ The frontend should explicitly support these states:
 
 These flows are intentionally general. The following still need refinement in frontend planning:
 
-- exact navigation pattern
 - exact mobile layout
 - exact Player playlist/queue layout across desktop and mobile
 - how global player visibility should behave across screen sizes

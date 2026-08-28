@@ -87,8 +87,9 @@ Desktop layout guidance:
 
 Primary navigation should expose:
 1. Player
-2. Subscriptions
-3. Settings
+2. Podcasts
+3. Abooks
+4. Settings
 
 ## Primary Screens
 
@@ -190,17 +191,53 @@ UX notes:
 - this should be optimized for repeated scanning and quick actions
 - episode rows are likely the most important reusable app-specific UI unit
 
-### 5. Player Queue / Playlist Area
+### 5. Audiobooks Screen
+
+Purpose:
+- browse the read-only local audiobook collection
+- navigate collection folders
+- add standalone books, whole folder-backed books, or selected chapters to the playlist
+- trigger a manual library rescan
+
+Content:
+- `Local collection · {count} items` summary
+- `Rescan library` action
+- breadcrumb navigation for collection folders
+- collection folders that navigate one level deeper and are not directly addable
+- standalone audiobook files with one playlist action
+- folder-backed audiobooks with a library chapter-selection dialog and whole-book playlist action
+
+Library chapter-selection dialog:
+- each chapter shows its filename/title and duration
+- each chapter exposes add/remove-from-playlist state
+- actions update the selected chapter set inside the book's single playlist item
+- no Play, Pause, Replay, or current-position presentation appears in this library context
+
+Playlist behavior:
+- one folder-backed book always maps to one playlist item
+- adding a chapter merges it into the existing book item
+- adding the whole book fills that same item with every missing chapter
+- removing the final selected chapter removes the book from the playlist
+- source files are never deleted
+
+### 6. Player Queue / Playlist Area
 
 Purpose:
 - manage the active listening queue from the Player screen
 
 Content:
-- ordered list of playlist episodes
+- ordered mixed list of podcast episodes and audiobook items
 - current playback indicator where relevant
 - reorder interaction
 - remove from playlist action
-- explicit mobile remove and play or pause actions on each playlist episode card
+- explicit mobile remove and play or pause actions on each playlist card
+- one compact row per folder-backed audiobook, showing its current selected chapter and progress
+
+Player chapter-playback dialog:
+- opened from the audiobook queue item or `Show chapters` in the player
+- completed chapter: visually muted with Replay; Replay starts at `0:00` and makes the chapter current
+- current chapter: highlighted, showing current/total time and Pause while playing or Play while paused
+- not-yet-started chapter: duration plus Play
 
 States:
 - empty playlist state
@@ -213,7 +250,7 @@ UX notes:
 - reordering should be straightforward and reliable
 - clear completed is not required for the first MVP
 
-### 6. Settings Screen
+### 7. Settings Screen
 
 Purpose:
 - expose operational configuration and status
@@ -243,7 +280,7 @@ UX notes:
 
 ## Persistent Authenticated UI
 
-### 7. Player Bar
+### 8. Player Bar
 
 This is a persistent component, not a primary route.
 
@@ -251,20 +288,27 @@ Purpose:
 - keep playback available while the user browses the app
 
 Content:
-- episode title
-- podcast name
+- current podcast episode or audiobook chapter title
+- podcast name or audiobook context
 - play or pause
 - progress display and seek affordance
+- current-time button that opens `Go to time` with hour-and-minute entry
 - skip backward by 15 seconds and forward by 30 seconds
 - playback speed control using the canonical options in [frontend-decisions.md](frontend-decisions.md#playback-speed-control)
 - on mobile, playback speed options open in a bottom sheet; desktop keeps the dropdown presentation
 - optional entry point to expanded controls if later approved
 
+Content variants:
+- podcast episode shows `Show notes`
+- folder-backed audiobook shows `Show chapters`
+- standalone audiobook file has no notes/chapters secondary action
+
 Behavior:
-- visible when an episode is loaded for playback
+- visible when a podcast episode or audiobook chapter is loaded for playback
 - remains available across authenticated screens
 - uses backend audio streaming for playback, preferring downloaded audio when available
-- default playback speed is `Speed 1.3x`
+- restores the backend-owned speed preference for the current media type
+- default podcast speed is `Speed 1.3x`; default audiobook speed is `Speed 1x`
 
 UX notes:
 - this should be central to the app experience
@@ -343,6 +387,7 @@ A simple route map should be enough:
 - `/setup`
 - `/login`
 - `/subscriptions`
+- `/audiobooks`
 - `/home`
 - `/settings`
 
@@ -359,10 +404,12 @@ Build in this order:
 4. authenticated app shell
 5. Subscriptions screen
 6. selected podcast episode list inside the Subscriptions screen
-7. home queue / playlist area
-8. settings screen
-9. persistent player bar
-10. supporting dialogs and undo feedback
+7. Audiobooks screen and library chapter-selection modal/bottom sheet
+8. home queue / playlist area
+9. settings screen
+10. persistent player bar
+11. Player chapters modal/bottom sheet
+12. supporting dialogs and undo feedback
 
 ## Key UI Implications
 

@@ -63,15 +63,27 @@ Needs:
 - Supported audio formats: `.mp3`, `.m4b`, `.m4a`
 - File explorer displays only supported audio extensions and directories; unsupported files are filtered out
 - Folder structure mapping:
-  - Subfolder with multiple audio files -> Audiobook with chapters (folder name = book title, parent folder = author, audio files = chapters sorted naturally)
-  - Standalone audio file -> Audiobook with 1 track (filename = book title, parent folder = author)
+  - A directory with direct supported audio files -> one folder-backed audiobook; folder name = book title, parent folder = author, direct audio files = chapters/tracks sorted naturally
+  - A directory with no direct supported audio files -> collection folder used only to navigate to the next level
+  - Standalone supported audio file -> one single-track audiobook; filename = book title, parent folder = author
+  - The supported library layout does not mix direct audiobook tracks and nested book directories inside the same directory
 - Automatic cover art extraction: folder images (`cover.jpg`/`png`), embedded ID3v2 APIC (MP3), MP4 `covr` (M4B/M4A), or official 3D fallback (`fallback-audio`)
-- Default playback speed for audiobooks is `1.0x` (`Speed 1x`), preserving natural narrative pacing (podcasts default to `Speed 1.3x`)
+- Default playback speed for audiobooks is `1.0x` (`Speed 1x`), preserving natural narrative pacing; podcasts default to `Speed 1.3x`
+- Podcast and audiobook playback speeds are remembered separately and synchronized through backend-owned settings
 
 ### Playlist Presentation & Chapters
 - An audiobook is represented in the playlist queue as a single compact item displaying current chapter and progress
-- Clicking the playlist item or "Show Chapters" in the player opens a modal with all chapters
-- Sequential playback automatically advances to the next chapter upon completion
+- A folder-backed audiobook remains one playlist item whether the user adds the whole folder or only selected chapters
+- Adding a chapter merges it into the existing playlist item for that book; adding the whole book fills the same item with every missing chapter
+- Selected chapters follow natural filename order, not the order in which they were added
+- Removing the final selected chapter removes the book from the playlist without deleting source files
+- Opening a folder-backed book from `Abooks` shows a library chapter-selection modal with chapter name, duration, and add/remove-from-playlist action; it does not expose playback controls
+- Clicking the audiobook playlist item or "Show Chapters" in the player opens a playback chapters modal with chapter progress and playback actions
+- Completed chapters remain visible in the playback chapters modal and can be replayed from `0:00`
+- Sequential playback automatically advances to the next selected chapter upon completion
+- When the final selected chapter becomes listened, the book is removed from the playlist
+- Removing and later re-adding a book resets its chapter progress and listened state so playback starts over
+- Library rescans do not inject newly discovered tracks into an already configured playlist item
 - Audiobook files on disk are permanent library assets and are strictly read-only: mpod never deletes audiobook files from disk under any circumstance
 
 ---
@@ -87,9 +99,10 @@ Needs:
 
 ## Playlist
 
-- Add/remove episodes and audiobooks
+- Add/remove episodes, standalone audiobook files, folder-backed books, and selected audiobook chapters
 - Reorder playlist
-- Sequential playback across items and audiobook chapters
+- Keep selected chapters from one folder-backed book in a single ordered playlist item
+- Sequential playback across items and selected audiobook chapters
 
 ---
 
@@ -100,7 +113,9 @@ Needs:
 - Skip forward/back
 - Speed control (0.5x–2x)
 - Track playback position
-- "Show Notes" for podcast episodes / "Show Chapters" for multi-track audiobooks
+- "Show Notes" for podcast episodes / "Show Chapters" for folder-backed multi-track audiobooks / no secondary content action for standalone audiobook files
+- Direct `Go to time` input supporting hours and minutes for long media
+- Separate remembered speed preference for podcasts and audiobooks
 
 ---
 
@@ -115,7 +130,7 @@ Needs:
 
 ## Auto Cleanup
 
-- Remove podcast episode or audiobook from playlist after completion
+- Remove a podcast episode after completion and remove a book after its final selected chapter becomes listened
 - Deletion of downloaded podcast files (audiobook files are preserved)
 
 ---
@@ -149,11 +164,13 @@ Needs:
 - Scan local audiobooks directory
 - Automatic change detection via inotify
 - Browse audiobooks and chapter lists
-- Add/remove audiobooks to/from playlist
+- Navigate collection folders
+- Add/remove whole books or selected chapters to/from one aggregated playlist item per book
 
 ### Settings
 - Configure daily refresh time
 - Enable or disable use of the configured SOCKS5 proxy
+- Store separate podcast and audiobook playback speed preferences
 
 ### Episodes
 - Download episodes
@@ -205,7 +222,7 @@ SOCKS5_HOST
 SOCKS5_PORT  
 SOCKS5_USERNAME (optional)  
 SOCKS5_PASSWORD (optional)  
-AUDIOBOOKS_DIR (default /data/audiobooks)
+AUDIOBOOKS_DIR (default /share/audio/abooks/)
 
 Used for:
 - RSS feed fetching
@@ -302,6 +319,17 @@ Storage:
 | episode_id | integer (nullable) |
 | audiobook_id | integer (nullable) |
 | position | integer |
+
+---
+
+### Audiobook Playlist Tracks
+| Field | Type |
+|------|------|
+| audiobook_id | integer |
+| track_id | integer |
+| added_at | datetime |
+
+Each row records a chapter selected inside a folder-backed audiobook's single playlist item. Chapters without a row are simply not part of that playlist item; they are not separate or excluded playlist entries.
 
 ---
 

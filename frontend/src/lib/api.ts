@@ -98,11 +98,13 @@ export type PlaybackQueueResponse = {
 export type PlaybackUpdateResponse = {
   playback: PlaybackState;
   nextEpisodeId: number | null;
+  nextTrackId?: number | null;
 };
 
 export type SettingsValues = {
   dailyRefreshTime: string;
   playbackSpeed: string;
+  audiobookPlaybackSpeed?: string;
   proxyEnabled: boolean;
   proxyConfigured: boolean;
   appBuild: string;
@@ -440,6 +442,7 @@ export const api = {
     update: (payload: {
       dailyRefreshTime?: string;
       playbackSpeed?: string;
+      audiobookPlaybackSpeed?: string;
       proxyEnabled?: boolean;
     }) =>
       apiRequest<{ settings: SettingsValues }>("/api/settings", {

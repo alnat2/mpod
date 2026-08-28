@@ -214,8 +214,18 @@ func (r *Router) handleAudiobookTrackPlaylistAdd(w nethttp.ResponseWriter, req *
 		return
 	}
 
+	bookID, ok := r.pathInt64(w, req, "id")
+	if !ok {
+		return
+	}
 	trackID, ok := r.pathInt64(w, req, "trackId")
 	if !ok {
+		return
+	}
+
+	track, err := r.audiobooks.GetTrack(req.Context(), trackID)
+	if err != nil || track.AudiobookID != bookID {
+		r.writeAPIError(w, nethttp.StatusNotFound, "TRACK_NOT_FOUND", "Audiobook track not found")
 		return
 	}
 
@@ -236,8 +246,18 @@ func (r *Router) handleAudiobookTrackPlaylistRemove(w nethttp.ResponseWriter, re
 		return
 	}
 
+	bookID, ok := r.pathInt64(w, req, "id")
+	if !ok {
+		return
+	}
 	trackID, ok := r.pathInt64(w, req, "trackId")
 	if !ok {
+		return
+	}
+
+	track, err := r.audiobooks.GetTrack(req.Context(), trackID)
+	if err != nil || track.AudiobookID != bookID {
+		r.writeAPIError(w, nethttp.StatusNotFound, "TRACK_NOT_FOUND", "Audiobook track not found")
 		return
 	}
 

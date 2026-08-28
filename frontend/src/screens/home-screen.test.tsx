@@ -131,11 +131,13 @@ vi.mock("@/components/mpod", () => ({
   PlaylistQueue: ({
     children,
     summary,
+    bodyClassName,
   }: {
     children: ReactNode;
     summary?: string;
+    bodyClassName?: string;
   }) => (
-    <div>
+    <div data-testid="playlist-queue" data-body-class={bodyClassName}>
       <div>{summary}</div>
       {children}
     </div>
@@ -228,6 +230,19 @@ describe("HomeScreen", () => {
     );
     expect(screen.getByTestId("drag-handle-First queued episode")).toBeInTheDocument();
     await expectNoA11yViolations(container);
+  });
+
+  it("gives the playlist body a real scroll viewport", () => {
+    render(<HomeScreen />);
+
+    expect(screen.getByTestId("playlist-queue")).toHaveAttribute(
+      "data-body-class",
+      expect.stringContaining("h-[236px]")
+    );
+    expect(screen.getByTestId("playlist-queue")).toHaveAttribute(
+      "data-body-class",
+      expect.stringContaining("overflow-y-auto")
+    );
   });
 
   it("shows download state without a redundant playlist state in player rows", async () => {

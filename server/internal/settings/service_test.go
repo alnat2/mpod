@@ -18,8 +18,23 @@ func TestGetReturnsStoredValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get failed: %v", err)
 	}
-	if values.DailyRefreshTime != "03:00" || values.PlaybackSpeed != DefaultPlaybackSpeed || values.ProxyEnabled || values.ProxyConfigured {
+	if values.DailyRefreshTime != "03:00" || values.PlaybackSpeed != DefaultPlaybackSpeed || values.AudiobookPlaybackSpeed != DefaultAudiobookPlaybackSpeed || values.ProxyEnabled || values.ProxyConfigured {
 		t.Fatalf("expected default settings values, got %+v", values)
+	}
+}
+
+func TestUpdatePersistsAudiobookPlaybackSpeedIndependently(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	service := NewService(db.SQL, false, "test-build")
+	speed := "Speed 1.5x"
+	values, err := service.Update(context.Background(), UpdateInput{AudiobookPlaybackSpeed: &speed})
+	if err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	if values.AudiobookPlaybackSpeed != speed || values.PlaybackSpeed != DefaultPlaybackSpeed {
+		t.Fatalf("expected independent media speeds, got %+v", values)
 	}
 }
 

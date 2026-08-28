@@ -25,7 +25,6 @@ export function AudiobookChaptersModal({
   audiobook,
   onToggleTrackPlaylist,
   onClose,
-  isMobile = false,
   className,
 }: AudiobookChaptersModalProps) {
   const tracks = audiobook.tracks ?? [];

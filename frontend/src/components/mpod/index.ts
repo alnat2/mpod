@@ -18,4 +18,5 @@ export { SettingItem } from "./setting-item";
 export { ShowNotes } from "./show-notes";
 export { FileManagerItem, type FileManagerItemProps, type FileManagerItemType } from "./filemanager-item";
 export { AudiobookChaptersModal, type AudiobookChaptersModalProps } from "./audiobook-chapters-modal";
+export { AudiobookPlaybackChaptersModal } from "./audiobook-playback-chapters-modal";
 export { TopNav } from "./top-nav";

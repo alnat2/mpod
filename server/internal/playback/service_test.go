@@ -702,6 +702,7 @@ func TestAudiobookPlaybackGetAndUpdate(t *testing.T) {
 	mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path, total_duration) VALUES (1, 'Book 1', 'Author 1', 'Book 1', 3600)`)
 	mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'Track 1', 'Book 1/1.mp3', '/path/1.mp3', 1800)`)
 	mustExec(t, db.SQL, `INSERT INTO playlist (position, audiobook_id) VALUES (1, 1)`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10)`)
 
 	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
 
@@ -740,6 +741,7 @@ func TestMultiTrackAudiobookPlaybackAndTrackSwitching(t *testing.T) {
 	mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (11, 1, 2, 'Track 2', 'Book 1/2.mp3', '/path/2.mp3', 1800)`)
 	mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (12, 1, 3, 'Track 3', 'Book 1/3.mp3', '/path/3.mp3', 1800)`)
 	mustExec(t, db.SQL, `INSERT INTO playlist (position, audiobook_id) VALUES (1, 1)`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10), (1, 11), (1, 12)`)
 
 	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
 
@@ -821,8 +823,8 @@ func TestMultiTrackAudiobookPlaybackAndTrackSwitching(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update completed Track 10 error: %v", err)
 	}
-	if updateRes.NextEpisodeID == nil || *updateRes.NextEpisodeID != 11 {
-		t.Fatalf("expected next track 11, got %v", updateRes.NextEpisodeID)
+	if updateRes.NextTrackID == nil || *updateRes.NextTrackID != 11 {
+		t.Fatalf("expected next track 11, got %v", updateRes.NextTrackID)
 	}
 
 	// 10. Queue should now return Track 11 with its previously saved 120s
@@ -850,8 +852,9 @@ func TestIndividualTrackInQueue(t *testing.T) {
 			(11, 1, 2, 'Chapter 2', 'Frank Herbert/Dune/02.mp3', '/abs/02.mp3', 1800);
 	`)
 
-	// Add individual track 11 to playlist
-	mustExec(t, db.SQL, `INSERT INTO playlist (audiobook_track_id, position) VALUES (11, 1);`)
+	// Add individual track 11 as membership of one parent queue item.
+	mustExec(t, db.SQL, `INSERT INTO playlist (audiobook_id, position) VALUES (1, 1);`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 11);`)
 
 	downloadsService := downloads.NewService(db.SQL, nil, t.TempDir())
 	episodeActions := episodes.NewActions(db.SQL, downloadsService)
@@ -865,7 +868,7 @@ func TestIndividualTrackInQueue(t *testing.T) {
 	if len(queue) != 1 {
 		t.Fatalf("expected 1 queue item, got %d", len(queue))
 	}
-	if queue[0].Title != "Chapter 2" || *queue[0].TrackID != 11 || queue[0].TrackCount != 1 {
+	if queue[0].Title != "Dune" || *queue[0].TrackID != 11 || queue[0].TrackCount != 1 {
 		t.Fatalf("unexpected queue item for individual track: %+v", queue[0])
 	}
 

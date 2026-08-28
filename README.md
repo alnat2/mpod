@@ -1,9 +1,9 @@
 # mpod
 
-mpod is a personal self-hosted web app for managing podcasts. It is designed for a single user and focuses on a simple workflow: subscribe to podcasts, import feeds, download episodes, build a playlist, and resume playback across devices.
+mpod is a personal self-hosted web app for managing podcasts and a local audiobook library. It is designed for a single user and focuses on one listening workflow: subscribe to podcasts, browse read-only audiobook files, build a mixed playlist, and resume playback across devices.
 It is a browser-based application, not a CLI tool or a native desktop/mobile app.
 
-This repository has a completed Go backend MVP and is now focused on frontend scaffold, UX/UI decisions, and integration. The core product scope is defined in [prd.md](/Users/cross/Documents/mpod/prd.md), with implementation decisions in [docs/product-decisions.md](/Users/cross/Documents/mpod/docs/product-decisions.md) and system structure in [docs/architecture.md](/Users/cross/Documents/mpod/docs/architecture.md).
+This repository has a working Go backend and React frontend. Current work focuses on aligning the newer audiobook library, mixed playlist, playback persistence, and UX with the approved product model. The core product scope is defined in [prd.md](/Users/cross/Documents/mpod/prd.md), with implementation decisions in [docs/product-decisions.md](/Users/cross/Documents/mpod/docs/product-decisions.md) and system structure in [docs/architecture.md](/Users/cross/Documents/mpod/docs/architecture.md).
 
 ## Goals
 
@@ -43,9 +43,13 @@ Planned MVP capabilities:
 - fetch and store podcast episodes
 - scan local audiobooks (.mp3, .m4b, .m4a) with automatic inotify watching
 - download episode audio files
-- add and remove episodes and audiobooks from a playlist
+- browse nested audiobook collection folders
+- add standalone audiobook files, whole folder-backed books, or selected chapters to a playlist
+- keep all selected chapters from one folder-backed book in one playlist item
+- remove chapters or books from the playlist without modifying source files
 - reorder playlist
 - play episodes and audiobook chapters with position tracking
+- remember separate playback speeds for podcasts and audiobooks
 - resume playback across devices
 - daily scheduled feed refresh
 
@@ -110,6 +114,10 @@ Current backend capabilities include:
 - playlist add/remove/reorder
 - episode download/delete and authenticated audio playback delivery
 - playback sync endpoints
+- local audiobook scanning, manual rescan, and automatic filesystem watching
+- nested audiobook library browsing, covers, chapter audio streaming, and Range requests
+- whole-book and selected-chapter playlist operations
+- audiobook chapter playback progress and automatic chapter advancement
 - daily refresh settings, proxy on/off settings, proxy runtime status, and scheduler status
 
 Backend test/bootstrap notes:
@@ -122,6 +130,7 @@ Frontend checks run from `frontend/`:
 
 The next expected additions are:
 - continued frontend/backend integration polish
+- align remaining audiobook persistence and API details with the approved product decisions
 - broader end-to-end QA
 - production packaging polish
 

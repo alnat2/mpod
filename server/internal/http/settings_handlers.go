@@ -32,18 +32,20 @@ func (r *Router) handleSettingsPatch(w nethttp.ResponseWriter, req *nethttp.Requ
 	}
 
 	var payload struct {
-		DailyRefreshTime *string `json:"dailyRefreshTime"`
-		PlaybackSpeed    *string `json:"playbackSpeed"`
-		ProxyEnabled     *bool   `json:"proxyEnabled"`
+		DailyRefreshTime       *string `json:"dailyRefreshTime"`
+		PlaybackSpeed          *string `json:"playbackSpeed"`
+		AudiobookPlaybackSpeed *string `json:"audiobookPlaybackSpeed"`
+		ProxyEnabled           *bool   `json:"proxyEnabled"`
 	}
 	if !r.decodeJSON(w, req, &payload) {
 		return
 	}
 
 	values, err := r.settings.Update(req.Context(), settings.UpdateInput{
-		DailyRefreshTime: payload.DailyRefreshTime,
-		PlaybackSpeed:    payload.PlaybackSpeed,
-		ProxyEnabled:     payload.ProxyEnabled,
+		DailyRefreshTime:       payload.DailyRefreshTime,
+		PlaybackSpeed:          payload.PlaybackSpeed,
+		AudiobookPlaybackSpeed: payload.AudiobookPlaybackSpeed,
+		ProxyEnabled:           payload.ProxyEnabled,
 	})
 	if err != nil {
 		switch err {

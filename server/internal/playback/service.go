@@ -55,6 +55,7 @@ type QueueEpisode struct {
 type UpdateResult struct {
 	Playback      State  `json:"playback"`
 	NextEpisodeID *int64 `json:"nextEpisodeId"`
+	NextTrackID   *int64 `json:"nextTrackId,omitempty"`
 }
 
 type UpdateInput struct {
@@ -97,11 +98,11 @@ func (s *Service) Get(ctx context.Context, episodeID int64) (*State, error) {
 		SELECT ap.audiobook_id, ap.position_seconds, ap.last_updated
 		FROM audiobook_playback ap
 		WHERE ap.track_id = COALESCE(
-			(SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = ?),
-			(SELECT ap2.track_id FROM audiobook_playback ap2 WHERE ap2.audiobook_id = ? AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = ? AND track_id = ap2.track_id) ORDER BY ap2.last_updated DESC LIMIT 1),
-			(SELECT t.id FROM audiobook_tracks t WHERE t.audiobook_id = ? AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = ? AND track_id = t.id) ORDER BY t.track_number ASC LIMIT 1)
+			(SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = ? AND EXISTS(SELECT 1 FROM audiobook_playlist_tracks selected WHERE selected.audiobook_id = ? AND selected.track_id = act.audiobook_track_id)),
+			(SELECT ap2.track_id FROM audiobook_playback ap2 JOIN audiobook_playlist_tracks selected ON selected.track_id = ap2.track_id WHERE selected.audiobook_id = ? ORDER BY ap2.last_updated DESC LIMIT 1),
+			(SELECT t.id FROM audiobook_tracks t JOIN audiobook_playlist_tracks selected ON selected.track_id = t.id WHERE selected.audiobook_id = ? ORDER BY t.track_number ASC, t.id ASC LIMIT 1)
 		)
-	`, episodeID, episodeID, episodeID, episodeID, episodeID).Scan(&abID, &pos, &lastUpdated)
+	`, episodeID, episodeID, episodeID, episodeID).Scan(&abID, &pos, &lastUpdated)
 	if abErr == nil {
 		return &State{
 			EpisodeID:       episodeID,
@@ -155,7 +156,11 @@ func (s *Service) GetActive(ctx context.Context) (*ActiveState, error) {
 
 	if audiobookID.Valid {
 		var count int
-		_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_id = ?`, audiobookID.Int64).Scan(&count)
+		_ = s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM playlist
+			WHERE audiobook_id = ?
+			  AND EXISTS(SELECT 1 FROM audiobook_playlist_tracks WHERE audiobook_id = ?)
+		`, audiobookID.Int64, audiobookID.Int64).Scan(&count)
 		if count == 0 {
 			_, _ = s.db.ExecContext(ctx, `UPDATE active_playback SET audiobook_id = NULL, audiobook_track_id = NULL WHERE singleton_id = 1`)
 			return nil, nil
@@ -230,7 +235,12 @@ func (s *Service) SetActiveItem(ctx context.Context, episodeID *int64, audiobook
 		}
 
 		var count int
-		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_id = ? OR audiobook_track_id = ?`, bookID, *trackID).Scan(&count); err != nil {
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*)
+			FROM playlist
+			JOIN audiobook_playlist_tracks selected ON selected.audiobook_id = playlist.audiobook_id
+			WHERE playlist.audiobook_id = ? AND selected.track_id = ?
+		`, bookID, *trackID).Scan(&count); err != nil {
 			return nil, fmt.Errorf("check track in playlist: %w", err)
 		}
 		if count == 0 {
@@ -264,7 +274,11 @@ func (s *Service) SetActiveItem(ctx context.Context, episodeID *int64, audiobook
 
 	if audiobookID != nil && *audiobookID > 0 {
 		var count int
-		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_id = ?`, *audiobookID).Scan(&count); err != nil {
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM playlist
+			WHERE audiobook_id = ?
+			  AND EXISTS(SELECT 1 FROM audiobook_playlist_tracks WHERE audiobook_id = ?)
+		`, *audiobookID, *audiobookID).Scan(&count); err != nil {
 			return nil, fmt.Errorf("check audiobook in playlist: %w", err)
 		}
 		if count == 0 {
@@ -275,18 +289,22 @@ func (s *Service) SetActiveItem(ctx context.Context, episodeID *int64, audiobook
 		if actualTrackID == nil {
 			var lastTrID int64
 			if err := s.db.QueryRowContext(ctx, `
-				SELECT track_id FROM audiobook_playback 
-				WHERE audiobook_id = ? AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = ? AND track_id = audiobook_playback.track_id)
-				ORDER BY last_updated DESC LIMIT 1
-			`, *audiobookID, *audiobookID).Scan(&lastTrID); err == nil {
+				SELECT progress.track_id
+				FROM audiobook_playback progress
+				JOIN audiobook_playlist_tracks selected ON selected.track_id = progress.track_id
+				WHERE selected.audiobook_id = ?
+				ORDER BY progress.last_updated DESC LIMIT 1
+			`, *audiobookID).Scan(&lastTrID); err == nil {
 				actualTrackID = &lastTrID
 			} else {
 				var firstTrID int64
 				if err := s.db.QueryRowContext(ctx, `
-					SELECT id FROM audiobook_tracks 
-					WHERE audiobook_id = ? AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = ? AND track_id = audiobook_tracks.id)
-					ORDER BY track_number ASC LIMIT 1
-				`, *audiobookID, *audiobookID).Scan(&firstTrID); err == nil {
+					SELECT track.id
+					FROM audiobook_tracks track
+					JOIN audiobook_playlist_tracks selected ON selected.track_id = track.id
+					WHERE selected.audiobook_id = ?
+					ORDER BY track.track_number ASC, track.id ASC LIMIT 1
+				`, *audiobookID).Scan(&firstTrID); err == nil {
 					actualTrackID = &firstTrID
 				}
 			}
@@ -336,55 +354,62 @@ func (s *Service) ClearActiveIfEpisode(ctx context.Context, episodeID int64) err
 
 func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT playlist.id, playlist.position, playlist.episode_id, playlist.audiobook_id, playlist.audiobook_track_id,
+		WITH audiobook_queue AS (
+			SELECT p.audiobook_id,
+			       COUNT(selected.track_id) AS track_count,
+			       COALESCE(
+			         (
+			           SELECT active.audiobook_track_id
+			           FROM active_playback active
+			           WHERE active.singleton_id = 1
+			             AND active.audiobook_id = p.audiobook_id
+			             AND EXISTS(
+			               SELECT 1 FROM audiobook_playlist_tracks membership
+			               WHERE membership.audiobook_id = p.audiobook_id
+			                 AND membership.track_id = active.audiobook_track_id
+			             )
+			         ),
+			         (
+			           SELECT progress.track_id
+			           FROM audiobook_playback progress
+			           JOIN audiobook_playlist_tracks membership ON membership.track_id = progress.track_id
+			           WHERE membership.audiobook_id = p.audiobook_id
+			           ORDER BY progress.last_updated DESC
+			           LIMIT 1
+			         ),
+			         (
+			           SELECT track.id
+			           FROM audiobook_playlist_tracks membership
+			           JOIN audiobook_tracks track ON track.id = membership.track_id
+			           WHERE membership.audiobook_id = p.audiobook_id
+			           ORDER BY track.track_number, track.id
+			           LIMIT 1
+			         )
+			       ) AS active_track_id
+			FROM playlist p
+			LEFT JOIN audiobook_playlist_tracks selected ON selected.audiobook_id = p.audiobook_id
+			WHERE p.audiobook_id IS NOT NULL
+			GROUP BY p.audiobook_id
+		)
+		SELECT playlist.position, playlist.episode_id, playlist.audiobook_id,
 		       episodes.id, episodes.podcast_id, episodes.title, episodes.description,
 		       episodes.audio_url, episodes.duration, episodes.downloaded_path,
 		       episodes.is_listened, episodes.published_at,
 		       podcasts.title, podcasts.image_url,
 		       playback.episode_id, playback.position_seconds, playback.last_updated,
 		       audiobooks.id, audiobooks.title, COALESCE(audiobooks.author, ''), COALESCE(audiobooks.cover_path, ''), audiobooks.total_duration,
-		       (SELECT COUNT(*) FROM audiobook_tracks WHERE audiobook_id = audiobooks.id AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = audiobooks.id AND track_id = audiobook_tracks.id)) as ab_track_count,
-		       COALESCE(
-		         (SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = audiobooks.id),
-		         (SELECT ap.track_id FROM audiobook_playback ap WHERE ap.audiobook_id = audiobooks.id AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = audiobooks.id AND track_id = ap.track_id) ORDER BY ap.last_updated DESC LIMIT 1),
-		         (SELECT t.id FROM audiobook_tracks t WHERE t.audiobook_id = audiobooks.id AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = audiobooks.id AND track_id = t.id) ORDER BY t.track_number ASC LIMIT 1)
-		       ) as ab_active_track_id,
-		       (SELECT t.track_number FROM audiobook_tracks t WHERE t.id = COALESCE(
-		         (SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = audiobooks.id),
-		         (SELECT ap.track_id FROM audiobook_playback ap WHERE ap.audiobook_id = audiobooks.id AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = audiobooks.id AND track_id = ap.track_id) ORDER BY ap.last_updated DESC LIMIT 1),
-		         (SELECT t2.id FROM audiobook_tracks t2 WHERE t2.audiobook_id = audiobooks.id AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = audiobooks.id AND track_id = t2.id) ORDER BY t2.track_number ASC LIMIT 1)
-		       )) as ab_active_track_number,
-		       (SELECT t.title FROM audiobook_tracks t WHERE t.id = COALESCE(
-		         (SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = audiobooks.id),
-		         (SELECT ap.track_id FROM audiobook_playback ap WHERE ap.audiobook_id = audiobooks.id AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = audiobooks.id AND track_id = ap.track_id) ORDER BY ap.last_updated DESC LIMIT 1),
-		         (SELECT t2.id FROM audiobook_tracks t2 WHERE t2.audiobook_id = audiobooks.id AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = audiobooks.id AND track_id = t2.id) ORDER BY t2.track_number ASC LIMIT 1)
-		       )) as ab_active_track_title,
-		       (SELECT t.duration FROM audiobook_tracks t WHERE t.id = COALESCE(
-		         (SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = audiobooks.id),
-		         (SELECT ap.track_id FROM audiobook_playback ap WHERE ap.audiobook_id = audiobooks.id AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = audiobooks.id AND track_id = ap.track_id) ORDER BY ap.last_updated DESC LIMIT 1),
-		         (SELECT t2.id FROM audiobook_tracks t2 WHERE t2.audiobook_id = audiobooks.id AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = audiobooks.id AND track_id = t2.id) ORDER BY t2.track_number ASC LIMIT 1)
-		       )) as ab_active_track_duration,
-		       (SELECT ap.position_seconds FROM audiobook_playback ap WHERE ap.track_id = COALESCE(
-		         (SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = audiobooks.id),
-		         (SELECT ap2.track_id FROM audiobook_playback ap2 WHERE ap2.audiobook_id = audiobooks.id AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = audiobooks.id AND track_id = ap2.track_id) ORDER BY ap2.last_updated DESC LIMIT 1),
-		         (SELECT t2.id FROM audiobook_tracks t2 WHERE t2.audiobook_id = audiobooks.id AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = audiobooks.id AND track_id = t2.id) ORDER BY t2.track_number ASC LIMIT 1)
-		       )) as ab_track_pos,
-		       (SELECT ap.last_updated FROM audiobook_playback ap WHERE ap.track_id = COALESCE(
-		         (SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = audiobooks.id),
-		         (SELECT ap2.track_id FROM audiobook_playback ap2 WHERE ap2.audiobook_id = audiobooks.id AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = audiobooks.id AND track_id = ap2.track_id) ORDER BY ap2.last_updated DESC LIMIT 1),
-		         (SELECT t2.id FROM audiobook_tracks t2 WHERE t2.audiobook_id = audiobooks.id AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = audiobooks.id AND track_id = t2.id) ORDER BY t2.track_number ASC LIMIT 1)
-		       )) as ab_track_updated,
-		       single_track.id as st_id, single_track.audiobook_id as st_ab_id, single_track.track_number as st_num, single_track.title as st_title, single_track.duration as st_duration, single_track.is_listened as st_listened,
-		       single_ab.title as st_ab_title, COALESCE(single_ab.author, '') as st_ab_author, COALESCE(single_ab.cover_path, '') as st_ab_cover,
-		       (SELECT ap.position_seconds FROM audiobook_playback ap WHERE ap.track_id = single_track.id) as st_pos,
-		       (SELECT ap.last_updated FROM audiobook_playback ap WHERE ap.track_id = single_track.id) as st_updated
+		       audiobook_queue.track_count,
+		       active_track.id, active_track.track_number, active_track.title, active_track.duration,
+		       audiobook_progress.position_seconds, audiobook_progress.last_updated
 		FROM playlist
 		LEFT JOIN episodes ON episodes.id = playlist.episode_id
 		LEFT JOIN podcasts ON podcasts.id = episodes.podcast_id
 		LEFT JOIN playback ON playback.episode_id = episodes.id
 		LEFT JOIN audiobooks ON audiobooks.id = playlist.audiobook_id
-		LEFT JOIN audiobook_tracks single_track ON single_track.id = playlist.audiobook_track_id
-		LEFT JOIN audiobooks single_ab ON single_ab.id = single_track.audiobook_id
+		LEFT JOIN audiobook_queue ON audiobook_queue.audiobook_id = playlist.audiobook_id
+		LEFT JOIN audiobook_tracks active_track ON active_track.id = audiobook_queue.active_track_id
+		LEFT JOIN audiobook_playback audiobook_progress ON audiobook_progress.track_id = active_track.id
+		WHERE playlist.audiobook_track_id IS NULL
 		ORDER BY playlist.position ASC, playlist.id ASC
 	`)
 	if err != nil {
@@ -394,8 +419,8 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 
 	items := make([]QueueEpisode, 0)
 	for rows.Next() {
-		var playlistID, position int64
-		var epID, abID, abTrackID sql.NullInt64
+		var position int64
+		var epID, abID sql.NullInt64
 		var epRowID, epPodcastID sql.NullInt64
 		var epTitle, description, downloadedPath, epAudioURL, podcastTitle, podcastImageURL sql.NullString
 		var epDuration, playbackEpisodeID, playbackPosition sql.NullInt64
@@ -404,14 +429,9 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 		var abRowID, abTotalDuration, abTrackCount, abActiveTrackID, abActiveTrackNumber, abActiveTrackDuration, abTrackPos sql.NullInt64
 		var abTitle, abAuthor, abCoverPath, abActiveTrackTitle sql.NullString
 		var abTrackUpdated sql.NullTime
-		var stID, stAbID, stNum, stDuration sql.NullInt64
-		var stTitle, stAbTitle, stAbAuthor, stAbCover sql.NullString
-		var stListened sql.NullBool
-		var stPos sql.NullInt64
-		var stUpdated sql.NullTime
 
 		if err := rows.Scan(
-			&playlistID, &position, &epID, &abID, &abTrackID,
+			&position, &epID, &abID,
 			&epRowID, &epPodcastID, &epTitle, &description,
 			&epAudioURL, &epDuration, &downloadedPath,
 			&epIsListened, &publishedAt,
@@ -420,9 +440,6 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 			&abRowID, &abTitle, &abAuthor, &abCoverPath, &abTotalDuration,
 			&abTrackCount, &abActiveTrackID, &abActiveTrackNumber, &abActiveTrackTitle, &abActiveTrackDuration,
 			&abTrackPos, &abTrackUpdated,
-			&stID, &stAbID, &stNum, &stTitle, &stDuration, &stListened,
-			&stAbTitle, &stAbAuthor, &stAbCover,
-			&stPos, &stUpdated,
 		); err != nil {
 			return nil, fmt.Errorf("scan playback queue: %w", err)
 		}
@@ -504,49 +521,6 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 			item.Downloaded = true
 
 			items = append(items, item)
-		} else if stID.Valid {
-			var item QueueEpisode
-			item.Type = "audiobook"
-			trID := stID.Int64
-			bookID := stAbID.Int64
-			item.ID = trID
-			item.TrackID = &trID
-			item.AudiobookID = &bookID
-			item.Title = stTitle.String
-			item.Author = stAbAuthor.String
-			item.PodcastTitle = stAbAuthor.String
-			if item.PodcastTitle == "" {
-				item.PodcastTitle = stAbTitle.String
-			}
-			item.TrackNumber = int(stNum.Int64)
-			item.TrackCount = 1
-			item.IsListened = stListened.Bool
-			dur := stDuration.Int64
-			item.Duration = &dur
-			item.AudioURL = fmt.Sprintf("/api/audiobooks/%d/tracks/%d/audio", bookID, trID)
-			item.Downloaded = true
-
-			pos := int64(0)
-			if stPos.Valid {
-				pos = stPos.Int64
-			}
-			upd := time.Now().UTC()
-			if stUpdated.Valid {
-				upd = stUpdated.Time.UTC()
-			}
-			item.Playback = &State{
-				EpisodeID:       trID,
-				PositionSeconds: pos,
-				LastUpdated:     upd,
-			}
-
-			if stAbCover.Valid && stAbCover.String != "" {
-				item.HasCover = true
-				coverURL := fmt.Sprintf("/api/audiobooks/%d/cover", bookID)
-				item.CoverURL = &coverURL
-				item.PodcastImageURL = &coverURL
-			}
-			items = append(items, item)
 		}
 	}
 	return items, rows.Err()
@@ -567,7 +541,13 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 
 	if input.TrackID != nil && *input.TrackID > 0 {
 		var abID, dur int64
-		if err := s.db.QueryRowContext(ctx, `SELECT audiobook_id, duration FROM audiobook_tracks WHERE id = ?`, *input.TrackID).Scan(&abID, &dur); err != nil {
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT track.audiobook_id, track.duration
+			FROM audiobook_tracks track
+			JOIN audiobook_playlist_tracks selected ON selected.track_id = track.id
+			JOIN playlist ON playlist.audiobook_id = selected.audiobook_id
+			WHERE track.id = ?
+		`, *input.TrackID).Scan(&abID, &dur); err != nil {
 			return UpdateResult{}, fmt.Errorf("track not found: %w", err)
 		}
 		now := s.now().UTC()
@@ -576,53 +556,97 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 			position = input.DurationSeconds
 		}
 
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return UpdateResult{}, fmt.Errorf("begin audiobook playback tx: %w", err)
+		}
+		defer tx.Rollback()
+
+		var currentPosition sql.NullInt64
+		var currentUpdated sql.NullTime
+		if err := tx.QueryRowContext(ctx, `SELECT position_seconds, last_updated FROM audiobook_playback WHERE track_id = ?`, *input.TrackID).Scan(&currentPosition, &currentUpdated); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return UpdateResult{}, fmt.Errorf("load audiobook playback: %w", err)
+		}
+		if !input.DidSeek && input.ClientUpdatedAt != nil && currentUpdated.Valid && input.ClientUpdatedAt.UTC().Before(currentUpdated.Time.UTC()) {
+			return UpdateResult{Playback: State{EpisodeID: abID, PositionSeconds: currentPosition.Int64, LastUpdated: currentUpdated.Time.UTC()}}, nil
+		}
+
 		if input.Completed {
 			if input.DurationSeconds > 0 {
 				position = input.DurationSeconds
+			} else if dur > 0 {
+				position = dur
 			}
-			// Mark track listened
-			_, _ = s.db.ExecContext(ctx, `UPDATE audiobook_tracks SET is_listened = 1 WHERE id = ?`, *input.TrackID)
-			// Check next track
+			if _, err := tx.ExecContext(ctx, `UPDATE audiobook_tracks SET is_listened = 1 WHERE id = ?`, *input.TrackID); err != nil {
+				return UpdateResult{}, fmt.Errorf("mark audiobook track listened: %w", err)
+			}
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO audiobook_playback (track_id, audiobook_id, position_seconds, last_updated)
+				VALUES (?, ?, ?, ?)
+				ON CONFLICT (track_id) DO UPDATE SET position_seconds = excluded.position_seconds, last_updated = excluded.last_updated
+			`, *input.TrackID, abID, position, now); err != nil {
+				return UpdateResult{}, fmt.Errorf("save completed audiobook track: %w", err)
+			}
+
 			var nextTrackID int64
-			err := s.db.QueryRowContext(ctx, `
-				SELECT id FROM audiobook_tracks
-				WHERE audiobook_id = ? AND track_number > (SELECT track_number FROM audiobook_tracks WHERE id = ?)
-				  AND NOT EXISTS(SELECT 1 FROM audiobook_track_exclusions WHERE audiobook_id = ? AND track_id = audiobook_tracks.id)
-				ORDER BY track_number ASC LIMIT 1
-			`, abID, *input.TrackID, abID).Scan(&nextTrackID)
+			err := tx.QueryRowContext(ctx, `
+				SELECT track.id
+				FROM audiobook_playlist_tracks selected
+				JOIN audiobook_tracks track ON track.id = selected.track_id
+				WHERE selected.audiobook_id = ? AND track.is_listened = 0
+				ORDER BY
+				  CASE WHEN track.track_number > (SELECT track_number FROM audiobook_tracks WHERE id = ?) THEN 0 ELSE 1 END,
+				  track.track_number,
+				  track.id
+				LIMIT 1
+			`, abID, *input.TrackID).Scan(&nextTrackID)
 			if err == nil {
-				// Update active playback to next track
-				_, _ = s.db.ExecContext(ctx, `UPDATE active_playback SET audiobook_track_id = ?, last_updated = ? WHERE singleton_id = 1`, nextTrackID, now)
+				if _, err := tx.ExecContext(ctx, `UPDATE active_playback SET audiobook_id = ?, audiobook_track_id = ?, last_updated = ? WHERE singleton_id = 1`, abID, nextTrackID, now); err != nil {
+					return UpdateResult{}, fmt.Errorf("advance active audiobook track: %w", err)
+				}
+				if err := tx.Commit(); err != nil {
+					return UpdateResult{}, fmt.Errorf("commit audiobook completion: %w", err)
+				}
 				return UpdateResult{
 					Playback: State{
 						EpisodeID:       abID,
 						PositionSeconds: position,
 						LastUpdated:     now,
 					},
-					NextEpisodeID: &nextTrackID,
+					NextTrackID: &nextTrackID,
 				}, nil
 			}
+			if !errors.Is(err, sql.ErrNoRows) {
+				return UpdateResult{}, fmt.Errorf("find next audiobook track: %w", err)
+			}
 
-			// Final track completed -> remove audiobook from playlist
-			_, _ = s.db.ExecContext(ctx, `DELETE FROM playlist WHERE audiobook_id = ?`, abID)
-			_, _ = s.db.ExecContext(ctx, `UPDATE active_playback SET audiobook_id = NULL, audiobook_track_id = NULL WHERE singleton_id = 1`)
+			if err := resetCompletedAudiobookTx(ctx, tx, abID, now); err != nil {
+				return UpdateResult{}, err
+			}
+			if err := tx.Commit(); err != nil {
+				return UpdateResult{}, fmt.Errorf("commit completed audiobook reset: %w", err)
+			}
 			return UpdateResult{
 				Playback: State{
 					EpisodeID:       abID,
 					PositionSeconds: position,
 					LastUpdated:     now,
 				},
-				NextEpisodeID: nil,
 			}, nil
 		}
 
-		// Save track playback
-		if _, err := s.db.ExecContext(ctx, `
+		if _, err := tx.ExecContext(ctx, `UPDATE audiobook_tracks SET is_listened = 0 WHERE id = ? AND is_listened = 1`, *input.TrackID); err != nil {
+			return UpdateResult{}, fmt.Errorf("mark replayed audiobook track unlistened: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO audiobook_playback (track_id, audiobook_id, position_seconds, last_updated)
 			VALUES (?, ?, ?, ?)
 			ON CONFLICT (track_id) DO UPDATE SET position_seconds = excluded.position_seconds, last_updated = excluded.last_updated
 		`, *input.TrackID, abID, position, now); err != nil {
 			return UpdateResult{}, fmt.Errorf("save audiobook playback: %w", err)
+		}
+		if err := tx.Commit(); err != nil {
+			return UpdateResult{}, fmt.Errorf("commit audiobook playback: %w", err)
 		}
 
 		return UpdateResult{
@@ -644,8 +668,8 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 			var trackID int64
 			err := s.db.QueryRowContext(ctx, `
 				SELECT COALESCE(
-					(SELECT ap.track_id FROM audiobook_playback ap WHERE ap.audiobook_id = ? ORDER BY ap.last_updated DESC LIMIT 1),
-					(SELECT t.id FROM audiobook_tracks t WHERE t.audiobook_id = ? ORDER BY t.track_number ASC LIMIT 1)
+					(SELECT ap.track_id FROM audiobook_playback ap JOIN audiobook_playlist_tracks selected ON selected.track_id = ap.track_id WHERE selected.audiobook_id = ? ORDER BY ap.last_updated DESC LIMIT 1),
+					(SELECT t.id FROM audiobook_tracks t JOIN audiobook_playlist_tracks selected ON selected.track_id = t.id WHERE selected.audiobook_id = ? ORDER BY t.track_number ASC, t.id ASC LIMIT 1)
 				)
 			`, input.EpisodeID, input.EpisodeID).Scan(&trackID)
 			if err == nil && trackID > 0 {
@@ -720,6 +744,29 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 		return UpdateResult{}, err
 	}
 	return UpdateResult{Playback: state}, nil
+}
+
+func resetCompletedAudiobookTx(ctx context.Context, tx *sql.Tx, audiobookID int64, now time.Time) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM playlist WHERE audiobook_id = ?`, audiobookID); err != nil {
+		return fmt.Errorf("remove completed audiobook from playlist: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM audiobook_playlist_tracks WHERE audiobook_id = ?`, audiobookID); err != nil {
+		return fmt.Errorf("clear completed audiobook selection: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM audiobook_playback WHERE audiobook_id = ?`, audiobookID); err != nil {
+		return fmt.Errorf("reset completed audiobook playback: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE audiobook_tracks SET is_listened = 0 WHERE audiobook_id = ?`, audiobookID); err != nil {
+		return fmt.Errorf("reset completed audiobook listened state: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE active_playback
+		SET audiobook_id = NULL, audiobook_track_id = NULL, last_updated = ?
+		WHERE singleton_id = 1 AND audiobook_id = ?
+	`, now, audiobookID); err != nil {
+		return fmt.Errorf("clear completed audiobook active state: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) saveState(ctx context.Context, episodeID, position int64) (State, error) {

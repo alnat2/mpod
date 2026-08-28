@@ -4,7 +4,7 @@ This file defines project-specific guidance for coding agents working in this re
 
 ## Project Context
 
-mpod is a single-user personal web application for podcast management.
+mpod is a single-user personal web application for podcast and audiobook management.
 It is a browser-based web app with a React frontend and a Go backend.
 It is not a CLI tool, desktop app, native mobile app, browser extension, or terminal UI.
 
@@ -14,7 +14,8 @@ Primary capabilities:
 - podcast subscription by RSS URL
 - OPML import/export
 - episode storage and download
-- playlist management
+- read-only local audiobook library scanning and browsing
+- playlist management for podcast episodes and audiobook chapters
 - audio playback with synced resume across devices
 - daily scheduled podcast refresh
 
@@ -57,6 +58,10 @@ If this file conflicts with those documents, follow:
 - Downloaded files are local disposable copies, not archival media.
 - Removing an episode from playlist deletes its local file by default.
 - Marking an episode as listened deletes its local file by default.
+- Audiobooks are scanned from `AUDIOBOOKS_DIR` (default `/share/audio/abooks/`) and their source files are always treated as read-only permanent library media.
+- A folder-backed audiobook occupies one playlist position even when only selected chapters are included.
+- Removing an audiobook or chapter from the playlist never deletes its source file.
+- Podcast and audiobook playback speeds are separate backend-owned preferences; their defaults are `Speed 1.3x` and `Speed 1x` respectively.
 - Scheduler runs once per day at a single global configured time.
 - If SOCKS5 proxy runtime configuration is available, proxy usage can be enabled or disabled from Settings.
 - The app listens on port `5050`.

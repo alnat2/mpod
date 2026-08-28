@@ -1263,10 +1263,12 @@ describe("PlaybackProvider", () => {
     });
     expect(screen.getByTestId("speed")).toHaveTextContent("Speed 1x");
 
-    // Change audiobook speed to 2x (should not update backend podcast settings)
+	// Audiobook speed is persisted independently from the podcast speed.
     await user.click(screen.getByRole("button", { name: "Speed 2x" }));
     expect(screen.getByTestId("speed")).toHaveTextContent("Speed 2x");
-    expect(updateSettingsSpy).not.toHaveBeenCalledWith(expect.anything());
+	expect(updateSettingsSpy).toHaveBeenCalledWith({
+	  audiobookPlaybackSpeed: "Speed 2x",
+	});
 
     // Switch back to podcast -> should restore podcast speed (Speed 1.3x)
     await user.click(screen.getByRole("button", { name: "Play first" }));

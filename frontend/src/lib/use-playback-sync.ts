@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import {
+  defaultAudiobookPlaybackSpeed,
   defaultPlaybackSpeed,
   isPlaybackSpeedLabel,
   type PlaybackSpeedLabel,
@@ -31,6 +32,7 @@ type UsePlaybackSyncOptions = {
   setLoading: Dispatch<SetStateAction<boolean>>;
   setPositionSeconds: Dispatch<SetStateAction<number>>;
   setSpeedLabel: Dispatch<SetStateAction<PlaybackSpeedLabel>>;
+  setAudiobookSpeedLabel: Dispatch<SetStateAction<PlaybackSpeedLabel>>;
 };
 
 function isNewerPlaybackState(
@@ -65,6 +67,7 @@ export function usePlaybackSync({
   setLoading,
   setPositionSeconds,
   setSpeedLabel,
+  setAudiobookSpeedLabel,
 }: UsePlaybackSyncOptions) {
   const queueRequests = useLatestRequest();
   const settingsRequests = useLatestRequest();
@@ -250,10 +253,16 @@ export function usePlaybackSync({
       setSpeedLabel(
         isPlaybackSpeedLabel(nextSpeed) ? nextSpeed : defaultPlaybackSpeed
       );
+	  const nextAudiobookSpeed = response.settings.audiobookPlaybackSpeed;
+	  setAudiobookSpeedLabel(
+		nextAudiobookSpeed && isPlaybackSpeedLabel(nextAudiobookSpeed)
+		  ? nextAudiobookSpeed
+		  : defaultAudiobookPlaybackSpeed
+	  );
     } catch (error) {
       console.error("Failed to load playback settings", error);
     }
-  }, [setSpeedLabel, settingsRequests]);
+  }, [setAudiobookSpeedLabel, setSpeedLabel, settingsRequests]);
 
   const loadQueue = useCallback(async () => {
     const requestGeneration = queueRequests.beginRequest();

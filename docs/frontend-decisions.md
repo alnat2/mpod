@@ -236,15 +236,51 @@ Decision:
   - `Speed 1.3x`
   - `Speed 1.5x`
   - `Speed 2x`
-- default playback speed is `Speed 1.3x`
+- default podcast playback speed is `Speed 1.3x`
+- default audiobook playback speed is `Speed 1x`
 - on mobile, the playback speed control opens the existing bottom sheet component; the current speed is marked and selecting an option applies it and closes the sheet
 - on desktop, the playback speed control continues to use the dropdown menu
 
 Rules:
-- speed selection should be restored from backend-owned playback settings for cross-device consistency
-- if no speed has been selected yet, the frontend should use `Speed 1.3x`
+- podcast and audiobook speed selections are separate backend-owned preferences and should be restored independently for cross-device consistency
+- if no podcast speed has been selected yet, use `Speed 1.3x`
+- if no audiobook speed has been selected yet, use `Speed 1x`
+- changing speed while a podcast is current updates only the podcast preference; changing speed while an audiobook is current updates only the audiobook preference
 - backend playback progress remains stored in seconds and should not depend on the selected speed label
 - do not add extra speed options unless the product decision changes
+
+### Audiobook Library And Chapter States
+
+Decision:
+- `Abooks` is a separate primary screen
+- collection folders navigate to the next library level and do not expose playlist actions
+- a standalone audio file is added as one book item
+- a folder-backed audiobook can be added as a whole or by selected chapters
+- all selected chapters from one folder-backed audiobook are represented by one playlist item
+
+Rules:
+- adding an individual chapter creates or updates the parent audiobook item
+- adding the whole audiobook merges all missing chapters into that same item
+- selected chapters use natural filename order
+- removing the final selected chapter removes the book from the playlist without deleting source media
+- the library chapter-selection modal shows chapter name, duration, and add/remove-from-playlist action only
+- the library chapter-selection modal does not show Play, Pause, Replay, or current playback position
+- the playback chapters modal opens from the queue item or `Show chapters`
+- in the playback chapters modal, completed chapters remain visible with Replay
+- Replay starts the chapter at `0:00` and makes it current
+- in the playback chapters modal, the current chapter row is highlighted and shows current/total time
+- the current playback row shows Pause while audio is playing and Play while paused
+- not-yet-started playback rows show duration and Play
+- after the final selected chapter becomes listened, the book leaves the playlist
+- re-adding a removed or naturally completed book starts it again with reset chapter progress and listened state
+- newly discovered chapters are visible in the library but do not automatically enter an existing playlist item
+- do not expose a delete-book or delete-audiobook-file action
+
+Player variants:
+- podcasts show `Show notes`
+- folder-backed audiobooks show `Show chapters`
+- standalone audiobook files show neither secondary action
+- clicking the current time opens `Go to time`; the input supports hours and minutes for long-form audio
 
 ### Playback Seek Controls
 

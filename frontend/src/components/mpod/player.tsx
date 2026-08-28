@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -33,7 +33,6 @@ import { Artwork } from "./artwork";
 import { BottomSheet } from "./bottom-sheet";
 import { GoToTimeModal } from "./go-to-time-modal";
 import {
-  defaultPlaybackSpeed,
   defaultPodcastPlaybackSpeed,
   defaultAudiobookPlaybackSpeed,
   playbackSpeedOptions,
@@ -271,6 +270,8 @@ export function Player({
   const [pendingProgressValue, setPendingProgressValue] = useState<number | null>(
     null
   );
+  const pendingProgressValueRef = useRef<number | null>(null);
+  const lastCommittedProgressValueRef = useRef<number | null>(null);
   const activeSpeedLabel = isSpeedControlled
     ? speedLabel
     : uncontrolledSpeedLabel;
@@ -291,14 +292,31 @@ export function Player({
   function handleProgressChange(values: number[]) {
     const nextValue = values[0];
     if (nextValue === undefined) return;
+    pendingProgressValueRef.current = nextValue;
+    lastCommittedProgressValueRef.current = null;
     setPendingProgressValue(nextValue);
   }
 
   function handleProgressCommit(values: number[]) {
     const nextValue = values[0];
+    if (
+      nextValue === undefined ||
+      (pendingProgressValueRef.current === null &&
+        lastCommittedProgressValueRef.current === nextValue)
+    ) {
+      return;
+    }
+    pendingProgressValueRef.current = null;
+    lastCommittedProgressValueRef.current = nextValue;
     setPendingProgressValue(null);
-    if (nextValue === undefined) return;
     onProgressSeek?.(nextValue / 100);
+  }
+
+  function handleProgressPointerUp() {
+    const pendingValue = pendingProgressValueRef.current;
+    if (pendingValue !== null) {
+      handleProgressCommit([pendingValue]);
+    }
   }
 
   return (
@@ -341,6 +359,7 @@ export function Player({
                 }}
                 onValueChange={handleProgressChange}
                 onValueCommit={handleProgressCommit}
+                onPointerUp={handleProgressPointerUp}
               />
             ) : (
               <Progress

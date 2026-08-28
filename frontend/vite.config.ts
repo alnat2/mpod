@@ -3,6 +3,8 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
+const apiTarget = process.env.MPOD_API_TARGET ?? "http://localhost:5050";
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -13,7 +15,15 @@ export default defineConfig({
   server: {
     host: true,
     proxy: {
-      "/api": "http://localhost:5050",
+	  "/api": {
+		target: apiTarget,
+		changeOrigin: true,
+		configure(proxy) {
+		  proxy.on("proxyReq", (request) => {
+			request.setHeader("Origin", apiTarget);
+		  });
+		},
+	  },
     },
   },
   test: {

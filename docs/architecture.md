@@ -244,20 +244,27 @@ This module should cooperate with file storage rules but not directly own downlo
 ### Playlist Module
 
 Responsible for:
-- add episode to playlist
-- remove episode from playlist
+- add/remove podcast episodes
+- add/remove standalone audiobooks and folder-backed audiobooks
+- maintain one playlist row per folder-backed audiobook
+- merge individually selected chapters into the parent audiobook item
+- add all missing chapters when a whole book is added after individual chapter selection
+- maintain selected chapter membership without unpacking the book into separately reorderable queue rows
 - prevent duplicate playlist entries
 - reorder playlist
 - read current ordered playlist
 
-Playlist order should be stored explicitly, not inferred.
+Playlist order should be stored explicitly, not inferred. Chapters inside an audiobook follow natural track order and are not independently reorderable.
 
 ### Playback Module
 
 Responsible for:
-- read playback position
+- read podcast episode and audiobook-track playback positions
 - apply playback sync rules
-- mark episode complete when appropriate
+- mark podcast episodes or audiobook chapters complete when appropriate
+- advance to the next selected audiobook chapter
+- remove a book after its final selected chapter becomes listened
+- reset audiobook progress/listened state when the book leaves the playlist so a later add starts over
 - trigger listened/file lifecycle side effects required by completion rules
 
 Playback conflict resolution belongs entirely to the server.
@@ -291,6 +298,7 @@ The scheduling trigger and refresh execution logic should be separated so execut
 Responsible for:
 - reading current app settings
 - updating daily refresh time
+- persisting separate podcast and audiobook playback speed preferences
 - updating whether configured SOCKS5 proxy usage is enabled
 - exposing configuration values that belong in user-managed settings instead of environment variables
 
@@ -299,10 +307,12 @@ Responsible for:
 Responsible for:
 - scanning `AUDIOBOOKS_DIR` (default `/share/audio/abooks/`) for `.mp3`, `.m4b`, `.m4a` files
 - grouping folders and single files into Audiobooks and Tracks/Chapters
+- treating directories without direct audio files as navigable collection levels
 - parsing audio duration and extracting cover art (folder files `cover.jpg`/`png`, embedded ID3v2 APIC / MP4 `covr`, or 3D fallback `fallback-audio`)
 - running a background `fsnotify` (`inotify`) watcher with debounced rescanning
+- keeping newly discovered tracks out of already configured playlist items until the user selects them
 - serving audiobook chapter audio with `Range` request support
-- enforcing default playback speed of `1.0x` (`Speed 1x`) for audiobook media
+- applying the backend-owned audiobook speed preference, defaulting to `1.0x` (`Speed 1x`)
 - treating audiobook storage as strictly read-only (mpod never deletes audiobook files from disk)
 
 ## Data Model View
@@ -313,7 +323,7 @@ Initial logical entities:
 - `episodes`
 - `audiobooks`
 - `audiobook_tracks`
-- `audiobook_track_exclusions`
+- `audiobook_playlist_tracks`
 - `playlist`
 - `playback`
 - `settings`
@@ -321,9 +331,11 @@ Initial logical entities:
 Expected relationships:
 - one user owns the whole app state
 - one podcast has many episodes
-- playlist references episodes, full audiobooks, or individual audiobook tracks in ordered form
-- `audiobook_track_exclusions` tracks excluded chapters when an entire audiobook folder is in the playlist without unpacking the book
-- playback references one episode, audiobook, or track
+- playlist references podcast episodes or audiobooks in ordered form
+- one folder-backed audiobook has at most one playlist row
+- `audiobook_playlist_tracks` records the chapters selected inside that audiobook item without unpacking the book into separate queue rows; newly scanned chapters have no membership row and therefore do not enter an existing item automatically
+- playback references one podcast episode or one selected audiobook track
+- settings store separate podcast and audiobook playback speed preferences
 
 Recommended additions beyond the PRD:
 - a `settings` table for values like `daily_refresh_time`
@@ -495,6 +507,8 @@ Environment-level configuration:
 User-managed application settings:
 - daily refresh time
 - proxy enabled/disabled
+- podcast playback speed, default `Speed 1.3x`
+- audiobook playback speed, default `Speed 1x`
 
 Rule:
 - environment variables define infrastructure/runtime behavior
@@ -544,12 +558,11 @@ The implementation should preserve these constraints:
 ## Open Items For Later
 
 These are intentionally deferred:
-- exact frontend routing structure
-- visual UI design and screen details
 - testing strategy and CI layout
 - exact ORM/query builder choice
 - exact RSS parser library
 - exact audio player library on the frontend
+- handling malformed audiobook directory layouts outside the supported library contract
 
 These can be decided later without changing the overall architecture direction.
 
@@ -563,5 +576,8 @@ Recommended build order:
 5. playlist and download flow
 6. playback and sync flow
 7. scheduler
+8. audiobook scanner and read-only media delivery
+9. audiobook library navigation and chapter selection
+10. mixed-media playlist, completion, and separate speed persistence
 
 This order gets the core value working before adding background automation.

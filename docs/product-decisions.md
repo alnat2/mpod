@@ -459,12 +459,11 @@ Request:
 {
   "items": [
     { "type": "episode", "episodeId": 55 },
-    { "type": "audiobook", "audiobookId": 1 },
-    { "type": "audiobook_track", "trackId": 10 }
+    { "type": "audiobook", "audiobookId": 1 }
   ]
 }
 ```
-*(Also supports legacy `{ "episodeIds": [55, 89, 21] }` payload).*
+*(Also supports legacy `{ "episodeIds": [55, 89, 21] }` payload. Individual selected chapters remain inside their parent audiobook item and are not independently reordered.)*
 
 Success response:
 ```json
@@ -590,7 +589,8 @@ Response:
 {
   "settings": {
     "dailyRefreshTime": "03:00",
-    "playbackSpeed": "Speed 1.3x",
+    "podcastPlaybackSpeed": "Speed 1.3x",
+    "audiobookPlaybackSpeed": "Speed 1x",
     "proxyEnabled": true,
     "proxyConfigured": true,
     "appBuild": "dev"
@@ -604,7 +604,8 @@ Request:
 ```json
 {
   "dailyRefreshTime": "03:00",
-  "playbackSpeed": "Speed 2x",
+  "podcastPlaybackSpeed": "Speed 2x",
+  "audiobookPlaybackSpeed": "Speed 1.5x",
   "proxyEnabled": true
 }
 ```
@@ -614,7 +615,8 @@ Response:
 {
   "settings": {
     "dailyRefreshTime": "03:00",
-    "playbackSpeed": "Speed 2x",
+    "podcastPlaybackSpeed": "Speed 2x",
+    "audiobookPlaybackSpeed": "Speed 1.5x",
     "proxyEnabled": true,
     "proxyConfigured": true,
     "appBuild": "dev"
@@ -623,8 +625,10 @@ Response:
 ```
 
 Rules:
-- `playbackSpeed` is backend-owned user playback preference used for cross-device consistency.
-- If no playback speed has been stored yet, backend returns `Speed 1.3x`.
+- `podcastPlaybackSpeed` and `audiobookPlaybackSpeed` are separate backend-owned user preferences used for cross-device consistency.
+- If no podcast speed has been stored yet, backend returns `Speed 1.3x`.
+- If no audiobook speed has been stored yet, backend returns `Speed 1x`.
+- Changing one media-type speed must not change the other media-type speed.
 - Supported labels are exactly:
   - `Speed 0.5x`
   - `Speed 0.75x`
@@ -732,24 +736,24 @@ Rules:
 ## Playback Sync Rules
 
 ### Decision
-Playback position is stored per episode for the single user. The server keeps one current playback state for each episode and updates it using simple freshness and progress rules.
-Playback speed selection should also be treated as backend-owned user playback state for cross-device consistency.
+Playback position is stored per episode or audiobook track for the single user. The server keeps one current playback state for each playable item and updates it using simple freshness and progress rules.
+Podcast and audiobook playback speed selections are separate backend-owned user preferences for cross-device consistency.
 
 ### Rules
-- Playback state is stored per episode.
-- Active playback state stores the single episode the user explicitly started most recently.
-- Each episode has at most one playback record.
+- Playback state is stored per podcast episode or audiobook track.
+- Active playback state stores the single playable item the user explicitly started most recently.
+- Each podcast episode or audiobook track has at most one playback record.
 - The server is the final authority for stored playback state.
-- Playback updates are accepted only for existing episodes.
-- Active playback can only point to an existing episode that is currently in the playlist.
+- Playback updates are accepted only for existing podcast episodes or audiobook tracks.
+- Active playback can only point to content represented by an item currently in the playlist.
 - Active playback changes only through `PUT /api/playback/active`.
 - `POST /api/playback` position updates, pause, and seek do not change active playback.
 - The last processed explicit active playback update wins across devices.
 - Reading active playback must not automatically start playback.
-- Playback speed selection should be stored as user playback state on the backend, not only in the frontend.
-- If no playback speed has been selected yet, the default speed is `Speed 1.3x`.
+- Both media-type speed selections are stored on the backend, not only in frontend memory.
+- Default podcast speed is `Speed 1.3x`; default audiobook speed is `Speed 1x`.
 - Playback state contains:
-  - `episodeId`
+  - the applicable media identifier (`episodeId` or `trackId`, with parent `audiobookId` where relevant)
   - `positionSeconds`
   - `lastUpdated`
 
@@ -757,7 +761,7 @@ Playback speed selection should also be treated as backend-owned user playback s
 Playback is updated through `POST /api/playback`.
 
 Request fields:
-- `episodeId`
+- `episodeId` for a podcast episode, or `trackId` for an audiobook chapter
 - `positionSeconds`
 - `durationSeconds`
 - `completed`
@@ -767,16 +771,17 @@ Request fields:
 Active playback is updated through `PUT /api/playback/active`.
 
 Active playback request fields:
-- `episodeId`
+- one of `episodeId`, or `audiobookId` with the selected `trackId`
 
 ### Completion Rules
-- If `completed = true`, the episode is treated as finished immediately.
+- If `completed = true`, the podcast episode or audiobook chapter is treated as finished immediately.
 - Clients send `completed = true` only in response to actual audio completion, not from a position threshold.
-- Progress position alone must not mark an episode finished. Near-end playback progress is stored as progress only unless the client explicitly sends `completed = true`.
-- When an episode is finished:
+- Progress position alone must not mark content finished. Near-end playback progress is stored as progress only unless the client explicitly sends `completed = true`.
+- When a podcast episode is finished:
   - it is marked as listened
   - playback position is stored as full duration or final reported position
   - any file and playlist side effects follow file lifecycle rules
+- When an audiobook chapter is finished, the audiobook-specific selected-chapter, replay, auto-advance, and final-book-removal rules apply.
 - Before removing the finished episode from the playlist, the backend checks whether it was the last item in the pre-removal playlist order.
 - If the finished episode was the last playlist item, the backend looks at earlier playlist items and selects the topmost eligible fallback episode in playlist order.
 - An eligible fallback episode must:
@@ -830,14 +835,14 @@ Example:
 
 `GET /api/playback/queue` returns the current playlist queue and a nullable `activePlayback` object.
 Clients should:
-- show `activePlayback.episodeId` in the player when it is present in `queue`
+- show the active podcast episode or audiobook track in the player when its parent item is present in `queue`
 - fall back to the first queue item when `activePlayback` is `null` or no longer present in `queue`
 - not auto-start playback after loading queue state
-- call `PUT /api/playback/active` when the user explicitly starts an episode
-- call `PUT /api/playback/active` when the client automatically advances to the next episode
+- call `PUT /api/playback/active` when the user explicitly starts a podcast episode or audiobook chapter
+- call `PUT /api/playback/active` when the client automatically advances to the next playable item
 - not call `PUT /api/playback/active` for progress sync, pause, or seek
 
-Active playback is cleared when the active episode is removed from the playlist, marked listened, completed through playback completion, or deleted with its podcast.
+Active playback is cleared when the active content leaves the playlist. Podcast deletion also clears active state owned by that podcast.
 
 ### Notes
 - This keeps sync simple for a personal multi-device app.
@@ -1330,8 +1335,8 @@ mpod supports local audiobook playback with cross-device sync. Audiobooks are sc
 
 ### Directory Scanning Rules
 The scanner traverses `AUDIOBOOKS_DIR` using standard recursive directory walking:
-1. **Multi-file Audiobook (Folder with multiple audio files):**
-   - The directory itself represents the **Audiobook**.
+1. **Folder-backed Audiobook (Directory with direct audio files):**
+   - The directory itself represents the **Audiobook**, and its direct supported audio files are its chapters/tracks.
    - The directory name is the book title.
    - The parent directory (if not the root `AUDIOBOOKS_DIR`) represents the **Author**.
    - Direct audio files inside the directory are **Chapters/Tracks**, sorted naturally by filename (e.g. `01...`, `02...`).
@@ -1339,30 +1344,67 @@ The scanner traverses `AUDIOBOOKS_DIR` using standard recursive directory walkin
    - The audio file itself represents the **Audiobook** (with 1 chapter/track).
    - The file name (without extension) is the book title.
    - The parent directory (if not the root `AUDIOBOOKS_DIR`) represents the **Author**.
+3. **Collection Directory (Directory without direct audio files):**
+   - The directory is a navigation level only, such as an author folder containing separate book folders.
+   - It is not itself addable to the playlist.
+4. **Supported Layout Contract:**
+   - The intended library layout does not mix direct audiobook tracks and nested book directories inside the same directory.
+   - A folder containing only one direct audio file is not an intended folder-backed-book layout; single-track books are stored as standalone files.
+
 ### inotify Watcher Rules
 - On Linux, the backend starts a background file watcher using `fsnotify` (`inotify`) monitoring `AUDIOBOOKS_DIR` and its subfolders.
 - File system events (`Create`, `Write`, `Remove`, `Rename`) trigger a debounced rescan with a 2–3 second delay after the last write to prevent reading files while they are still being copied.
 - When new subdirectories are created, the watcher automatically attaches to them.
+- Newly discovered files appear in the library but are not automatically added to an audiobook item that is already in the playlist.
+- The selected chapter set is explicit: a newly discovered track has no membership in the existing playlist item until the user adds it or adds the whole book again.
 
-### Playlist Presentation & Chapters Modal
+### Playlist Presentation & Chapter Dialogs
 - An audiobook is represented in the playlist as **a single item**, regardless of how many chapters/tracks it contains.
+- A folder-backed audiobook still occupies one playlist position when the user selects only some of its chapters.
+- Adding an individual chapter creates the parent audiobook item when needed or merges the chapter into the existing item.
+- Adding the whole audiobook merges all missing chapters into the same item; it never creates a duplicate audiobook or separate chapter queue rows.
+- Selected chapters are played in their natural filename order, not in selection order.
+- Removing a chapter removes it from the selected set. When no selected chapters remain, the audiobook is removed from the playlist.
 - The playlist item displays the book title, author, and current chapter progress (e.g. `Chapter 3 of 12 • 15:40 / 30:00`).
-- Clicking the playlist item opens the **Chapters Modal / Bottom Sheet** showing the full chapter list with duration and listening status.
-- In the audio player, multi-track audiobooks replace the "Show Notes" button with a "Show Chapters" button that opens the same Chapters Modal.
+
+#### Library Chapter Selection
+- Opening a folder-backed audiobook from the `Abooks` file manager shows a chapter-selection modal/bottom sheet.
+- Each row shows the chapter filename/title, duration, and an add/remove-from-playlist action.
+- This library context edits the selected chapter set inside the book's single playlist item.
+- It does not show current playback position and does not expose Play, Pause, or Replay actions.
+
+#### Player Chapter Playback
+- Clicking a folder-backed audiobook item in the Player queue or choosing `Show chapters` in the player opens the playback chapters modal/bottom sheet.
+- A completed chapter remains visible in a completed/replay state.
+- The current chapter is highlighted. It shows current and total time plus Pause while playing, or Play while paused.
+- A not-yet-started chapter shows its duration and a Play action.
+- Replaying a completed chapter starts it at `0:00`, clears its completed state, and makes it the current chapter.
+
+#### Player Content Variants
+- Podcast episode: show the `Show notes` secondary action.
+- Folder-backed audiobook: show the `Show chapters` secondary action.
+- Standalone single-file audiobook: show neither `Show notes` nor `Show chapters`.
+- The speed label displays the stored preference for the current media type; speed values shown in mockups are examples, not defaults.
+- Selecting the current time opens `Go to time`, with hour-and-minute entry suitable for long-form audio.
 
 ### Auto-advance & Playback Sync
 - Audiobooks use the existing playback sync mechanism to track position in seconds per chapter.
 - When a chapter finishes (`completed = true` sent to `POST /api/playback`), the backend:
   - Marks that chapter as listened (`is_listened = true`).
-  - Sets `nextEpisodeId` / `nextTrackId` to the next chapter in the audiobook.
-- When the final chapter of an audiobook finishes:
-  - The entire audiobook is marked completed and removed from the playlist.
+  - Advances to the next selected, uncompleted chapter in natural order.
+- Completed chapters remain part of the chapter list and can be replayed; ordinary completion does not manually remove their library records.
+- When the final selected chapter becomes listened:
+  - The audiobook is removed from the playlist.
   - Playback advances to the next item in the playlist (if one exists).
+- Removing an audiobook from the playlist, whether manually or after natural completion, resets its chapter playback positions and listened state.
+- Re-adding that audiobook therefore adds its chapters from a clean state and starts from `0:00`.
 
 ### Playback Speed & Default Speed
 - The default playback speed for audiobooks is **`Speed 1x`** (1.0x normal speed), preserving natural narrative pacing (in contrast to podcasts which default to `Speed 1.3x`).
 - Supported playback speeds: `Speed 0.5x`, `Speed 0.75x`, `Speed 1x`, `Speed 1.3x`, `Speed 1.5x`, `Speed 2x`.
-- When switching between podcast episodes and audiobooks, the player respects the content type default unless explicitly changed by the user.
+- Podcast and audiobook speeds are remembered separately as backend-owned user preferences.
+- Changing audiobook speed updates the audiobook preference used for later audiobooks without changing podcast speed, and vice versa.
+- When switching media types, the player restores the stored preference for that content type.
 
 ### Artwork & Cover Art Fallback
 1. **Priority 1 (Folder Image):** `cover.jpg`, `cover.png`, `folder.jpg`, `cover.jpeg`, `folder.jpeg` in the book directory.
@@ -1372,7 +1414,9 @@ The scanner traverses `AUDIOBOOKS_DIR` using standard recursive directory walkin
 ### File Safety & Deletion Policy
 - Audiobook files on disk are permanent library media assets. mpod treats the audiobook directory as strictly read-only.
 - mpod **never deletes** audiobook files or folders from disk under any circumstances (neither automatically upon playback completion or playlist removal, nor manually via any UI action).
-- There is no file deletion functionality for audiobooks. Removing an audiobook from the playlist or marking it as listened affects only database state.
+- There is no user-facing action to delete an audiobook from the library or delete its metadata independently of the scanner.
+- The only audiobook removal action in the product UI removes a book or chapter selection from the playlist.
+- Playlist removal and listened-state changes affect only database state; source media remains untouched.
 
 ### Audiobook Endpoints
 
@@ -1391,6 +1435,16 @@ Serves the cover artwork image if present, or 404 if none.
 #### `POST /api/audiobooks/rescan`
 Forces a manual rescan of the audiobooks directory.
 
-#### `DELETE /api/audiobooks/:id`
-Removes the audiobook metadata records from the database (does not touch files on disk).
+#### `POST /api/audiobooks/:id/playlist`
+Adds the whole audiobook to the playlist. If selected chapters are already present, all missing chapters are merged into the same audiobook item.
 
+#### `DELETE /api/audiobooks/:id/playlist`
+Removes the audiobook from the playlist and resets its stored chapter progress/listened state. It never deletes library files.
+
+#### `POST /api/audiobooks/:id/tracks/:trackId/playlist`
+Adds one selected chapter to the parent audiobook's single playlist item.
+
+#### `DELETE /api/audiobooks/:id/tracks/:trackId/playlist`
+Removes one selected chapter. If no selected chapters remain, the parent audiobook item is removed and its playback/listened state is reset.
+
+There is intentionally no user-facing API operation for deleting an audiobook from the scanned library. Scanner state follows the read-only filesystem.

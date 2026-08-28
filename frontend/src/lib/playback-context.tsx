@@ -11,7 +11,6 @@ import {
 import type { ReactNode } from "react";
 
 import {
-  defaultPlaybackSpeed,
   defaultPodcastPlaybackSpeed,
   defaultAudiobookPlaybackSpeed,
   type PlaybackSpeedLabel,
@@ -123,6 +122,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     setLoading,
     setPositionSeconds,
     setSpeedLabel: setPodcastSpeed,
+    setAudiobookSpeedLabel: setAudiobookSpeed,
   });
 
   useEffect(() => {
@@ -142,7 +142,14 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     setActiveEpisodeId(pendingEpisodeId);
   }, [queue]);
 
-  const { playToggle, playEpisode, seekTo, seekForward, seekBackward } =
+	const {
+	  playToggle,
+	  playEpisode,
+	  playAudiobookTrack,
+	  seekTo,
+	  seekForward,
+	  seekBackward,
+	} =
     usePlaybackAudio({
       audioRef,
       sourcePrimedRef,
@@ -178,6 +185,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       Boolean(currentEpisodeRef.current?.audiobookId);
     if (isCurrentAudiobook) {
       setAudiobookSpeed(label);
+	  void api.settings
+		.update({ audiobookPlaybackSpeed: label })
+		.catch((error) => {
+		  console.error("Failed to update audiobook playback speed", error);
+		});
     } else {
       setPodcastSpeed(label);
       void api.settings.update({ playbackSpeed: label }).catch((error) => {
@@ -228,6 +240,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       clearPlaybackError,
       playToggle,
       playEpisode,
+      playAudiobookTrack,
       seekTo,
       seekForward,
       seekBackward,
@@ -240,6 +253,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       clearPlaybackError,
       playToggle,
       playEpisode,
+      playAudiobookTrack,
       seekTo,
       seekForward,
       seekBackward,

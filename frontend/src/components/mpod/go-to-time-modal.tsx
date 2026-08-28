@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ModalScreen } from "./modal-screen";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { formatDigitsToTime, parseDigitsToSeconds } from "./go-to-time-utils";
 
 type GoToTimeModalProps = {
   className?: string;
@@ -9,44 +10,6 @@ type GoToTimeModalProps = {
   onClose: () => void;
   onSeek: (seconds: number) => void;
 };
-
-export function formatDigitsToTime(digits: string, hasHours = false): string {
-  if (!digits || digits.length === 0) {
-    return hasHours ? "0:00:00" : "0:00";
-  }
-
-  if (hasHours || digits.length > 4) {
-    const padded = digits.padStart(6, "0");
-    const h = parseInt(padded.slice(0, -4), 10);
-    const m = padded.slice(-4, -2);
-    const s = padded.slice(-2);
-    return `${h}:${m}:${s}`;
-  }
-
-  const padded = digits.padStart(4, "0");
-  const m = parseInt(padded.slice(0, -2), 10);
-  const s = padded.slice(-2);
-  return `${m}:${s}`;
-}
-
-export function parseDigitsToSeconds(digits: string, hasHours = false): number {
-  if (!digits || digits.length === 0) {
-    return 0;
-  }
-
-  if (hasHours || digits.length > 4) {
-    const padded = digits.padStart(6, "0");
-    const h = parseInt(padded.slice(0, -4), 10) || 0;
-    const m = parseInt(padded.slice(-4, -2), 10) || 0;
-    const s = parseInt(padded.slice(-2), 10) || 0;
-    return h * 3600 + m * 60 + s;
-  }
-
-  const padded = digits.padStart(4, "0");
-  const m = parseInt(padded.slice(0, -2), 10) || 0;
-  const s = parseInt(padded.slice(-2), 10) || 0;
-  return m * 60 + s;
-}
 
 export function GoToTimeModal({
   className,
@@ -58,7 +21,7 @@ export function GoToTimeModal({
   const hasHours = totalDurationSeconds >= 3600;
   const maxDigits = hasHours ? 6 : 4;
 
-  const handleKeyPress = (key: string) => {
+	const handleKeyPress = useCallback((key: string) => {
     if (key === "backspace") {
       setDigits((prev) => prev.slice(0, -1));
       return;
@@ -97,16 +60,16 @@ export function GoToTimeModal({
         return prev;
       });
     }
-  };
+	}, [maxDigits]);
 
-  const handleDone = () => {
+	const handleDone = useCallback(() => {
     let targetSeconds = parseDigitsToSeconds(digits, hasHours);
     if (totalDurationSeconds > 0 && targetSeconds > totalDurationSeconds) {
       targetSeconds = totalDurationSeconds;
     }
     onSeek(targetSeconds);
     onClose();
-  };
+	}, [digits, hasHours, onClose, onSeek, totalDurationSeconds]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -127,7 +90,7 @@ export function GoToTimeModal({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [digits, hasHours, totalDurationSeconds]);
+	}, [handleDone, handleKeyPress, onClose]);
 
   const displayTime = formatDigitsToTime(digits, hasHours);
 

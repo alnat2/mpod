@@ -16,7 +16,10 @@ var (
 	ErrProxyNotConfigured      = errors.New("proxy is not configured")
 )
 
-const DefaultPlaybackSpeed = "Speed 1.3x"
+const (
+	DefaultPlaybackSpeed          = "Speed 1.3x"
+	DefaultAudiobookPlaybackSpeed = "Speed 1x"
+)
 
 var allowedPlaybackSpeeds = map[string]struct{}{
 	"Speed 0.5x":  {},
@@ -35,11 +38,12 @@ type Service struct {
 }
 
 type Values struct {
-	DailyRefreshTime string `json:"dailyRefreshTime"`
-	PlaybackSpeed    string `json:"playbackSpeed"`
-	ProxyEnabled     bool   `json:"proxyEnabled"`
-	ProxyConfigured  bool   `json:"proxyConfigured"`
-	AppBuild         string `json:"appBuild"`
+	DailyRefreshTime       string `json:"dailyRefreshTime"`
+	PlaybackSpeed          string `json:"playbackSpeed"`
+	AudiobookPlaybackSpeed string `json:"audiobookPlaybackSpeed"`
+	ProxyEnabled           bool   `json:"proxyEnabled"`
+	ProxyConfigured        bool   `json:"proxyConfigured"`
+	AppBuild               string `json:"appBuild"`
 }
 
 type ProxyStatus struct {
@@ -66,9 +70,10 @@ const (
 )
 
 type UpdateInput struct {
-	DailyRefreshTime *string `json:"dailyRefreshTime"`
-	PlaybackSpeed    *string `json:"playbackSpeed"`
-	ProxyEnabled     *bool   `json:"proxyEnabled"`
+	DailyRefreshTime       *string `json:"dailyRefreshTime"`
+	PlaybackSpeed          *string `json:"playbackSpeed"`
+	AudiobookPlaybackSpeed *string `json:"audiobookPlaybackSpeed"`
+	ProxyEnabled           *bool   `json:"proxyEnabled"`
 }
 
 func NewService(db *sql.DB, proxyConfigured bool, appBuild string) *Service {
@@ -102,6 +107,11 @@ func (s *Service) Get(ctx context.Context) (Values, error) {
 		return Values{}, err
 	}
 	values.PlaybackSpeed = playbackSpeed
+	audiobookPlaybackSpeed, err := s.loadSpeed(ctx, "audiobook_playback_speed", DefaultAudiobookPlaybackSpeed)
+	if err != nil {
+		return Values{}, err
+	}
+	values.AudiobookPlaybackSpeed = audiobookPlaybackSpeed
 	values.ProxyEnabled = enabled
 	values.ProxyConfigured = s.proxyConfigured
 	values.AppBuild = s.appBuild
@@ -170,7 +180,7 @@ func (s *Service) GetProxyStatus(ctx context.Context) (ProxyStatus, error) {
 }
 
 func (s *Service) Update(ctx context.Context, input UpdateInput) (Values, error) {
-	if input.DailyRefreshTime == nil && input.PlaybackSpeed == nil && input.ProxyEnabled == nil {
+	if input.DailyRefreshTime == nil && input.PlaybackSpeed == nil && input.AudiobookPlaybackSpeed == nil && input.ProxyEnabled == nil {
 		return Values{}, ErrInvalidSettingsUpdate
 	}
 	if input.DailyRefreshTime != nil {
@@ -180,6 +190,11 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Values, error)
 	}
 	if input.PlaybackSpeed != nil {
 		if _, ok := allowedPlaybackSpeeds[strings.TrimSpace(*input.PlaybackSpeed)]; !ok {
+			return Values{}, ErrInvalidPlaybackSpeed
+		}
+	}
+	if input.AudiobookPlaybackSpeed != nil {
+		if _, ok := allowedPlaybackSpeeds[strings.TrimSpace(*input.AudiobookPlaybackSpeed)]; !ok {
 			return Values{}, ErrInvalidPlaybackSpeed
 		}
 	}
@@ -209,6 +224,15 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (Values, error)
 			ON CONFLICT (key) DO UPDATE SET value = excluded.value
 		`, strings.TrimSpace(*input.PlaybackSpeed)); err != nil {
 			return Values{}, fmt.Errorf("update playback speed: %w", err)
+		}
+	}
+	if input.AudiobookPlaybackSpeed != nil {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO settings (key, value)
+			VALUES ('audiobook_playback_speed', ?)
+			ON CONFLICT (key) DO UPDATE SET value = excluded.value
+		`, strings.TrimSpace(*input.AudiobookPlaybackSpeed)); err != nil {
+			return Values{}, fmt.Errorf("update audiobook playback speed: %w", err)
 		}
 	}
 	if input.ProxyEnabled != nil {
@@ -249,15 +273,19 @@ func (s *Service) loadProxyEnabled(ctx context.Context) (bool, error) {
 }
 
 func (s *Service) loadPlaybackSpeed(ctx context.Context) (string, error) {
+	return s.loadSpeed(ctx, "playback_speed", DefaultPlaybackSpeed)
+}
+
+func (s *Service) loadSpeed(ctx context.Context, key string, defaultValue string) (string, error) {
 	var raw string
 	err := s.db.QueryRowContext(ctx, `
 		SELECT value
 		FROM settings
-		WHERE key = 'playback_speed'
-	`).Scan(&raw)
+		WHERE key = ?
+	`, key).Scan(&raw)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return DefaultPlaybackSpeed, nil
+			return defaultValue, nil
 		}
 		return "", fmt.Errorf("load playback speed: %w", err)
 	}

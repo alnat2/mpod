@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 
 import type { PlaybackSpeedLabel } from "@/components/mpod/playback";
-import type { PlaybackQueueEpisode } from "./api";
+import type { AudiobookTrack, PlaybackQueueEpisode } from "./api";
 
 export type QueueEpisode = PlaybackQueueEpisode;
 
@@ -18,6 +18,7 @@ export type PlaybackContextType = {
   clearPlaybackError: () => void;
   playToggle: () => void;
   playEpisode: (episodeId: number) => void;
+  playAudiobookTrack: (audiobookId: number, track: AudiobookTrack) => Promise<void>;
   seekTo: (positionSeconds: number) => void;
   seekForward: () => void;
   seekBackward: () => void;
@@ -33,6 +34,7 @@ export type PlaybackStateContextType = Omit<
   | "clearPlaybackError"
   | "playToggle"
   | "playEpisode"
+  | "playAudiobookTrack"
   | "seekTo"
   | "seekForward"
   | "seekBackward"
@@ -51,6 +53,7 @@ export type PlaybackDispatchContextType = Pick<
   | "clearPlaybackError"
   | "playToggle"
   | "playEpisode"
+  | "playAudiobookTrack"
   | "seekTo"
   | "seekForward"
   | "seekBackward"

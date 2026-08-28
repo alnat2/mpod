@@ -34,8 +34,10 @@ export function useDelayedActions({
   const onCommittedRef = useRef(onCommitted);
   const onErrorRef = useRef(onError);
 
-  onCommittedRef.current = onCommitted;
-  onErrorRef.current = onError;
+	useEffect(() => {
+	  onCommittedRef.current = onCommitted;
+	  onErrorRef.current = onError;
+	}, [onCommitted, onError]);
 
   const undoAction = useCallback((id: string) => {
     const timer = timers.current.get(id);
@@ -91,7 +93,7 @@ export function useDelayedActions({
 
   const flush = useCallback(() => {
     const pendingCommits = Array.from(commits.current.entries());
-    for (const [id, timer] of timers.current.entries()) {
+	for (const timer of timers.current.values()) {
       window.clearTimeout(timer);
     }
     timers.current.clear();

@@ -97,6 +97,9 @@ func TestServiceSyncAndCRUD(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `INSERT INTO playlist (audiobook_id, position) VALUES (?, 1)`, b1.ID); err != nil {
 		t.Fatalf("add to playlist: %v", err)
 	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) SELECT audiobook_id, id FROM audiobook_tracks WHERE audiobook_id = ?`, b1.ID); err != nil {
+		t.Fatalf("select book tracks: %v", err)
+	}
 
 	// Complete track 1 -> should return track 2
 	nextTrack, err = svc.SaveTrackProgress(ctx, track1.ID, 300, true)
@@ -232,6 +235,9 @@ func TestBookInPlaylistReflectsOnTracks(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `INSERT INTO playlist (audiobook_id, position) VALUES (?, 1)`, bookID); err != nil {
 		t.Fatalf("add book to playlist: %v", err)
 	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) SELECT audiobook_id, id FROM audiobook_tracks WHERE audiobook_id = ?`, bookID); err != nil {
+		t.Fatalf("select book tracks: %v", err)
+	}
 
 	// Verify both tracks report InPlaylist = true
 	b, err := svc.Get(ctx, bookID)
@@ -248,7 +254,27 @@ func TestBookInPlaylistReflectsOnTracks(t *testing.T) {
 		t.Errorf("expected track 2 in playlist when whole book is in playlist")
 	}
 
-	// Remove track 1 -> book entry remains in playlist as 1 item, track 1 marked excluded
+	// A later scan discovers another file, but an existing playlist selection is
+	// stable until the user explicitly adds that chapter.
+	scanned[0].Tracks = append(scanned[0].Tracks, ScannedTrack{
+		TrackNumber: 3,
+		Title:       "Chapter 3",
+		RelPath:     "Frank Herbert/Dune/03.mp3",
+		FilePath:    "/abs/03.mp3",
+		Duration:    900,
+	})
+	if err := svc.SyncWithScannedBooks(ctx, scanned); err != nil {
+		t.Fatalf("rescan with a new chapter failed: %v", err)
+	}
+	b, err = svc.Get(ctx, bookID)
+	if err != nil {
+		t.Fatalf("Get after rescan failed: %v", err)
+	}
+	if len(b.Tracks) != 3 || b.Tracks[2].InPlaylist {
+		t.Fatalf("expected newly scanned chapter to stay out of existing selection: %+v", b.Tracks)
+	}
+
+	// Remove track 1 -> book entry remains in playlist as 1 item.
 	if err := svc.RemoveTrackFromPlaylist(ctx, b.Tracks[0].ID); err != nil {
 		t.Fatalf("RemoveTrackFromPlaylist failed: %v", err)
 	}
@@ -274,7 +300,7 @@ func TestBookInPlaylistReflectsOnTracks(t *testing.T) {
 		t.Errorf("expected track 2 still in playlist after removing track 1 from book playlist")
 	}
 
-	// Re-add track 1 -> exclusion is cleared
+	// Re-add track 1 -> it returns to the same parent item.
 	if err := svc.AddTrackToPlaylist(ctx, b.Tracks[0].ID); err != nil {
 		t.Fatalf("AddTrackToPlaylist failed: %v", err)
 	}
@@ -284,5 +310,27 @@ func TestBookInPlaylistReflectsOnTracks(t *testing.T) {
 	}
 	if !bReAdded.Tracks[0].InPlaylist {
 		t.Errorf("expected track 1 in playlist after re-adding")
+	}
+
+	if _, err := db.ExecContext(ctx, `
+		UPDATE audiobook_tracks SET is_listened = 1 WHERE audiobook_id = ?;
+		INSERT INTO audiobook_playback (track_id, audiobook_id, position_seconds)
+		VALUES (?, ?, 42);
+	`, bookID, b.Tracks[1].ID, bookID); err != nil {
+		t.Fatalf("seed audiobook state before final removal: %v", err)
+	}
+	if err := svc.RemoveTrackFromPlaylist(ctx, b.Tracks[0].ID); err != nil {
+		t.Fatalf("remove first selected track: %v", err)
+	}
+	if err := svc.RemoveTrackFromPlaylist(ctx, b.Tracks[1].ID); err != nil {
+		t.Fatalf("remove final selected track: %v", err)
+	}
+
+	var remainingPlaylist, remainingPlayback, listenedTracks int
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_id = ?`, bookID).Scan(&remainingPlaylist)
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audiobook_playback WHERE audiobook_id = ?`, bookID).Scan(&remainingPlayback)
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audiobook_tracks WHERE audiobook_id = ? AND is_listened = 1`, bookID).Scan(&listenedTracks)
+	if remainingPlaylist != 0 || remainingPlayback != 0 || listenedTracks != 0 {
+		t.Fatalf("expected final chapter removal to reset book state, got playlist=%d playback=%d listened=%d", remainingPlaylist, remainingPlayback, listenedTracks)
 	}
 }

@@ -2,7 +2,7 @@
 
 ## Current State
 
-mpod is a browser-based web application. The Go backend MVP is in place, and the React frontend scaffold is now connected to the existing API.
+mpod is a browser-based podcast and local-audiobook application. The Go backend and React frontend are connected, and audiobook library, playlist, and playback support are now part of the active product scope.
 
 The starter documentation set is in place:
 - [README.md](/Users/cross/Documents/mpod/README.md)
@@ -30,10 +30,17 @@ The starter documentation set is in place:
 - Podcast deletion should cascade through episodes, playback, playlist entries, and downloaded files.
 - Episode deduplication should use persisted `external_episode_key`.
 - The project should use real database migrations from day one.
+- Audiobooks are scanned from the read-only `/share/audio/abooks/` library by default.
+- `Abooks` is a separate primary screen with nested collection navigation.
+- A standalone audio file is one book; a folder with direct audio files is one book with naturally ordered chapters; a folder without direct audio files is a navigation level.
+- A folder-backed book always occupies one playlist position, including when only selected chapters are included.
+- A book leaves the playlist when its final selected chapter becomes listened; a later add starts the book over.
+- Podcast and audiobook playback speeds are stored separately, defaulting to `Speed 1.3x` and `Speed 1x`.
+- Audiobook source files are never deleted or modified by mpod.
 
 ## Current Focus
 
-The backend MVP implementation is now in place. The main remaining project work has shifted to frontend implementation and UX/UI decisions.
+The podcast MVP baseline is in place. Current work is integrating and polishing the newer audiobook behavior across backend, frontend, API contracts, and UX documentation.
 Suggested project chat lanes for this phase are documented in [chat-map.md](/Users/cross/Documents/mpod/docs/chat-map.md).
 
 User flows and UX/UI decisions are still an active planning area and may continue in parallel with backend work.
@@ -68,17 +75,36 @@ The Go backend scaffold is now in place with:
 - scheduler status endpoint
 - daily scheduler wiring
 - focused backend tests for playback sync and feed identity behavior
+- audiobook directory scanning and rescan endpoints
+- audiobook metadata, cover, chapter, and Range-enabled audio endpoints
+- audiobook playlist operations for whole books and individual chapters
+- one aggregated playlist item per audiobook, backed by explicit selected-chapter membership
+- audiobook playback progress, active playback, selected-chapter transitions, and natural-completion cleanup
+- reset of audiobook progress/listened state when the book leaves the playlist
+- separate persisted podcast and audiobook playback speed preferences
+
+Current audiobook UI includes:
+- separate `Abooks` navigation and library screen
+- nested collection navigation with breadcrumbs
+- whole-book and individual-chapter playlist controls
+- library chapter-selection modal/bottom sheet with chapter duration and add/remove-from-playlist actions
+- Player chapters modal/bottom sheet states for completed/replay, current playing, current paused, and upcoming chapters
+- mixed podcast/audiobook Player queue
+- content-specific Player actions: `Show notes` for podcasts, `Show chapters` for folder-backed audiobooks, and neither action for standalone audiobook files
+- current-time `Go to time` input with hours and minutes
+- audiobook player controls with `Speed 1x` default
 
 ## Ready For Later
 
 When implementation resumes, the next likely steps are:
 1. continue frontend/backend integration polish
-2. verify critical user flows against real backend data
-3. add broader end-to-end QA where needed
-4. polish Docker/runtime packaging
+2. add reliable duration extraction for audiobook chapters that have not yet been opened by the browser player
+3. remove compatibility-only legacy audiobook API/schema paths after upgrade compatibility is no longer needed
+4. verify critical podcast and audiobook flows against real backend data
+5. add broader end-to-end QA for library rescans and mixed-media queue transitions
+6. polish Docker/runtime packaging
 
 ## Open Topics
 
-- user flows
-- UX/UI behavior decisions
-- screen structure and interaction patterns
+- malformed audiobook directory layouts outside the supported structure
+- broader end-to-end coverage for library rescans and mixed-media queue transitions
