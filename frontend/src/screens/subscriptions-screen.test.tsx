@@ -73,17 +73,6 @@ vi.mock("./add-podcast-modal", () => ({
   AddPodcastModal: () => null,
 }));
 
-const scheduleActionMock = vi.fn();
-const undoActionMock = vi.fn();
-
-vi.mock("./use-delayed-actions", () => ({
-  useDelayedActions: () => ({
-    pendingActions: [],
-    scheduleAction: scheduleActionMock,
-    undoAction: undoActionMock,
-  }),
-}));
-
 vi.mock("@/components/mpod", () => ({
   AppShell: ({
     children,
@@ -96,11 +85,13 @@ vi.mock("@/components/mpod", () => ({
     title,
     onSelect,
     onRefresh,
+    onUnsubscribe,
     refreshing,
   }: {
     title: string;
     onSelect?: () => void;
     onRefresh?: () => void;
+    onUnsubscribe?: () => void;
     refreshing?: boolean;
   }) => (
     <div>
@@ -114,6 +105,13 @@ vi.mock("@/components/mpod", () => ({
         onClick={onRefresh}
       >
         Refresh
+      </button>
+      <button
+        type="button"
+        aria-label={`Unsubscribe ${title}`}
+        onClick={onUnsubscribe}
+      >
+        Unsubscribe
       </button>
     </div>
   ),
@@ -243,8 +241,6 @@ describe("SubscriptionsScreen", () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     reloadQueueMock.mockReset();
-    scheduleActionMock.mockReset();
-    undoActionMock.mockReset();
     setViewportMatch(false);
     globalThis.IntersectionObserver = defaultIntersectionObserver;
 
@@ -878,5 +874,52 @@ describe("SubscriptionsScreen", () => {
     await waitFor(() => {
       expect(refreshButton).not.toBeDisabled();
     });
+  });
+
+  it("schedules unsubscribe with undo banner and cancels when clicking undo", async () => {
+    const user = userEvent.setup();
+    const removeSpy = vi.spyOn(api.podcasts, "remove").mockResolvedValue({ success: true });
+
+    renderSubscriptionsScreen();
+
+    expect(await screen.findByRole("button", { name: "Build Your SaaS" })).toBeInTheDocument();
+
+    const unsubButton = screen.getByRole("button", { name: /Unsubscribe/i });
+    await user.click(unsubButton);
+
+    // Undo banner should be visible after exit animation
+    const statusBanner = await screen.findByRole("status");
+    expect(statusBanner).toHaveTextContent(/Unsubscribed from "Build Your SaaS"/i);
+    const undoButton = screen.getByRole("button", { name: "Undo" });
+    expect(undoButton).toBeInTheDocument();
+
+    // Click undo
+    await user.click(undoButton);
+
+    // Podcast is restored and remove is NOT called
+    expect(removeSpy).not.toHaveBeenCalled();
+    expect(await screen.findByRole("button", { name: "Build Your SaaS" })).toBeInTheDocument();
+  });
+
+  it("flushes and commits unsubscribe to backend when unmounting", async () => {
+    const user = userEvent.setup();
+    const removeSpy = vi.spyOn(api.podcasts, "remove").mockResolvedValue({ success: true });
+
+    const { unmount } = renderSubscriptionsScreen();
+
+    expect(await screen.findByRole("button", { name: "Build Your SaaS" })).toBeInTheDocument();
+
+    const unsubButton = screen.getByRole("button", { name: /Unsubscribe/i });
+    await user.click(unsubButton);
+
+    // Wait until scheduled action is active
+    const statusBanner = await screen.findByRole("status");
+    expect(statusBanner).toHaveTextContent(/Unsubscribed from "Build Your SaaS"/i);
+    expect(removeSpy).not.toHaveBeenCalled();
+
+    // Navigating away / unmounting
+    unmount();
+
+    expect(removeSpy).toHaveBeenCalledWith(1);
   });
 });

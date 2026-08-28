@@ -141,4 +141,61 @@ describe("useDelayedActions", () => {
 
     vi.useRealTimers();
   });
+
+  it("flushes and commits pending actions immediately when unmounting", async () => {
+    vi.useFakeTimers();
+
+    const commit = vi.fn().mockResolvedValue(undefined);
+    const { result, unmount } = renderHook(() => useDelayedActions());
+
+    act(() => {
+      result.current.scheduleAction({
+        kind: "unsubscribe-podcast",
+        podcastId: 42,
+        episodeIds: [],
+        message: "Unsubscribed",
+        commit,
+      });
+    });
+
+    expect(commit).not.toHaveBeenCalled();
+
+    // User navigates away before 15 seconds: unmount hook
+    unmount();
+
+    expect(commit).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
+  });
+
+  it("does not execute undone actions when unmounting", async () => {
+    vi.useFakeTimers();
+
+    const commit = vi.fn().mockResolvedValue(undefined);
+    const { result, unmount } = renderHook(() => useDelayedActions());
+
+    act(() => {
+      result.current.scheduleAction({
+        kind: "unsubscribe-podcast",
+        podcastId: 42,
+        episodeIds: [],
+        message: "Unsubscribed",
+        commit,
+      });
+    });
+
+    const pendingId = result.current.pendingActions[0]?.id;
+    expect(pendingId).toBeTruthy();
+
+    act(() => {
+      result.current.undoAction(pendingId!);
+    });
+
+    // Unmount after undo
+    unmount();
+
+    expect(commit).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
 });

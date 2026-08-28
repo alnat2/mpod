@@ -89,7 +89,7 @@ export function UndoBanner({
   }, []);
 
   return (
-    <div className="pointer-events-auto flex min-h-10 w-full items-center gap-3 rounded-md border border-border bg-secondary px-3 py-2 text-sm leading-5 text-secondary-foreground">
+    <div className="pointer-events-auto flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-2.5 text-sm leading-5 text-card-foreground shadow-md backdrop-blur-xs">
       <span
         className="sr-only"
         role="status"
@@ -98,10 +98,16 @@ export function UndoBanner({
       >
         {message} Undo available for {initialRemainingSeconds} seconds.
       </span>
-      <span className="min-w-0 flex-1 truncate" aria-hidden="true">
+      <span className="min-w-0 flex-1 break-words font-medium" aria-hidden="true">
         {message} Applying in {remainingSeconds} sec.
       </span>
-      <Button variant="link" type="button" onClick={onUndo}>
+      <Button
+        variant="default"
+        size="sm"
+        type="button"
+        className="h-8 shrink-0 rounded-md px-3 font-semibold"
+        onClick={onUndo}
+      >
         Undo
       </Button>
     </div>

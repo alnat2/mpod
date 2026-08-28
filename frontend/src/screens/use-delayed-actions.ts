@@ -30,6 +30,12 @@ export function useDelayedActions({
     []
   );
   const timers = useRef(new Map<string, number>());
+  const commits = useRef(new Map<string, () => Promise<unknown>>());
+  const onCommittedRef = useRef(onCommitted);
+  const onErrorRef = useRef(onError);
+
+  onCommittedRef.current = onCommitted;
+  onErrorRef.current = onError;
 
   const undoAction = useCallback((id: string) => {
     const timer = timers.current.get(id);
@@ -37,6 +43,7 @@ export function useDelayedActions({
       window.clearTimeout(timer);
       timers.current.delete(id);
     }
+    commits.current.delete(id);
 
     setPendingActions((current) =>
       current.filter((action) => action.id !== id)
@@ -50,43 +57,70 @@ export function useDelayedActions({
         .slice(2)}`;
       const pendingAction = { ...action, id, expiresAt: Date.now() + delayMs };
 
+      commits.current.set(id, commit);
       setPendingActions((current) => [...current, pendingAction]);
 
       const timer = window.setTimeout(() => {
         timers.current.delete(id);
+        const executeCommit = commits.current.get(id);
+        commits.current.delete(id);
 
-        void commit()
+        if (!executeCommit) {
+          return;
+        }
+
+        void executeCommit()
           .then(() => {
             setPendingActions((current) =>
               current.filter((item) => item.id !== id)
             );
-            onCommitted?.();
+            onCommittedRef.current?.();
           })
           .catch((error: unknown) => {
             setPendingActions((current) =>
               current.filter((item) => item.id !== id)
             );
-            onError?.(error);
+            onErrorRef.current?.(error);
           });
       }, delayMs);
 
       timers.current.set(id, timer);
     },
-    [delayMs, onCommitted, onError]
+    [delayMs]
   );
 
-  useEffect(() => {
-    const activeTimers = timers.current;
+  const flush = useCallback(() => {
+    const pendingCommits = Array.from(commits.current.entries());
+    for (const [id, timer] of timers.current.entries()) {
+      window.clearTimeout(timer);
+    }
+    timers.current.clear();
+    commits.current.clear();
 
-    return () => {
-      for (const timer of activeTimers.values()) {
-        window.clearTimeout(timer);
-      }
-      activeTimers.clear();
-    };
+    for (const [, commit] of pendingCommits) {
+      void commit().catch((error: unknown) => {
+        onErrorRef.current?.(error);
+      });
+    }
   }, []);
 
+  useEffect(() => {
+    const handlePageHide = () => {
+      flush();
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("beforeunload", handlePageHide);
+
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("beforeunload", handlePageHide);
+      flush();
+    };
+  }, [flush]);
+
   return {
+    flush,
     pendingActions,
     scheduleAction,
     undoAction,
