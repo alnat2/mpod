@@ -120,7 +120,7 @@ func TestProjectMigrationsUpgradeExistingDatabase(t *testing.T) {
 	assertIndexExists(t, db.SQL, "idx_episodes_podcast_published")
 	assertIndexExists(t, db.SQL, "idx_playlist_position")
 	assertIndexExists(t, db.SQL, "idx_playlist_download_after")
-	assertMigrationVersions(t, db.SQL, 10)
+	assertMigrationVersions(t, db.SQL, 11)
 }
 
 func TestSmartListeningMigrationMakesExistingPlaylistItemsDueImmediately(t *testing.T) {

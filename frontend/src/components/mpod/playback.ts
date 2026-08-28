@@ -9,7 +9,9 @@ export const playbackSpeedOptions = [
 
 export type PlaybackSpeedLabel = (typeof playbackSpeedOptions)[number];
 
-export const defaultPlaybackSpeed: PlaybackSpeedLabel = "Speed 1.3x";
+export const defaultPodcastPlaybackSpeed: PlaybackSpeedLabel = "Speed 1.3x";
+export const defaultAudiobookPlaybackSpeed: PlaybackSpeedLabel = "Speed 1x";
+export const defaultPlaybackSpeed: PlaybackSpeedLabel = defaultPodcastPlaybackSpeed;
 
 export function isPlaybackSpeedLabel(
   value: string

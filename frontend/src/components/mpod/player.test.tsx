@@ -259,4 +259,36 @@ describe("Player", () => {
     expect(container.querySelector('[data-player-action="mobile-chapters"]')).toBeNull();
     expect(container.querySelector('[data-player-action="mobile-notes"]')).toBeNull();
   });
+
+  it("opens Go to time modal when clicking elapsed time and seeks to target", async () => {
+    const user = userEvent.setup();
+    const onSeekSeconds = vi.fn();
+
+    render(
+      <TooltipProvider>
+        <Player
+          title="Episode 1"
+          podcastTitle="Tech News"
+          elapsedLabel="12:34"
+          durationLabel="45:00"
+          onSeekSeconds={onSeekSeconds}
+        />
+      </TooltipProvider>
+    );
+
+    const timeBtn = screen.getByRole("button", { name: "Go to time (current: 12:34)" });
+    expect(timeBtn).toBeInTheDocument();
+
+    await user.click(timeBtn);
+    expect(screen.getAllByText("Go to time").length).toBeGreaterThan(0);
+
+    // Type 2, 5, 0, 0 -> 25:00 (1500s)
+    await user.click(screen.getByRole("button", { name: "2" }));
+    await user.click(screen.getByRole("button", { name: "5" }));
+    await user.click(screen.getByRole("button", { name: "00" }));
+
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    expect(onSeekSeconds).toHaveBeenCalledWith(25 * 60);
+    expect(screen.queryByTestId("go-to-time-display")).not.toBeInTheDocument();
+  });
 });

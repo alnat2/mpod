@@ -12,6 +12,8 @@ import type { ReactNode } from "react";
 
 import {
   defaultPlaybackSpeed,
+  defaultPodcastPlaybackSpeed,
+  defaultAudiobookPlaybackSpeed,
   type PlaybackSpeedLabel,
 } from "@/components/mpod/playback";
 import { api } from "./api";
@@ -46,8 +48,10 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     episodeId: number;
     durationSeconds: number;
   } | null>(null);
-  const [speedLabel, setSpeedLabel] =
-    useState<PlaybackSpeedLabel>(defaultPlaybackSpeed);
+  const [podcastSpeed, setPodcastSpeed] =
+    useState<PlaybackSpeedLabel>(defaultPodcastPlaybackSpeed);
+  const [audiobookSpeed, setAudiobookSpeed] =
+    useState<PlaybackSpeedLabel>(defaultAudiobookPlaybackSpeed);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sourcePrimedRef = useRef(false);
@@ -58,13 +62,15 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const currentEpisodeRef = useRef<QueueEpisode | null>(null);
   const currentEpisodeDurationRef = useRef(0);
   const pendingPlayEpisodeIdRef = useRef<number | null>(null);
-  const speedLabelRef = useRef<PlaybackSpeedLabel>(speedLabel);
-
   const activeEpisode =
     activeEpisodeId !== null
       ? queue.find((episode) => episode.id === activeEpisodeId) ?? null
       : null;
   const currentEpisode = activeEpisode ?? queue[0] ?? null;
+  const isAudiobook =
+    currentEpisode?.type === "audiobook" || Boolean(currentEpisode?.audiobookId);
+  const speedLabel = isAudiobook ? audiobookSpeed : podcastSpeed;
+  const speedLabelRef = useRef<PlaybackSpeedLabel>(speedLabel);
   const currentEpisodeId = currentEpisode?.id;
   const currentAudioDuration =
     audioDuration && audioDuration.episodeId === currentEpisodeId
@@ -116,7 +122,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     setActiveEpisodeId,
     setLoading,
     setPositionSeconds,
-    setSpeedLabel,
+    setSpeedLabel: setPodcastSpeed,
   });
 
   useEffect(() => {
@@ -167,10 +173,17 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     });
 
   const updateSpeedLabel = useCallback((label: PlaybackSpeedLabel) => {
-    setSpeedLabel(label);
-    void api.settings.update({ playbackSpeed: label }).catch((error) => {
-      console.error("Failed to update playback speed", error);
-    });
+    const isCurrentAudiobook =
+      currentEpisodeRef.current?.type === "audiobook" ||
+      Boolean(currentEpisodeRef.current?.audiobookId);
+    if (isCurrentAudiobook) {
+      setAudiobookSpeed(label);
+    } else {
+      setPodcastSpeed(label);
+      void api.settings.update({ playbackSpeed: label }).catch((error) => {
+        console.error("Failed to update playback speed", error);
+      });
+    }
   }, []);
 
   const clearPlaybackError = useCallback(() => {

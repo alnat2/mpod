@@ -283,6 +283,9 @@ function Harness() {
       <div data-testid="duration">{durationSeconds}</div>
       <div data-testid="speed">{speedLabel}</div>
       <div data-testid="playback-error">{playbackError ?? "none"}</div>
+      <button type="button" onClick={() => playEpisode(1)}>
+        Play first
+      </button>
       <button type="button" onClick={() => playEpisode(2)}>
         Play second
       </button>
@@ -1201,6 +1204,76 @@ describe("PlaybackProvider", () => {
     await waitFor(() => {
       expect(screen.getByTestId("speed")).toHaveTextContent("Speed 2x");
     });
+  });
+
+  it("maintains separate playback speeds for podcasts and audiobooks", async () => {
+    const user = userEvent.setup();
+    const updateSettingsSpy = vi.spyOn(api.settings, "update");
+
+    vi.spyOn(api.playback, "queue").mockResolvedValueOnce({
+      queue: [
+        {
+          id: 1,
+          type: "episode",
+          podcastId: 10,
+          title: "Podcast Episode",
+          podcastTitle: "Podcast",
+          podcastImageUrl: null,
+          audioUrl: "https://example.com/audio1.mp3",
+          duration: 1800,
+          downloaded: false,
+          isListened: false,
+          publishedAt: "2026-01-01T00:00:00Z",
+          playback: null,
+        },
+        {
+          id: 2,
+          type: "audiobook",
+          podcastId: 0,
+          audiobookId: 99,
+          title: "Audiobook Title",
+          author: "Author",
+          podcastTitle: "Author",
+          podcastImageUrl: null,
+          audioUrl: "/api/audiobooks/99/tracks/1/audio",
+          duration: 3600,
+          downloaded: true,
+          isListened: false,
+          publishedAt: "2026-01-01T00:00:00Z",
+          playback: null,
+        },
+      ],
+      activePlayback: null,
+    });
+
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    // Podcast episode defaults to 1.3x
+    expect(screen.getByTestId("current-title")).toHaveTextContent("Podcast Episode");
+    expect(screen.getByTestId("speed")).toHaveTextContent("Speed 1.3x");
+
+    // Switch to audiobook -> should automatically use Speed 1x
+    await user.click(screen.getByRole("button", { name: "Play second" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent("Audiobook Title");
+    });
+    expect(screen.getByTestId("speed")).toHaveTextContent("Speed 1x");
+
+    // Change audiobook speed to 2x (should not update backend podcast settings)
+    await user.click(screen.getByRole("button", { name: "Speed 2x" }));
+    expect(screen.getByTestId("speed")).toHaveTextContent("Speed 2x");
+    expect(updateSettingsSpy).not.toHaveBeenCalledWith(expect.anything());
+
+    // Switch back to podcast -> should restore podcast speed (Speed 1.3x)
+    await user.click(screen.getByRole("button", { name: "Play first" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent("Podcast Episode");
+    });
+    expect(screen.getByTestId("speed")).toHaveTextContent("Speed 1.3x");
   });
 
   it("auto-advances to the next queue item when the current episode ends", async () => {

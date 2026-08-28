@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   defaultPlaybackSpeed,
+  defaultPodcastPlaybackSpeed,
+  defaultAudiobookPlaybackSpeed,
   playbackSpeedOptions,
 } from "./playback";
 
@@ -17,7 +19,9 @@ describe("playback speed options", () => {
     ]);
   });
 
-  it("uses Speed 1.3x as the default", () => {
+  it("uses Speed 1.3x for podcasts and Speed 1x for audiobooks", () => {
+    expect(defaultPodcastPlaybackSpeed).toBe("Speed 1.3x");
+    expect(defaultAudiobookPlaybackSpeed).toBe("Speed 1x");
     expect(defaultPlaybackSpeed).toBe("Speed 1.3x");
   });
 });

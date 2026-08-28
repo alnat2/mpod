@@ -457,9 +457,14 @@ Rules:
 Request:
 ```json
 {
-  "episodeIds": [55, 89, 21]
+  "items": [
+    { "type": "episode", "episodeId": 55 },
+    { "type": "audiobook", "audiobookId": 1 },
+    { "type": "audiobook_track", "trackId": 10 }
+  ]
 }
 ```
+*(Also supports legacy `{ "episodeIds": [55, 89, 21] }` payload).*
 
 Success response:
 ```json
@@ -470,7 +475,7 @@ Success response:
 
 Rules:
 - Request must contain the full final playlist order
-- Any missing or unknown episode ID should return an error
+- Any missing or unknown item ID should return an error
 
 ### Playback Endpoints
 

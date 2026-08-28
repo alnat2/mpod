@@ -248,9 +248,19 @@ func TestBookInPlaylistReflectsOnTracks(t *testing.T) {
 		t.Errorf("expected track 2 in playlist when whole book is in playlist")
 	}
 
-	// Remove track 1 -> book entry is removed and track 2 remains in playlist
+	// Remove track 1 -> book entry remains in playlist as 1 item, track 1 marked excluded
 	if err := svc.RemoveTrackFromPlaylist(ctx, b.Tracks[0].ID); err != nil {
 		t.Fatalf("RemoveTrackFromPlaylist failed: %v", err)
+	}
+
+	var bookPlaylistCount, trackPlaylistCount int
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_id = ?`, bookID).Scan(&bookPlaylistCount)
+	if bookPlaylistCount != 1 {
+		t.Errorf("expected audiobook to remain 1 item in playlist, got count %d", bookPlaylistCount)
+	}
+	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_track_id IS NOT NULL`).Scan(&trackPlaylistCount)
+	if trackPlaylistCount != 0 {
+		t.Errorf("expected NO unpacked track items in playlist, got count %d", trackPlaylistCount)
 	}
 
 	bAfter, err := svc.Get(ctx, bookID)
@@ -262,5 +272,17 @@ func TestBookInPlaylistReflectsOnTracks(t *testing.T) {
 	}
 	if !bAfter.Tracks[1].InPlaylist {
 		t.Errorf("expected track 2 still in playlist after removing track 1 from book playlist")
+	}
+
+	// Re-add track 1 -> exclusion is cleared
+	if err := svc.AddTrackToPlaylist(ctx, b.Tracks[0].ID); err != nil {
+		t.Fatalf("AddTrackToPlaylist failed: %v", err)
+	}
+	bReAdded, err := svc.Get(ctx, bookID)
+	if err != nil {
+		t.Fatalf("Get after re-add failed: %v", err)
+	}
+	if !bReAdded.Tracks[0].InPlaylist {
+		t.Errorf("expected track 1 in playlist after re-adding")
 	}
 }

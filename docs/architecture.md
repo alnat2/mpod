@@ -313,6 +313,7 @@ Initial logical entities:
 - `episodes`
 - `audiobooks`
 - `audiobook_tracks`
+- `audiobook_track_exclusions`
 - `playlist`
 - `playback`
 - `settings`
@@ -320,8 +321,9 @@ Initial logical entities:
 Expected relationships:
 - one user owns the whole app state
 - one podcast has many episodes
-- playlist references episodes in ordered form
-- playback references one episode
+- playlist references episodes, full audiobooks, or individual audiobook tracks in ordered form
+- `audiobook_track_exclusions` tracks excluded chapters when an entire audiobook folder is in the playlist without unpacking the book
+- playback references one episode, audiobook, or track
 
 Recommended additions beyond the PRD:
 - a `settings` table for values like `daily_refresh_time`

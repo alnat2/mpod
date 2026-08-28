@@ -32,6 +32,9 @@ describe("screen-utils", () => {
     expect(formatClock(undefined)).toBe("0:00");
     expect(formatClock(5)).toBe("0:05");
     expect(formatClock(125)).toBe("2:05");
+    expect(formatClock(23 * 60 + 14)).toBe("23:14");
+    expect(formatClock(3600)).toBe("1:00:00");
+    expect(formatClock(16 * 3600 + 22 * 60 + 14)).toBe("16:22:14");
   });
 
   it("formats episode dates as dd.MM.yy", () => {

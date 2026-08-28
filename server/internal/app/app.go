@@ -41,6 +41,9 @@ func New(logger *log.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg.SessionSecret == "change-me" {
+		logger.Printf("WARNING: SESSION_SECRET is set to default placeholder 'change-me'. Please change it for secure deployments.")
+	}
 	if err := storage.EnsureWritableDirectory(cfg.DownloadsDir); err != nil {
 		return nil, fmt.Errorf("prepare downloads directory: %w", err)
 	}

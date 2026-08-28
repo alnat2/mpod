@@ -334,6 +334,7 @@ export function HomeScreen() {
                 onProgressSeek={(progressRatio) =>
                   seekTo(displayDurationSeconds * progressRatio)
                 }
+                onSeekSeconds={seekTo}
                 onNotes={() => {
                   if (currentEpisode) {
                     setShowNotesEpisodeId(currentEpisode.id);

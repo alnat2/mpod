@@ -238,7 +238,7 @@ func (s *Service) maybeRun(ctx context.Context) {
 			s.running = false
 			s.mu.Unlock()
 		}()
-		if err := s.runOnceWithTrigger(context.Background(), triggerScheduled); err != nil {
+		if err := s.runOnceWithTrigger(ctx, triggerScheduled); err != nil {
 			s.logger.Printf("scheduler run failed: %v", err)
 		}
 	}()

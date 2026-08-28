@@ -231,6 +231,19 @@ func (s *Service) AddAudiobook(ctx context.Context, audiobookID int64) error {
 		return ErrAudiobookNotFound
 	}
 
+	// Remove any individual tracks of this audiobook from playlist
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM playlist 
+		WHERE audiobook_track_id IN (SELECT id FROM audiobook_tracks WHERE audiobook_id = ?)
+	`, audiobookID); err != nil {
+		return fmt.Errorf("remove individual tracks for audiobook: %w", err)
+	}
+
+	// Clear any exclusions for this book
+	if _, err := tx.ExecContext(ctx, `DELETE FROM audiobook_track_exclusions WHERE audiobook_id = ?`, audiobookID); err != nil {
+		return fmt.Errorf("clean track exclusions: %w", err)
+	}
+
 	var existing int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_id = ?`, audiobookID).Scan(&existing); err != nil {
 		return fmt.Errorf("check playlist item exists: %w", err)
@@ -270,15 +283,30 @@ func (s *Service) Remove(ctx context.Context, episodeID int64) error {
 }
 
 func (s *Service) RemoveAudiobook(ctx context.Context, audiobookID int64) error {
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM playlist WHERE audiobook_id = ?`, audiobookID); err != nil {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin remove audiobook tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM playlist 
+		WHERE audiobook_id = ? OR audiobook_track_id IN (SELECT id FROM audiobook_tracks WHERE audiobook_id = ?)
+	`, audiobookID, audiobookID); err != nil {
 		return fmt.Errorf("delete playlist audiobook item: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := tx.ExecContext(ctx, `DELETE FROM audiobook_track_exclusions WHERE audiobook_id = ?`, audiobookID); err != nil {
+		return fmt.Errorf("delete track exclusions: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE active_playback
 		SET audiobook_id = NULL, audiobook_track_id = NULL, last_updated = ?
-		WHERE singleton_id = 1 AND audiobook_id = ?
-	`, time.Now().UTC(), audiobookID); err != nil {
+		WHERE singleton_id = 1 AND (audiobook_id = ? OR audiobook_track_id IN (SELECT id FROM audiobook_tracks WHERE audiobook_id = ?))
+	`, time.Now().UTC(), audiobookID, audiobookID); err != nil {
 		return fmt.Errorf("clear active playback audiobook: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit remove audiobook tx: %w", err)
 	}
 	return s.normalizePositions(ctx)
 }

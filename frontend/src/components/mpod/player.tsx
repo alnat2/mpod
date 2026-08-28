@@ -31,8 +31,11 @@ import { cn } from "@/lib/utils";
 
 import { Artwork } from "./artwork";
 import { BottomSheet } from "./bottom-sheet";
+import { GoToTimeModal } from "./go-to-time-modal";
 import {
   defaultPlaybackSpeed,
+  defaultPodcastPlaybackSpeed,
+  defaultAudiobookPlaybackSpeed,
   playbackSpeedOptions,
   type PlaybackSpeedLabel,
 } from "./playback";
@@ -56,6 +59,7 @@ type PlayerProps = {
   onForward?: () => void;
   onPlay?: () => void;
   onProgressSeek?: (progressRatio: number) => void;
+  onSeekSeconds?: (seconds: number) => void;
   onNotes?: () => void;
   onSpeedChange?: (speed: PlaybackSpeedLabel) => void;
 };
@@ -240,7 +244,7 @@ export function Player({
   durationLabel,
   playing,
   progressValue = 0,
-  speedLabel = defaultPlaybackSpeed,
+  speedLabel,
   notesDisabled = true,
   mode = "episode",
   hasChapters = false,
@@ -249,16 +253,21 @@ export function Player({
   onForward,
   onPlay,
   onProgressSeek,
+  onSeekSeconds,
   onNotes,
   onSpeedChange,
 }: PlayerProps) {
   const isAudiobook = mode === "audiobook";
+  const defaultSpeedForMode = isAudiobook
+    ? defaultAudiobookPlaybackSpeed
+    : defaultPodcastPlaybackSpeed;
   const showChaptersButton = isAudiobook && Boolean(hasChapters);
   const showNotesButton = !isAudiobook;
 
+  const [isGoToTimeOpen, setIsGoToTimeOpen] = useState(false);
   const isSpeedControlled = speedLabel !== undefined && onSpeedChange !== undefined;
   const [uncontrolledSpeedLabel, setUncontrolledSpeedLabel] =
-    useState<PlaybackSpeedLabel>(speedLabel ?? defaultPlaybackSpeed);
+    useState<PlaybackSpeedLabel>(speedLabel ?? defaultSpeedForMode);
   const [pendingProgressValue, setPendingProgressValue] = useState<number | null>(
     null
   );
@@ -268,6 +277,7 @@ export function Player({
   const normalizedProgressValue = Math.min(100, Math.max(0, progressValue));
   const displayedProgressValue =
     pendingProgressValue ?? normalizedProgressValue;
+  const totalDurationSeconds = getSeekDurationSeconds(elapsedLabel, durationLabel) ?? 0;
 
   function handleSpeedChange(value: string) {
     const nextSpeed = value as PlaybackSpeedLabel;
@@ -340,7 +350,14 @@ export function Player({
               />
             )}
             <div className="order-first flex h-[18px] w-full items-center justify-between text-xs leading-4 text-muted-foreground md:order-last">
-              <span>{elapsedLabel}</span>
+              <button
+                type="button"
+                aria-label={`Go to time (current: ${elapsedLabel})`}
+                onClick={() => setIsGoToTimeOpen(true)}
+                className="cursor-pointer rounded-xs transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                {elapsedLabel}
+              </button>
               <span>{durationLabel}</span>
             </div>
           </div>
@@ -534,6 +551,20 @@ export function Player({
           </button>
         ) : null}
       </div>
+
+      {isGoToTimeOpen && (
+        <GoToTimeModal
+          totalDurationSeconds={totalDurationSeconds}
+          onClose={() => setIsGoToTimeOpen(false)}
+          onSeek={(seconds) => {
+            if (onSeekSeconds) {
+              onSeekSeconds(seconds);
+            } else if (onProgressSeek && totalDurationSeconds > 0) {
+              onProgressSeek(seconds / totalDurationSeconds);
+            }
+          }}
+        />
+      )}
     </section>
   );
 }

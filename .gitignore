@@ -23,3 +23,11 @@ frontend/coverage/
 
 # Local tool caches
 .tmp/
+*.db
+cookie.txt
+server/cookie.txt
+*.sh
+local-data/
+server/.gocache/
+server/local-test-data/
+server/mpod-bin

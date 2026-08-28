@@ -28,8 +28,14 @@ export function formatClock(seconds: number | null | undefined) {
   }
 
   const rounded = Math.round(seconds);
-  const minutes = Math.floor(rounded / 60);
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
   const remainingSeconds = rounded % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`;
+  }
+
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
 }
 
