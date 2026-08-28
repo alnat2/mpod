@@ -38,8 +38,7 @@ export function AudiobookChaptersModal({
       <Card
         data-slot="abook-chapters-modal"
         className={cn(
-          "w-full overflow-hidden border-border bg-card shadow-xl",
-          isMobile ? "max-w-[340px] p-4" : "max-w-[720px] p-6",
+          "w-full min-w-[320px] max-w-[400px] overflow-hidden border-border bg-card p-4 shadow-xl sm:min-w-0 sm:max-w-[480px] md:max-w-[560px] md:p-6",
           className
         )}
       >

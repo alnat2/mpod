@@ -156,7 +156,7 @@ export function ModalScreen({
             {title}
           </DialogPrimitive.Title>
           <div
-            className="flex max-h-full max-w-full flex-col items-center overflow-hidden"
+            className="flex w-full max-h-full max-w-full flex-col items-center justify-center overflow-hidden"
             onClick={(event) => event.stopPropagation()}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
