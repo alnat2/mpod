@@ -47,16 +47,22 @@ describe("FileManagerItem", () => {
     expect(document.querySelector('[data-icon-name="hugeicons/play-list-remove"]')).toBeInTheDocument();
   });
 
-  it("renders mobile card styling when isMobile is true", () => {
+  it("uses the 70px Figma row and 44px action on mobile", () => {
     render(
       <FileManagerItem
         type="audiobook"
         title="Mobile Book"
         duration="2h 30m"
         isMobile={true}
+        onTogglePlaylist={vi.fn()}
       />
     );
     const item = document.querySelector('[data-slot="fm-item"]');
-    expect(item).toHaveClass("rounded-xl");
+    expect(item).toHaveClass("h-[70px]", "rounded-sm", "px-1");
+    expect(screen.getByText("Mobile Book")).toHaveClass("line-clamp-2");
+    expect(screen.getByText("2h 30m")).toHaveClass("w-20");
+    expect(screen.getByRole("button", { name: "Add to playlist" })).toHaveClass(
+      "size-11"
+    );
   });
 });

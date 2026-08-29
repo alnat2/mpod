@@ -1,8 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import {
-  GoToTimeModal,
-} from "./go-to-time-modal";
+import { GoToTimeModal } from "./go-to-time-modal";
 import { formatDigitsToTime, parseDigitsToSeconds } from "./go-to-time-utils";
 
 describe("GoToTimeModal helpers", () => {
@@ -30,6 +28,32 @@ describe("GoToTimeModal helpers", () => {
 });
 
 describe("GoToTimeModal component", () => {
+  it("uses the Figma modal dimensions and keypad geometry", () => {
+    render(
+      <GoToTimeModal
+        totalDurationSeconds={7200}
+        onClose={vi.fn()}
+        onSeek={vi.fn()}
+      />
+    );
+
+    expect(document.querySelector('[data-slot="go-to-time-modal"]')).toHaveClass(
+      "h-[377px]",
+      "w-[320px]",
+      "rounded-2xl",
+      "p-0"
+    );
+    expect(screen.getByTestId("go-to-time-display")).toHaveClass(
+      "h-[62px]",
+      "rounded-xl",
+      "text-[28px]"
+    );
+    expect(screen.getByRole("button", { name: "1" })).toHaveClass(
+      "h-12",
+      "rounded-xl"
+    );
+  });
+
   it("renders keypad and allows digit entry", () => {
     const onSeek = vi.fn();
     const onClose = vi.fn();

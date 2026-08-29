@@ -908,6 +908,9 @@ func TestIndividualTrackInQueue(t *testing.T) {
 	if queue[0].Title != "Dune" || *queue[0].TrackID != 11 || queue[0].TrackCount != 1 {
 		t.Fatalf("unexpected queue item for individual track: %+v", queue[0])
 	}
+	if !queue[0].HasChapters {
+		t.Fatalf("expected folder-backed audiobook to retain chapter navigation with one selected track")
+	}
 
 	// Set active
 	tr11 := int64(11)

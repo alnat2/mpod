@@ -335,7 +335,7 @@ export function HomeScreen() {
               <Player
                 className="shrink-0"
                 mode={currentEpisode.type === "audiobook" ? "audiobook" : "episode"}
-                hasChapters={Boolean(currentEpisode.trackCount && currentEpisode.trackCount > 1)}
+                hasChapters={Boolean(currentEpisode.hasChapters)}
                 title={currentEpisode.title}
                 podcastTitle={currentEpisode.podcastTitle || currentEpisode.author || "Audiobook"}
                 artworkUrl={
@@ -394,6 +394,7 @@ export function HomeScreen() {
                   return (
                     <EpisodeRow
                       layout={isMobile ? "mobile" : "desktop"}
+                      compactMobile={isMobile && isAudiobook}
                       showDragHandle
                       current={isCurrentEpisode}
                       downloaded={episode.downloaded}

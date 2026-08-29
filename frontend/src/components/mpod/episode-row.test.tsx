@@ -37,6 +37,26 @@ describe("EpisodeRow", () => {
     expect(screen.getByText("21.05.26")).toBeInTheDocument();
   });
 
+  it("uses the compact 96px Figma row for mobile audiobooks", () => {
+    const { container } = render(
+      <TooltipProvider>
+        <EpisodeRow
+          compactMobile
+          layout="mobile"
+          title="The Running Grave"
+          subtitle="Robert Galbraith"
+          durationLabel="34h 12m"
+        />
+      </TooltipProvider>
+    );
+
+    expect(container.firstElementChild).toHaveClass(
+      "h-[96px]",
+      "grid-rows-[20px_44px]"
+    );
+    expect(screen.getByText("The Running Grave")).toHaveClass("truncate");
+  });
+
   it("shows local-ready as the downloaded icon and does not add a playlist status icon", () => {
     const { container } = render(
       <TooltipProvider>

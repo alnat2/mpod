@@ -36,6 +36,7 @@ type EpisodeRowAction = {
 
 type EpisodeRowProps = {
   className?: string;
+  compactMobile?: boolean;
   current?: boolean;
   downloaded?: boolean;
   inPlaylist?: boolean;
@@ -132,6 +133,7 @@ function EpisodeIconButton({
 
 export function EpisodeRow({
   className,
+  compactMobile = false,
   current,
   downloaded = false,
   layout = "auto",
@@ -181,7 +183,12 @@ export function EpisodeRow({
       className={cn(
         "w-full shrink-0 bg-card text-foreground shadow-xs",
         isMobile
-          ? "relative grid h-[116px] grid-cols-[minmax(0,1fr)_auto] grid-rows-[40px_44px] gap-x-2 gap-y-2 overflow-hidden rounded-[16px] py-3 pr-3 pl-8"
+          ? cn(
+              "relative grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2 overflow-hidden rounded-[16px] py-3 pr-3 pl-8",
+              compactMobile
+                ? "h-[96px] grid-rows-[20px_44px]"
+                : "h-[116px] grid-rows-[40px_44px]"
+            )
           : isDesktop
             ? "flex h-[70px] items-center gap-3 rounded px-3"
             : "relative grid h-[116px] grid-cols-[minmax(0,1fr)_auto] grid-rows-[40px_44px] gap-x-2 gap-y-2 overflow-hidden rounded-[16px] py-3 pr-3 pl-8 md:flex md:h-[70px] md:items-center md:gap-3 md:rounded md:px-3 md:py-0",
@@ -248,7 +255,10 @@ export function EpisodeRow({
           className={cn(
             "min-w-0 text-sm leading-5 font-semibold",
             isMobile
-              ? "col-span-2 line-clamp-2 self-center"
+              ? cn(
+                  "col-span-2 self-center",
+                  compactMobile ? "truncate" : "line-clamp-2"
+                )
               : isDesktop
                 ? "truncate"
                 : "col-span-2 line-clamp-2 self-center md:line-clamp-1"

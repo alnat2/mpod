@@ -82,71 +82,34 @@ export function FileManagerItem({
 
   const isActionable = type === "audiobook" || type === "track";
 
-  if (isMobile) {
-    return (
-      <div
-        data-slot="fm-item"
-        className={cn(
-          "flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-card p-3 shadow-xs transition-colors hover:bg-accent/40 cursor-pointer",
-          className
-        )}
-        onClick={handleRowClick}
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          {getIcon()}
-          <span className="truncate text-sm font-semibold text-foreground">
-            {title}
-          </span>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2" onClick={(e) => e.stopPropagation()}>
-          {formattedDuration && (
-            <span className="text-xs text-muted-foreground whitespace-nowrap">
-              {formattedDuration}
-            </span>
-          )}
-
-          {isActionable && onTogglePlaylist && (
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="size-9 rounded-lg border-border text-primary hover:bg-accent hover:text-primary"
-              aria-label={inPlaylist ? "Remove from playlist" : "Add to playlist"}
-              onClick={onTogglePlaylist}
-            >
-              <HugeiconsIcon
-                icon={inPlaylist ? PlayListRemoveIcon : PlayListAddIcon}
-                size={20}
-                strokeWidth={1.5}
-                data-icon-name={inPlaylist ? "hugeicons/play-list-remove" : "hugeicons/play-list-add"}
-              />
-            </Button>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div
       data-slot="fm-item"
       className={cn(
-        "flex h-[70px] w-full items-center justify-between gap-4 border-b border-border bg-background px-4 transition-colors hover:bg-accent/30 cursor-pointer",
+        "flex h-[70px] w-full items-center gap-3 rounded-sm bg-card px-1 text-foreground shadow-xs transition-colors hover:bg-accent/40",
+        onOpen && "cursor-pointer",
         className
       )}
       onClick={handleRowClick}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-3">
+      <div className="flex min-w-0 flex-1 items-center gap-1">
         {getIcon()}
-        <span className="truncate text-sm font-semibold text-foreground">
+        <span
+          className={cn(
+            "min-w-0 flex-1 text-sm leading-5 font-semibold text-foreground",
+            isMobile ? "line-clamp-2" : "truncate"
+          )}
+        >
           {title}
         </span>
       </div>
 
-      <div className="flex shrink-0 items-center gap-4" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="flex shrink-0 items-center gap-2"
+        onClick={(event) => event.stopPropagation()}
+      >
         {formattedDuration && (
-          <span className="text-sm text-muted-foreground whitespace-nowrap">
+          <span className="w-20 whitespace-nowrap text-right text-sm leading-5 text-foreground">
             {formattedDuration}
           </span>
         )}
@@ -156,15 +119,19 @@ export function FileManagerItem({
             type="button"
             variant="outline"
             size="icon"
-            className="size-10 rounded-lg border-border text-primary hover:bg-accent hover:text-primary"
+            className="size-11 rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary"
             aria-label={inPlaylist ? "Remove from playlist" : "Add to playlist"}
             onClick={onTogglePlaylist}
           >
             <HugeiconsIcon
               icon={inPlaylist ? PlayListRemoveIcon : PlayListAddIcon}
-              size={20}
+              size={24}
               strokeWidth={1.5}
-              data-icon-name={inPlaylist ? "hugeicons/play-list-remove" : "hugeicons/play-list-add"}
+              data-icon-name={
+                inPlaylist
+                  ? "hugeicons/play-list-remove"
+                  : "hugeicons/play-list-add"
+              }
             />
           </Button>
         )}

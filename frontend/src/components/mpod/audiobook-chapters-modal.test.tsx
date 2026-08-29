@@ -68,6 +68,18 @@ describe("AudiobookChaptersModal", () => {
     expect(screen.getByText("Chapter 2.mp3")).toBeInTheDocument();
     expect(screen.getByText("Chapter 3.mp3")).toBeInTheDocument();
     expect(screen.getAllByText("40m")).toHaveLength(3);
+    expect(document.querySelector('[data-slot="abook-chapters-modal"]')).toHaveClass(
+      "max-w-[720px]",
+      "sm:p-8"
+    );
+    expect(document.querySelector('[data-slot="chapter-item"]')).toHaveClass(
+      "h-[70px]",
+      "px-1"
+    );
+    expect(screen.getAllByText("40m")[0]).toHaveClass("w-20");
+    expect(
+      screen.getByRole("button", { name: "Add Chapter 1.mp3 to playlist" })
+    ).toHaveClass("size-11");
   });
 
   it("calls onToggleTrackPlaylist when clicking Add to playlist on a chapter", () => {

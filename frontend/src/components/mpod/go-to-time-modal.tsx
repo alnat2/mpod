@@ -21,7 +21,7 @@ export function GoToTimeModal({
   const hasHours = totalDurationSeconds >= 3600;
   const maxDigits = hasHours ? 6 : 4;
 
-	const handleKeyPress = useCallback((key: string) => {
+  const handleKeyPress = useCallback((key: string) => {
     if (key === "backspace") {
       setDigits((prev) => prev.slice(0, -1));
       return;
@@ -60,16 +60,16 @@ export function GoToTimeModal({
         return prev;
       });
     }
-	}, [maxDigits]);
+  }, [maxDigits]);
 
-	const handleDone = useCallback(() => {
+  const handleDone = useCallback(() => {
     let targetSeconds = parseDigitsToSeconds(digits, hasHours);
     if (totalDurationSeconds > 0 && targetSeconds > totalDurationSeconds) {
       targetSeconds = totalDurationSeconds;
     }
     onSeek(targetSeconds);
     onClose();
-	}, [digits, hasHours, onClose, onSeek, totalDurationSeconds]);
+  }, [digits, hasHours, onClose, onSeek, totalDurationSeconds]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -90,7 +90,7 @@ export function GoToTimeModal({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [handleDone, handleKeyPress, onClose]);
+  }, [handleDone, handleKeyPress, onClose]);
 
   const displayTime = formatDigitsToTime(digits, hasHours);
 
@@ -99,62 +99,65 @@ export function GoToTimeModal({
       <Card
         data-slot="go-to-time-modal"
         className={cn(
-          "w-[320px] max-w-[calc(100vw-32px)] rounded-3xl border border-border bg-card p-4 shadow-2xl transition-all sm:p-5",
+          "h-[377px] w-[320px] max-w-[calc(100vw-32px)] overflow-hidden rounded-2xl border border-border bg-card p-0 shadow-xs",
           className
         )}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex h-[52px] items-center justify-between px-5 pt-[18px] pb-2.5">
           <button
             type="button"
             onClick={onClose}
-            className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground active:opacity-70 cursor-pointer"
+            className="cursor-pointer text-sm leading-5 font-normal text-muted-foreground transition-colors hover:text-foreground active:opacity-70"
           >
             Cancel
           </button>
-          <span className="text-sm font-semibold text-foreground">Go to time</span>
+          <span className="text-base leading-6 font-medium text-muted-foreground">
+            Go to time
+          </span>
           <button
             type="button"
             onClick={handleDone}
-            className="text-sm font-semibold text-primary transition-colors hover:opacity-80 active:opacity-60 cursor-pointer"
+            className="cursor-pointer text-sm leading-5 font-semibold text-primary transition-opacity hover:opacity-80 active:opacity-60"
           >
             Done
           </button>
         </div>
 
-        {/* Time Display Box */}
-        <div className="my-3 flex flex-col items-center justify-center rounded-2xl bg-muted/60 py-3.5 px-4">
+        <div className="flex h-[93px] flex-col items-center px-[7.5px] pt-2">
           <div
             data-testid="go-to-time-display"
-            className="font-mono text-3xl font-bold tracking-wider text-foreground select-none"
+            className="flex h-[62px] w-full select-none items-center justify-center rounded-xl bg-muted text-[28px] leading-[42px] font-semibold tracking-[0.7px] text-muted-foreground"
           >
             {displayTime}
           </div>
-          <span className="mt-1 text-xs text-muted-foreground select-none">
-            {hasHours ? "Enter hours, minutes, seconds" : "Enter hours, minutes"}
+          <span className="select-none text-[10px] leading-[15px] text-muted-foreground">
+            {hasHours
+              ? "Enter hours, minutes, seconds"
+              : "Enter minutes, seconds"}
           </span>
         </div>
 
-        {/* Keypad Grid */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid h-[232px] grid-cols-3 gap-2 px-0.5 pb-4">
           {["1", "2", "3", "4", "5", "6", "7", "8", "9", "00", "0"].map(
             (key) => (
               <button
                 key={key}
                 type="button"
                 onClick={() => handleKeyPress(key)}
-                className="flex h-12 w-full select-none items-center justify-center rounded-2xl border border-border/50 bg-card text-xl font-medium text-foreground shadow-xs transition-all hover:bg-accent active:scale-95 cursor-pointer"
+                className={cn(
+                  "flex h-12 w-full cursor-pointer select-none items-center justify-center rounded-xl border border-border bg-card text-xl font-medium text-foreground shadow-xs transition-all hover:bg-accent active:scale-95",
+                  key === "00" && "border-transparent bg-muted shadow-none"
+                )}
               >
                 {key}
               </button>
             )
           )}
-          {/* Backspace Button */}
           <button
             type="button"
             aria-label="Backspace"
             onClick={() => handleKeyPress("backspace")}
-            className="flex h-12 w-full select-none items-center justify-center rounded-2xl border border-border/50 bg-muted/40 text-foreground transition-all hover:bg-muted/70 active:scale-95 cursor-pointer"
+            className="flex h-12 w-full cursor-pointer select-none items-center justify-center rounded-xl border border-transparent bg-muted text-foreground transition-all hover:bg-muted/70 active:scale-95"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

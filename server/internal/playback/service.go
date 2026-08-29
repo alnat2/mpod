@@ -51,6 +51,7 @@ type QueueEpisode struct {
 	CoverURL        *string `json:"coverUrl,omitempty"`
 	TrackCount      int     `json:"trackCount,omitempty"`
 	TrackNumber     int     `json:"trackNumber,omitempty"`
+	HasChapters     bool    `json:"hasChapters,omitempty"`
 	HasCover        bool    `json:"hasCover,omitempty"`
 	Playback        *State  `json:"playback"`
 }
@@ -365,6 +366,9 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 		WITH audiobook_queue AS (
 			SELECT p.audiobook_id,
 			       COUNT(selected.track_id) AS track_count,
+			       (SELECT COUNT(*)
+			        FROM audiobook_tracks library_track
+			        WHERE library_track.audiobook_id = p.audiobook_id) > 1 AS has_chapters,
 			       COALESCE(
 			         (
 			           SELECT active.audiobook_track_id
@@ -406,7 +410,7 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 		       podcasts.title, podcasts.image_url,
 		       playback.episode_id, playback.position_seconds, playback.last_updated,
 		       audiobooks.id, audiobooks.title, COALESCE(audiobooks.author, ''), COALESCE(audiobooks.cover_path, ''), audiobooks.total_duration,
-		       audiobook_queue.track_count,
+		       audiobook_queue.track_count, audiobook_queue.has_chapters,
 		       active_track.id, active_track.track_number, active_track.title, active_track.duration,
 		       audiobook_progress.position_seconds, audiobook_progress.last_updated
 		FROM playlist
@@ -434,6 +438,7 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 		var epIsListened sql.NullBool
 		var publishedAt, playbackUpdatedAt sql.NullTime
 		var abRowID, abTotalDuration, abTrackCount, abActiveTrackID, abActiveTrackNumber, abActiveTrackDuration, abTrackPos sql.NullInt64
+		var abHasChapters sql.NullBool
 		var abTitle, abAuthor, abCoverPath, abActiveTrackTitle sql.NullString
 		var abTrackUpdated sql.NullTime
 
@@ -445,7 +450,7 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 			&podcastTitle, &podcastImageURL,
 			&playbackEpisodeID, &playbackPosition, &playbackUpdatedAt,
 			&abRowID, &abTitle, &abAuthor, &abCoverPath, &abTotalDuration,
-			&abTrackCount, &abActiveTrackID, &abActiveTrackNumber, &abActiveTrackTitle, &abActiveTrackDuration,
+			&abTrackCount, &abHasChapters, &abActiveTrackID, &abActiveTrackNumber, &abActiveTrackTitle, &abActiveTrackDuration,
 			&abTrackPos, &abTrackUpdated,
 		); err != nil {
 			return nil, fmt.Errorf("scan playback queue: %w", err)
@@ -495,6 +500,7 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 			item.Author = abAuthor.String
 			item.PodcastTitle = abAuthor.String
 			item.TrackCount = int(abTrackCount.Int64)
+			item.HasChapters = abHasChapters.Bool
 			item.Downloaded = true // Local audiobook files are permanent
 
 			if abActiveTrackID.Valid {

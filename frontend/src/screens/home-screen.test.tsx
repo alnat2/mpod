@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { api } from "@/lib/api";
+import { api, type PlaybackQueueEpisode } from "@/lib/api";
 import { expectNoA11yViolations } from "@/test/axe";
 
 import { HomeScreen } from "./home-screen";
@@ -61,11 +61,12 @@ const queue = [
     },
   },
 ];
+let currentEpisode: PlaybackQueueEpisode | (typeof queue)[number] = queue[1]!;
 
 vi.mock("@/lib/playback-context", () => ({
   usePlayback: () => ({
     queue,
-    currentEpisode: queue[1],
+    currentEpisode,
     updateQueue: updateQueueMock,
     loading: false,
     playbackError: null,
@@ -105,6 +106,7 @@ vi.mock("@/components/mpod", () => ({
     elapsedLabel,
     durationLabel,
     progressValue,
+    hasChapters,
     onProgressSeek,
     onNotes,
   }: {
@@ -113,10 +115,14 @@ vi.mock("@/components/mpod", () => ({
     elapsedLabel: string;
     durationLabel: string;
     progressValue?: number;
+    hasChapters?: boolean;
     onProgressSeek?: (progressRatio: number) => void;
     onNotes?: () => void;
   }) => (
-    <section data-testid="player">
+    <section
+      data-testid="player"
+      data-has-chapters={hasChapters ? "yes" : "no"}
+    >
       <div>{title}</div>
       <div>{podcastTitle}</div>
       <div data-testid="elapsed-label">{elapsedLabel}</div>
@@ -214,6 +220,7 @@ describe("HomeScreen", () => {
     scheduleActionMock.mockReset();
     undoActionMock.mockReset();
     playbackDurationSeconds = 2400;
+    currentEpisode = queue[1]!;
   });
 
   it("renders the player from the active playback episode, not queue order", async () => {
@@ -233,6 +240,34 @@ describe("HomeScreen", () => {
     );
     expect(screen.getByTestId("drag-handle-First queued episode")).toBeInTheDocument();
     await expectNoA11yViolations(container);
+  });
+
+  it("shows chapter navigation for a folder-backed book with one selected track", async () => {
+    currentEpisode = {
+      id: 7,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 7,
+      trackId: 71,
+      trackCount: 1,
+      hasChapters: true,
+      title: "The Running Grave",
+      author: "Robert Galbraith",
+      podcastTitle: "Robert Galbraith",
+      audioUrl: "/api/audiobooks/7/tracks/71/audio",
+      duration: 3600,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: null,
+    };
+
+    render(<HomeScreen />);
+
+    expect(await screen.findByTestId("player")).toHaveAttribute(
+      "data-has-chapters",
+      "yes"
+    );
   });
 
   it("gives the playlist body a real scroll viewport", () => {

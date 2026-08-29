@@ -38,6 +38,15 @@ describe("AudiobookPlaybackChaptersModal", () => {
     expect(screen.getByRole("button", { name: "Replay Done" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pause Current" })).toBeInTheDocument();
     expect(screen.queryByText("Hidden")).not.toBeInTheDocument();
-    expect(screen.getByText("1m / 2m")).toHaveClass("whitespace-nowrap");
+    expect(screen.getByText("1m / 2m")).toHaveClass(
+      "w-20",
+      "whitespace-nowrap"
+    );
+    expect(
+      document.querySelector('[data-slot="abook-playback-chapters-modal"]')
+    ).toHaveClass("max-w-[720px]", "sm:p-8");
+    expect(screen.getByRole("button", { name: "Pause Current" })).toHaveClass(
+      "size-11"
+    );
   });
 });

@@ -84,6 +84,7 @@ export type PlaybackQueueEpisode = Episode & {
   trackId?: number;
   trackNumber?: number;
   trackCount?: number;
+  hasChapters?: boolean;
   author?: string;
   podcastTitle: string;
   podcastImageUrl?: string | null;
