@@ -18,6 +18,11 @@ import {
 } from "@/components/mpod";
 import { api, type Audiobook, type AudiobookTrack } from "@/lib/api";
 import { usePlayback, type QueueEpisode } from "@/lib/playback-context";
+import {
+  isAudiobookQueueItem,
+  queueItemKey,
+  type QueueItemKey,
+} from "@/lib/playback-queue";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
 import {
@@ -58,7 +63,7 @@ export function HomeScreen() {
     reloadQueue,
     playing,
     playToggle,
-    playEpisode,
+    playQueueItem,
     playAudiobookTrack,
     positionSeconds,
     durationSeconds,
@@ -75,7 +80,7 @@ export function HomeScreen() {
   const error: string | null = null;
   const [actionError, setActionError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [draggedEpisodeId, setDraggedEpisodeId] = useState<number | null>(null);
+  const [draggedItemKey, setDraggedItemKey] = useState<QueueItemKey | null>(null);
   const [reordering, setReordering] = useState(false);
   const queueRef = useRef<QueueEpisode[]>([]);
   const dragOriginQueueRef = useRef<QueueEpisode[]>([]);
@@ -93,10 +98,18 @@ export function HomeScreen() {
   const durationForQueueEpisode = useAudioMetadataDurations(visibleQueue);
 
   const showNotesEpisode =
-    visibleQueue.find((episode) => episode.id === showNotesEpisodeId) ??
-    (showNotesEpisodeId === currentEpisode?.id ? currentEpisode : null);
+    visibleQueue.find(
+      (episode) =>
+        !isAudiobookQueueItem(episode) && episode.id === showNotesEpisodeId
+    ) ??
+    (showNotesEpisodeId === currentEpisode?.id &&
+    currentEpisode &&
+    !isAudiobookQueueItem(currentEpisode)
+      ? currentEpisode
+      : null);
   const currentVisibleQueueEpisode = visibleQueue.find(
-    (episode) => episode.id === currentEpisode?.id
+    (episode) =>
+      currentEpisode && queueItemKey(episode) === queueItemKey(currentEpisode)
   );
   const currentEpisodeDuration =
     (currentEpisode ? durationForQueueEpisode(currentEpisode) : null) ??
@@ -116,15 +129,16 @@ export function HomeScreen() {
   const remainingSeconds = Math.max(0, displayDurationSeconds - positionSeconds);
 
   useEffect(() => {
-    if (draggedEpisodeId === null) {
+    if (draggedItemKey === null) {
       queueRef.current = queue;
     }
-  }, [draggedEpisodeId, queue]);
+  }, [draggedItemKey, queue]);
 
   async function removeFromPlaylist(item: QueueEpisode) {
     setActionError(null);
     const previousQueue = queueRef.current;
-    setQueue(previousQueue.filter((q) => q.id !== item.id));
+    const itemKey = queueItemKey(item);
+    setQueue(previousQueue.filter((q) => queueItemKey(q) !== itemKey));
 
     try {
       if (item.trackId && item.audiobookId && item.trackCount === 1) {
@@ -187,14 +201,14 @@ export function HomeScreen() {
 
   const moveQueueItem = useCallback((
     currentQueue: QueueEpisode[],
-    sourceEpisodeId: number,
-    targetEpisodeId: number
+    sourceItemKey: QueueItemKey,
+    targetItemKey: QueueItemKey
   ) => {
     const sourceIndex = currentQueue.findIndex(
-      (episode) => episode.id === sourceEpisodeId
+      (episode) => queueItemKey(episode) === sourceItemKey
     );
     const targetIndex = currentQueue.findIndex(
-      (episode) => episode.id === targetEpisodeId
+      (episode) => queueItemKey(episode) === targetItemKey
     );
 
     if (sourceIndex < 0 || targetIndex < 0) {
@@ -236,7 +250,7 @@ export function HomeScreen() {
 
   function beginDragReorder(
     event: DragEvent<HTMLDivElement>,
-    episodeId: number,
+    itemKey: QueueItemKey,
     canReorder: boolean
   ) {
     if (!canReorder || (event.target as Element).closest("button")) {
@@ -244,19 +258,19 @@ export function HomeScreen() {
     }
 
     event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", String(episodeId));
+    event.dataTransfer.setData("text/plain", itemKey);
     dragOriginQueueRef.current = queueRef.current;
     dragMovedRef.current = false;
-    setDraggedEpisodeId(episodeId);
+    setDraggedItemKey(itemKey);
   }
 
-  const previewDragReorder = useCallback((episodeId: number, canReorder: boolean) => {
-    if (!canReorder || draggedEpisodeId === null || draggedEpisodeId === episodeId) {
+  const previewDragReorder = useCallback((itemKey: QueueItemKey, canReorder: boolean) => {
+    if (!canReorder || draggedItemKey === null || draggedItemKey === itemKey) {
       return;
     }
 
     const currentQueue = queueRef.current;
-    const nextQueue = moveQueueItem(currentQueue, draggedEpisodeId, episodeId);
+    const nextQueue = moveQueueItem(currentQueue, draggedItemKey, itemKey);
 
     if (nextQueue !== currentQueue) {
       dragMovedRef.current = true;
@@ -264,10 +278,10 @@ export function HomeScreen() {
       setQueue(nextQueue);
     }
 
-  }, [draggedEpisodeId, moveQueueItem, setQueue]);
+  }, [draggedItemKey, moveQueueItem, setQueue]);
 
   const finishDragReorder = useCallback(() => {
-    if (draggedEpisodeId === null) {
+    if (draggedItemKey === null) {
       return;
     }
 
@@ -275,13 +289,13 @@ export function HomeScreen() {
     const previousQueue = dragOriginQueueRef.current;
     const nextQueue = queueRef.current;
 
-    setDraggedEpisodeId(null);
+    setDraggedItemKey(null);
     dragMovedRef.current = false;
 
     if (shouldCommit) {
       void commitQueueOrder(nextQueue, previousQueue);
     }
-  }, [commitQueueOrder, draggedEpisodeId]);
+  }, [commitQueueOrder, draggedItemKey]);
 
   return (
     <>
@@ -360,9 +374,12 @@ export function HomeScreen() {
                 bodyClassName="mpod-scroll h-[236px] shrink-0 overflow-y-auto overscroll-contain pb-20 md:h-[218px] md:pb-0"
               >
                 {visibleQueue.map((episode) => {
+                  const itemKey = queueItemKey(episode);
                   const canReorder = !reordering;
-                  const isCurrentEpisode = currentEpisode?.id === episode.id;
-                  const isAudiobook = episode.type === "audiobook" || Boolean(episode.audiobookId);
+                  const isCurrentEpisode = Boolean(
+                    currentEpisode && queueItemKey(currentEpisode) === itemKey
+                  );
+                  const isAudiobook = isAudiobookQueueItem(episode);
                   const artwork = isAudiobook
                     ? episode.hasCover
                       ? `/api/audiobooks/${episode.audiobookId ?? episode.id}/cover`
@@ -393,13 +410,13 @@ export function HomeScreen() {
                       thumbnailAlt={`${episode.title} artwork`}
                       episodeRowId={episode.id}
                       draggable={canReorder}
-                      dragging={draggedEpisodeId === episode.id}
+                      dragging={draggedItemKey === itemKey}
                       onDragStart={(event) =>
-                        beginDragReorder(event, episode.id, canReorder)
+                        beginDragReorder(event, itemKey, canReorder)
                       }
                       onDragOver={(event) => {
                         event.preventDefault();
-                        previewDragReorder(episode.id, canReorder);
+                        previewDragReorder(itemKey, canReorder);
                       }}
                       onDrop={(event) => {
                         event.preventDefault();
@@ -419,7 +436,7 @@ export function HomeScreen() {
                               onClick:
                                 isCurrentEpisode
                                   ? playToggle
-                                  : () => playEpisode(episode.id),
+                                  : () => playQueueItem(episode),
                             },
                           ]
                         : [
@@ -429,7 +446,7 @@ export function HomeScreen() {
                               onClick:
                                 isCurrentEpisode
                                   ? playToggle
-                                  : () => playEpisode(episode.id),
+                                  : () => playQueueItem(episode),
                             },
                             {
                               label: "Remove from playlist",
@@ -437,7 +454,7 @@ export function HomeScreen() {
                               onClick: () => void removeFromPlaylist(episode),
                             },
                           ]}
-                      key={`${episode.type ?? "ep"}-${episode.id}`}
+                      key={itemKey}
                     />
                   );
                 })}

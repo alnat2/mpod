@@ -478,13 +478,31 @@ Rules:
 
 ### Playback Endpoints
 
-#### `GET /api/playback/:episodeId`
+#### `GET /api/playback`
+
+The playable target is explicit in the query string:
+- podcast episode: `GET /api/playback?episodeId=55`
+- audiobook chapter: `GET /api/playback?audiobookId=7&trackId=23`
+
+Exactly one media type must be provided. `trackId` is optional when reading an audiobook; without it the backend resolves the active, most recently played, or first selected chapter in that order.
 
 Response:
 ```json
 {
   "playback": {
     "episodeId": 55,
+    "positionSeconds": 812,
+    "lastUpdated": "2026-04-21T10:15:00Z"
+  }
+}
+```
+
+An audiobook response identifies both the parent book and chapter:
+```json
+{
+  "playback": {
+    "audiobookId": 7,
+    "trackId": 23,
     "positionSeconds": 812,
     "lastUpdated": "2026-04-21T10:15:00Z"
   }
@@ -753,7 +771,7 @@ Podcast and audiobook playback speed selections are separate backend-owned user 
 - Both media-type speed selections are stored on the backend, not only in frontend memory.
 - Default podcast speed is `Speed 1.3x`; default audiobook speed is `Speed 1x`.
 - Playback state contains:
-  - the applicable media identifier (`episodeId` or `trackId`, with parent `audiobookId` where relevant)
+  - the applicable typed media identifier (`episodeId`, or `audiobookId` together with `trackId`)
   - `positionSeconds`
   - `lastUpdated`
 
@@ -761,7 +779,7 @@ Podcast and audiobook playback speed selections are separate backend-owned user 
 Playback is updated through `POST /api/playback`.
 
 Request fields:
-- `episodeId` for a podcast episode, or `trackId` for an audiobook chapter
+- exactly one target: `episodeId` for a podcast episode, or `audiobookId` together with `trackId` for an audiobook chapter
 - `positionSeconds`
 - `durationSeconds`
 - `completed`
@@ -809,10 +827,11 @@ Active playback request fields:
 
 ### Returned State
 After an accepted update, the API returns the stored playback state:
-- `episodeId`
+- `episodeId` for a podcast, or `audiobookId` and `trackId` for an audiobook
 - `positionSeconds`
 - `lastUpdated`
 - `nextEpisodeId`
+- `nextTrackId` when an audiobook chapter completion advances within the same selected book
 
 If an update is ignored because it is stale or invalid for sync purposes, the API should still return the current stored playback state instead of failing.
 
@@ -822,7 +841,7 @@ If an update is ignored because it is stale or invalid for sync purposes, the AP
 - If playback completion finishes the last playlist item and an eligible earlier unlistened playlist item exists, `nextEpisodeId` contains the topmost eligible episode ID in playlist order.
 
 ### Read Behavior
-`GET /api/playback/:episodeId` returns:
+`GET /api/playback` with a typed podcast or audiobook query target returns:
 - current playback state if it exists
 - `null` playback if no state exists yet
 

@@ -706,9 +706,12 @@ func TestAudiobookPlaybackGetAndUpdate(t *testing.T) {
 
 	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
 
-	// 1. Update using EpisodeID = 1 (audiobook id)
+	abID := int64(1)
+	trackID := int64(10)
+	// 1. Update using an explicitly typed audiobook target.
 	result, err := service.Update(context.Background(), UpdateInput{
-		EpisodeID:       1,
+		AudiobookID:     &abID,
+		TrackID:         &trackID,
 		PositionSeconds: 250,
 		DurationSeconds: 1800,
 	})
@@ -719,8 +722,8 @@ func TestAudiobookPlaybackGetAndUpdate(t *testing.T) {
 		t.Fatalf("expected position 250, got %d", result.Playback.PositionSeconds)
 	}
 
-	// 2. Get using EpisodeID = 1
-	state, err := service.Get(context.Background(), 1)
+	// 2. Get using an explicitly typed audiobook target.
+	state, err := service.GetAudiobook(context.Background(), 1, &trackID)
 	if err != nil {
 		t.Fatalf("Get returned error: %v", err)
 	}
@@ -729,6 +732,37 @@ func TestAudiobookPlaybackGetAndUpdate(t *testing.T) {
 	}
 	if state.PositionSeconds != 250 {
 		t.Fatalf("expected position 250, got %d", state.PositionSeconds)
+	}
+}
+
+func TestTypedPlaybackTargetsCanShareNumericID(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'episode-1', 'Episode', 'https://example.com/episode.mp3')`)
+	mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path) VALUES (1, 'Book', 'Author', 'Author/Book')`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'Chapter', 'Author/Book/1.mp3', '/book/1.mp3', 300)`)
+	mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+	mustExec(t, db.SQL, `INSERT INTO playlist (audiobook_id, position) VALUES (1, 2)`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10)`)
+
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+	if _, err := service.Update(context.Background(), UpdateInput{EpisodeID: 1, PositionSeconds: 40}); err != nil {
+		t.Fatalf("save episode playback: %v", err)
+	}
+	bookID, trackID := int64(1), int64(10)
+	if _, err := service.Update(context.Background(), UpdateInput{AudiobookID: &bookID, TrackID: &trackID, PositionSeconds: 90}); err != nil {
+		t.Fatalf("save audiobook playback: %v", err)
+	}
+
+	episodeState, err := service.GetEpisode(context.Background(), 1)
+	if err != nil || episodeState == nil || episodeState.EpisodeID != 1 || episodeState.AudiobookID != 0 || episodeState.TrackID != 0 || episodeState.PositionSeconds != 40 {
+		t.Fatalf("expected episode position 40, got %+v, err=%v", episodeState, err)
+	}
+	bookState, err := service.GetAudiobook(context.Background(), 1, &trackID)
+	if err != nil || bookState == nil || bookState.EpisodeID != 0 || bookState.AudiobookID != 1 || bookState.TrackID != 10 || bookState.PositionSeconds != 90 {
+		t.Fatalf("expected audiobook position 90, got %+v, err=%v", bookState, err)
 	}
 }
 
@@ -755,8 +789,10 @@ func TestMultiTrackAudiobookPlaybackAndTrackSwitching(t *testing.T) {
 	}
 
 	// 2. Play Track 10 and save 350s
+	abID := int64(1)
 	track10ID := int64(10)
 	_, err = service.Update(context.Background(), UpdateInput{
+		AudiobookID:     &abID,
 		TrackID:         &track10ID,
 		PositionSeconds: 350,
 		DurationSeconds: 1800,
@@ -766,7 +802,6 @@ func TestMultiTrackAudiobookPlaybackAndTrackSwitching(t *testing.T) {
 	}
 
 	// 3. User switches to Track 11 (Chapter 2)
-	abID := int64(1)
 	track11ID := int64(11)
 	_, err = service.SetActiveItem(context.Background(), nil, &abID, &track11ID)
 	if err != nil {
@@ -784,6 +819,7 @@ func TestMultiTrackAudiobookPlaybackAndTrackSwitching(t *testing.T) {
 
 	// 5. Play Track 11 and save 120s
 	_, err = service.Update(context.Background(), UpdateInput{
+		AudiobookID:     &abID,
 		TrackID:         &track11ID,
 		PositionSeconds: 120,
 		DurationSeconds: 1800,
@@ -793,7 +829,7 @@ func TestMultiTrackAudiobookPlaybackAndTrackSwitching(t *testing.T) {
 	}
 
 	// 6. Get for book ID 1 should return 120s (active Track 11's position)
-	state, err := service.Get(context.Background(), 1)
+	state, err := service.GetAudiobook(context.Background(), 1, &track11ID)
 	if err != nil || state == nil || state.PositionSeconds != 120 {
 		t.Fatalf("expected active book position 120, got %v", state)
 	}
@@ -815,6 +851,7 @@ func TestMultiTrackAudiobookPlaybackAndTrackSwitching(t *testing.T) {
 
 	// 9. Complete Track 10 -> should auto-advance active track to Track 11
 	updateRes, err := service.Update(context.Background(), UpdateInput{
+		AudiobookID:     &abID,
 		TrackID:         &track10ID,
 		PositionSeconds: 1800,
 		DurationSeconds: 1800,

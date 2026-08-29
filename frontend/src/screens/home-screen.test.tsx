@@ -9,6 +9,7 @@ import { expectNoA11yViolations } from "@/test/axe";
 import { HomeScreen } from "./home-screen";
 
 const playEpisodeMock = vi.fn();
+const playQueueItemMock = vi.fn();
 const playToggleMock = vi.fn();
 const seekBackwardMock = vi.fn();
 const seekForwardMock = vi.fn();
@@ -72,6 +73,7 @@ vi.mock("@/lib/playback-context", () => ({
     playing: false,
     playToggle: playToggleMock,
     playEpisode: playEpisodeMock,
+    playQueueItem: playQueueItemMock,
     positionSeconds: 96,
     durationSeconds: playbackDurationSeconds,
     speedLabel: "Speed 1.3x",
@@ -200,6 +202,7 @@ vi.mock("@/components/mpod", () => ({
 describe("HomeScreen", () => {
   beforeEach(() => {
     playEpisodeMock.mockReset();
+    playQueueItemMock.mockReset();
     playToggleMock.mockReset();
     seekBackwardMock.mockReset();
     seekForwardMock.mockReset();
@@ -275,7 +278,7 @@ describe("HomeScreen", () => {
     }
     await user.click(firstPlayButton);
 
-    expect(playEpisodeMock).toHaveBeenCalledWith(1);
+    expect(playQueueItemMock).toHaveBeenCalledWith(queue[0]);
   });
 
   it("opens show notes for the current player episode", async () => {

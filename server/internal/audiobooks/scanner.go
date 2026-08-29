@@ -239,13 +239,14 @@ func ScanDirectory(rootDir string) ([]ScannedBook, error) {
 				trackRel, _ := filepath.Rel(cleanRoot, af)
 				fileName := filepath.Base(af)
 				trackTitle := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+				duration, _ := ReadAudioDuration(af)
 
 				tracks = append(tracks, ScannedTrack{
 					TrackNumber: idx + 1,
 					Title:       trackTitle,
 					RelPath:     trackRel,
 					FilePath:    af,
-					Duration:    0,
+					Duration:    duration,
 				})
 			}
 
@@ -274,6 +275,7 @@ func ScanDirectory(rootDir string) ([]ScannedBook, error) {
 				}
 
 				trackRel, _ := filepath.Rel(cleanRoot, af)
+				duration, _ := ReadAudioDuration(af)
 				coverRel := ""
 				if content.coverFile != "" {
 					coverRel, _ = filepath.Rel(cleanRoot, content.coverFile)
@@ -287,7 +289,7 @@ func ScanDirectory(rootDir string) ([]ScannedBook, error) {
 						Title:       bookTitle,
 						RelPath:     trackRel,
 						FilePath:    af,
-						Duration:    0,
+						Duration:    duration,
 					},
 				}
 

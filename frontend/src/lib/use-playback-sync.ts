@@ -15,6 +15,12 @@ import {
 import { api, type PlaybackState } from "./api";
 import { clampPosition, setAudioPosition } from "./playback-audio";
 import type { QueueEpisode } from "./playback-context-types";
+import {
+  activePlaybackKey,
+  isAudiobookQueueItem,
+  queueItemKey,
+  type QueueItemKey,
+} from "./playback-queue";
 import { useLatestRequest } from "./use-latest-request";
 
 type UsePlaybackSyncOptions = {
@@ -24,11 +30,10 @@ type UsePlaybackSyncOptions = {
   currentEpisodeRef: RefObject<QueueEpisode | null>;
   currentEpisodeDurationRef: RefObject<number>;
   playingRef: RefObject<boolean>;
-  queueRef?: RefObject<QueueEpisode[]>;
   playing: boolean;
-  currentEpisodeId: number | undefined;
+  currentItemKey: QueueItemKey | undefined;
   setQueue: Dispatch<SetStateAction<QueueEpisode[]>>;
-  setActiveEpisodeId: Dispatch<SetStateAction<number | null>>;
+  setActiveItemKey: Dispatch<SetStateAction<QueueItemKey | null>>;
   setLoading: Dispatch<SetStateAction<boolean>>;
   setPositionSeconds: Dispatch<SetStateAction<number>>;
   setSpeedLabel: Dispatch<SetStateAction<PlaybackSpeedLabel>>;
@@ -59,11 +64,10 @@ export function usePlaybackSync({
   currentEpisodeRef,
   currentEpisodeDurationRef,
   playingRef,
-  queueRef,
   playing,
-  currentEpisodeId,
+  currentItemKey,
   setQueue,
-  setActiveEpisodeId,
+  setActiveItemKey,
   setLoading,
   setPositionSeconds,
   setSpeedLabel,
@@ -72,10 +76,10 @@ export function usePlaybackSync({
   const queueRequests = useLatestRequest();
   const settingsRequests = useLatestRequest();
   const writePlaybackState = useCallback(
-    (episodeId: number, playback: PlaybackState | null) => {
+    (itemKey: QueueItemKey, playback: PlaybackState | null) => {
       setQueue((current) =>
         current.map((episode) =>
-          episode.id === episodeId ? { ...episode, playback } : episode
+          queueItemKey(episode) === itemKey ? { ...episode, playback } : episode
         )
       );
     },
@@ -93,19 +97,20 @@ export function usePlaybackSync({
       } = {}
     ) => {
       const episode = currentEpisodeRef.current;
-      const isAudiobook = episode?.type === "audiobook" || Boolean(episode?.audiobookId);
+      const isAudiobook = episode ? isAudiobookQueueItem(episode) : false;
       const trackId = isAudiobook ? episode?.trackId : undefined;
-      const episodeId = isAudiobook
+      const mediaID = isAudiobook
         ? (episode?.audiobookId ?? episode?.id)
         : (options.episodeId ?? episode?.id);
-      if (episodeId == null && trackId == null) return null;
+      if (mediaID == null) return null;
 
       try {
         const durationSeconds =
           options.durationSeconds ?? currentEpisodeDurationRef.current;
         return await api.playback.update({
-          episodeId,
-          trackId,
+          ...(isAudiobook
+            ? { audiobookId: mediaID, trackId }
+            : { episodeId: mediaID }),
           positionSeconds: Math.round(
             clampPosition(nextPositionSeconds, durationSeconds)
           ),
@@ -133,11 +138,15 @@ export function usePlaybackSync({
         return false;
       }
 
-      const isAudiobook = episode.type === "audiobook" || Boolean(episode.audiobookId);
+      const isAudiobook = isAudiobookQueueItem(episode);
       const durationSeconds = currentEpisodeDurationRef.current;
       const body = JSON.stringify({
-        episodeId: isAudiobook ? (episode.audiobookId ?? episode.id) : episode.id,
-        trackId: isAudiobook ? episode.trackId : undefined,
+        ...(isAudiobook
+          ? {
+              audiobookId: episode.audiobookId ?? episode.id,
+              trackId: episode.trackId,
+            }
+          : { episodeId: episode.id }),
         positionSeconds: Math.round(
           clampPosition(nextPositionSeconds, durationSeconds)
         ),
@@ -172,25 +181,22 @@ export function usePlaybackSync({
   );
 
   const commitActivePlayback = useCallback(
-    async (episodeId: number) => {
-      const queued = queueRef?.current?.find((item) => item.id === episodeId);
-      const episode = queued ?? currentEpisodeRef.current;
-      const isAudiobook =
-        episode?.type === "audiobook" || Boolean(episode?.audiobookId);
+    async (episode: QueueEpisode) => {
+      const isAudiobook = isAudiobookQueueItem(episode);
       try {
         if (isAudiobook) {
           await api.playback.setActive({
-            audiobookId: episode?.audiobookId ?? episodeId,
-            trackId: episode?.trackId,
+            audiobookId: episode.audiobookId ?? episode.id,
+            trackId: episode.trackId,
           });
         } else {
-          await api.playback.setActive(episodeId);
+          await api.playback.setActive(episode.id);
         }
       } catch (error) {
         console.error("Failed to update active playback", error);
       }
     },
-    [currentEpisodeRef, queueRef]
+    []
   );
 
   const refreshPlaybackState = useCallback(
@@ -199,7 +205,15 @@ export function usePlaybackSync({
       options: { applyEvenIfNotNewer?: boolean } = {}
     ) => {
       try {
-        const response = await api.playback.get(episode.id);
+        const audiobook = isAudiobookQueueItem(episode);
+        const response = await api.playback.get(
+          audiobook
+            ? {
+                audiobookId: episode.audiobookId ?? episode.id,
+                trackId: episode.trackId,
+              }
+            : { episodeId: episode.id }
+        );
         const nextPlayback = response.playback;
         const shouldApply =
           options.applyEvenIfNotNewer ||
@@ -209,10 +223,11 @@ export function usePlaybackSync({
           return episode;
         }
 
-        writePlaybackState(episode.id, nextPlayback);
+        const itemKey = queueItemKey(episode);
+        writePlaybackState(itemKey, nextPlayback);
 
         const current = currentEpisodeRef.current;
-        if (current?.id === episode.id && nextPlayback) {
+        if (current && queueItemKey(current) === itemKey && nextPlayback) {
           const nextPosition = clampPosition(
             nextPlayback.positionSeconds,
             currentEpisodeDurationRef.current
@@ -253,12 +268,12 @@ export function usePlaybackSync({
       setSpeedLabel(
         isPlaybackSpeedLabel(nextSpeed) ? nextSpeed : defaultPlaybackSpeed
       );
-	  const nextAudiobookSpeed = response.settings.audiobookPlaybackSpeed;
-	  setAudiobookSpeedLabel(
-		nextAudiobookSpeed && isPlaybackSpeedLabel(nextAudiobookSpeed)
-		  ? nextAudiobookSpeed
-		  : defaultAudiobookPlaybackSpeed
-	  );
+      const nextAudiobookSpeed = response.settings.audiobookPlaybackSpeed;
+      setAudiobookSpeedLabel(
+        nextAudiobookSpeed && isPlaybackSpeedLabel(nextAudiobookSpeed)
+          ? nextAudiobookSpeed
+          : defaultAudiobookPlaybackSpeed
+      );
     } catch (error) {
       console.error("Failed to load playback settings", error);
     }
@@ -272,14 +287,13 @@ export function usePlaybackSync({
         return null;
       }
       setQueue(response.queue);
-      const nextActiveEpisodeId =
-        response.activePlayback?.episodeId ??
-        response.activePlayback?.audiobookId ??
-        null;
-      setActiveEpisodeId(
-        nextActiveEpisodeId !== null &&
-          response.queue.some((episode) => episode.id === nextActiveEpisodeId)
-          ? nextActiveEpisodeId
+      const nextActiveItemKey = activePlaybackKey(response.activePlayback);
+      setActiveItemKey(
+        nextActiveItemKey !== null &&
+          response.queue.some(
+            (episode) => queueItemKey(episode) === nextActiveItemKey
+          )
+          ? nextActiveItemKey
           : null
       );
       return response;
@@ -291,7 +305,7 @@ export function usePlaybackSync({
         setLoading(false);
       }
     }
-  }, [queueRequests, setActiveEpisodeId, setLoading, setQueue]);
+  }, [queueRequests, setActiveItemKey, setLoading, setQueue]);
 
   const reloadQueue = useCallback(async () => {
     await loadQueue();
@@ -343,7 +357,7 @@ export function usePlaybackSync({
   }, [loadPlaybackSettings]);
 
   useEffect(() => {
-    if (!playing || !currentEpisodeId) return;
+    if (!playing || !currentItemKey) return;
 
     const intervalId = window.setInterval(() => {
       if (audioRef.current) {
@@ -352,7 +366,7 @@ export function usePlaybackSync({
     }, 15000);
 
     return () => window.clearInterval(intervalId);
-  }, [audioRef, commitPlayback, currentEpisodeId, playing]);
+  }, [audioRef, commitPlayback, currentItemKey, playing]);
 
   useEffect(() => {
     const flushPlaybackState = () => {

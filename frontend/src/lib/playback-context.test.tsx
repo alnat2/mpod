@@ -265,6 +265,7 @@ function Harness() {
     speedLabel,
     playToggle,
     playEpisode,
+    playQueueItem,
     clearPlaybackError,
     seekForward,
     seekBackward,
@@ -283,13 +284,43 @@ function Harness() {
       <div data-testid="duration">{durationSeconds}</div>
       <div data-testid="speed">{speedLabel}</div>
       <div data-testid="playback-error">{playbackError ?? "none"}</div>
-      <button type="button" onClick={() => playEpisode(1)}>
+      <button
+        type="button"
+        onClick={() => {
+          const item = queue.find((candidate) => candidate.id === 1);
+          if (item) {
+            playQueueItem(item);
+          } else {
+            playEpisode(1);
+          }
+        }}
+      >
         Play first
       </button>
-      <button type="button" onClick={() => playEpisode(2)}>
+      <button
+        type="button"
+        onClick={() => {
+          const item = queue.find((candidate) => candidate.id === 2);
+          if (item) {
+            playQueueItem(item);
+          } else {
+            playEpisode(2);
+          }
+        }}
+      >
         Play second
       </button>
-      <button type="button" onClick={() => playEpisode(3)}>
+      <button
+        type="button"
+        onClick={() => {
+          const item = queue.find((candidate) => candidate.id === 3);
+          if (item) {
+            playQueueItem(item);
+          } else {
+            playEpisode(3);
+          }
+        }}
+      >
         Play third
       </button>
       <button type="button" onClick={() => playEpisode(999)}>
@@ -380,8 +411,11 @@ describe("PlaybackProvider", () => {
     vi.spyOn(api.episodes, "get").mockImplementation(async (episodeId) => ({
       episode: episodes.get(episodeId)!,
     }));
-    vi.spyOn(api.playback, "get").mockImplementation(async (episodeId) => ({
-      playback: playback.get(episodeId) ?? null,
+    vi.spyOn(api.playback, "get").mockImplementation(async (target) => ({
+      playback:
+        playback.get(
+          "episodeId" in target ? target.episodeId : target.audiobookId
+        ) ?? null,
     }));
     vi.spyOn(api.playback, "queue").mockImplementation(async () => ({
       queue: playlistItems.map((item) => {
@@ -549,6 +583,54 @@ describe("PlaybackProvider", () => {
 
     const audio = FakeAudio.first;
     expect(audio.src).toBe("");
+  });
+
+  it("selects an active audiobook when an episode has the same numeric id", async () => {
+    vi.spyOn(api.playback, "queue").mockResolvedValueOnce({
+      queue: [
+        {
+          id: 1,
+          type: "episode",
+          podcastId: 1,
+          title: "Episode with id 1",
+          podcastTitle: "Podcast",
+          audioUrl: "/api/episodes/1/audio",
+          duration: 100,
+          downloaded: false,
+          isListened: false,
+          publishedAt: null,
+          playback: null,
+        },
+        {
+          id: 1,
+          type: "audiobook",
+          podcastId: 0,
+          audiobookId: 1,
+          trackId: 10,
+          title: "Audiobook with id 1",
+          podcastTitle: "Author",
+          audioUrl: "/api/audiobooks/1/tracks/10/audio",
+          duration: 200,
+          downloaded: true,
+          isListened: false,
+          publishedAt: null,
+          playback: null,
+        },
+      ],
+      activePlayback: {
+        audiobookId: 1,
+        trackId: 10,
+        lastUpdated: "2026-05-22T09:05:00Z",
+      },
+    });
+
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent(
+        "Audiobook with id 1"
+      );
+    });
   });
 
   it("loads the queue through one aggregated API request", async () => {
@@ -1690,11 +1772,19 @@ describe("PlaybackProvider", () => {
     });
 
     function AudiobookHarness() {
-      const { currentEpisode, playEpisode, playToggle } = usePlayback();
+      const { currentEpisode, queue, playQueueItem, playToggle } = usePlayback();
       return (
         <div>
           <div data-testid="current-title">{currentEpisode?.title}</div>
-          <button type="button" onClick={() => playEpisode(100)}>
+          <button
+            type="button"
+            onClick={() => {
+              const item = queue.find(
+                (candidate) => candidate.audiobookId === 100
+              );
+              if (item) playQueueItem(item);
+            }}
+          >
             Play audiobook
           </button>
           <button type="button" onClick={playToggle}>
@@ -1779,12 +1869,20 @@ describe("PlaybackProvider", () => {
     }));
 
     function MultiChapterHarness() {
-      const { currentEpisode, playEpisode, playToggle } = usePlayback();
+      const { currentEpisode, queue, playQueueItem, playToggle } = usePlayback();
       const { reloadQueue } = usePlaybackDispatch();
       return (
         <div>
           <div data-testid="track-id">{currentEpisode?.trackId}</div>
-          <button type="button" onClick={() => playEpisode(100)}>
+          <button
+            type="button"
+            onClick={() => {
+              const item = queue.find(
+                (candidate) => candidate.audiobookId === 100
+              );
+              if (item) playQueueItem(item);
+            }}
+          >
             Play
           </button>
           <button

@@ -18,6 +18,7 @@ export type PlaybackContextType = {
   clearPlaybackError: () => void;
   playToggle: () => void;
   playEpisode: (episodeId: number) => void;
+  playQueueItem: (item: QueueEpisode) => void;
   playAudiobookTrack: (audiobookId: number, track: AudiobookTrack) => Promise<void>;
   seekTo: (positionSeconds: number) => void;
   seekForward: () => void;
@@ -34,6 +35,7 @@ export type PlaybackStateContextType = Omit<
   | "clearPlaybackError"
   | "playToggle"
   | "playEpisode"
+  | "playQueueItem"
   | "playAudiobookTrack"
   | "seekTo"
   | "seekForward"
@@ -53,6 +55,7 @@ export type PlaybackDispatchContextType = Pick<
   | "clearPlaybackError"
   | "playToggle"
   | "playEpisode"
+  | "playQueueItem"
   | "playAudiobookTrack"
   | "seekTo"
   | "seekForward"

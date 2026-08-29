@@ -120,7 +120,9 @@ func TestProjectMigrationsUpgradeExistingDatabase(t *testing.T) {
 	assertIndexExists(t, db.SQL, "idx_episodes_podcast_published")
 	assertIndexExists(t, db.SQL, "idx_playlist_position")
 	assertIndexExists(t, db.SQL, "idx_playlist_download_after")
-	assertMigrationVersions(t, db.SQL, 13)
+	assertMigrationVersions(t, db.SQL, 14)
+	assertColumnMissing(t, db.SQL, "playlist", "audiobook_track_id")
+	assertTableMissing(t, db.SQL, "audiobook_track_exclusions")
 }
 
 func TestSmartListeningMigrationMakesExistingPlaylistItemsDueImmediately(t *testing.T) {
@@ -243,6 +245,37 @@ func assertIndexExists(t *testing.T, db *sql.DB, name string) {
 	var got string
 	if err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = ?`, name).Scan(&got); err != nil {
 		t.Fatalf("index %s missing: %v", name, err)
+	}
+}
+
+func assertColumnMissing(t *testing.T, db *sql.DB, table, column string) {
+	t.Helper()
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		t.Fatalf("inspect table %s: %v", table, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			t.Fatalf("scan table %s: %v", table, err)
+		}
+		if name == column {
+			t.Fatalf("legacy column %s.%s still exists", table, column)
+		}
+	}
+}
+
+func assertTableMissing(t *testing.T, db *sql.DB, name string) {
+	t.Helper()
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, name).Scan(&count); err != nil {
+		t.Fatalf("inspect table %s: %v", name, err)
+	}
+	if count != 0 {
+		t.Fatalf("legacy table %s still exists", name)
 	}
 }
 

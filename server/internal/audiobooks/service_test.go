@@ -3,7 +3,6 @@ package audiobooks
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"testing"
 
 	"github.com/cross/mpod/server/internal/storage"
@@ -24,7 +23,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func TestServiceSyncAndCRUD(t *testing.T) {
+func TestServiceSyncAndRead(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
@@ -38,8 +37,8 @@ func TestServiceSyncAndCRUD(t *testing.T) {
 			RelPath:   "Пелевин/Ананасная вода",
 			CoverPath: "Пелевин/Ананасная вода/cover.jpg",
 			Tracks: []ScannedTrack{
-				{TrackNumber: 1, Title: "01", RelPath: "Пелевин/Ананасная вода/01.mp3", FilePath: "/abs/01.mp3"},
-				{TrackNumber: 2, Title: "02", RelPath: "Пелевин/Ананасная вода/02.mp3", FilePath: "/abs/02.mp3"},
+				{TrackNumber: 1, Title: "01", RelPath: "Пелевин/Ананасная вода/01.mp3", FilePath: "/abs/01.mp3", Duration: 120},
+				{TrackNumber: 2, Title: "02", RelPath: "Пелевин/Ананасная вода/02.mp3", FilePath: "/abs/02.mp3", Duration: 180},
 			},
 		},
 		{
@@ -73,66 +72,8 @@ func TestServiceSyncAndCRUD(t *testing.T) {
 	if b1.Title != "Ананасная вода" || len(b1.Tracks) != 2 {
 		t.Fatalf("unexpected book details: %+v", b1)
 	}
-
-	// Test progress update
-	track1 := b1.Tracks[0]
-	nextTrack, err := svc.SaveTrackProgress(ctx, track1.ID, 120, false)
-	if err != nil {
-		t.Fatalf("SaveTrackProgress position failed: %v", err)
-	}
-	if nextTrack != nil {
-		t.Errorf("expected nextTrack nil on non-complete update")
-	}
-
-	// Verify track position saved
-	t1Updated, err := svc.GetTrack(ctx, track1.ID)
-	if err != nil {
-		t.Fatalf("GetTrack failed: %v", err)
-	}
-	if t1Updated.PositionSeconds != 120 {
-		t.Errorf("expected position 120, got %d", t1Updated.PositionSeconds)
-	}
-
-	// Add audiobook to playlist
-	if _, err := db.ExecContext(ctx, `INSERT INTO playlist (audiobook_id, position) VALUES (?, 1)`, b1.ID); err != nil {
-		t.Fatalf("add to playlist: %v", err)
-	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) SELECT audiobook_id, id FROM audiobook_tracks WHERE audiobook_id = ?`, b1.ID); err != nil {
-		t.Fatalf("select book tracks: %v", err)
-	}
-
-	// Complete track 1 -> should return track 2
-	nextTrack, err = svc.SaveTrackProgress(ctx, track1.ID, 300, true)
-	if err != nil {
-		t.Fatalf("SaveTrackProgress complete failed: %v", err)
-	}
-	if nextTrack == nil || *nextTrack != b1.Tracks[1].ID {
-		t.Fatalf("expected nextTrack %d, got %v", b1.Tracks[1].ID, nextTrack)
-	}
-
-	// Complete track 2 (final track of the book) -> should return nil and remove from playlist
-	nextTrack, err = svc.SaveTrackProgress(ctx, b1.Tracks[1].ID, 300, true)
-	if err != nil {
-		t.Fatalf("SaveTrackProgress complete final track failed: %v", err)
-	}
-	if nextTrack != nil {
-		t.Fatalf("expected nextTrack nil for final track, got %v", nextTrack)
-	}
-
-	// Verify playlist removal
-	var count int
-	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_id = ?`, b1.ID).Scan(&count)
-	if count != 0 {
-		t.Errorf("expected audiobook removed from playlist on full completion, got count %d", count)
-	}
-
-	// Test Delete book
-	if err := svc.Delete(ctx, b1.ID, false); err != nil {
-		t.Fatalf("Delete failed: %v", err)
-	}
-	_, err = svc.Get(ctx, b1.ID)
-	if !errors.Is(err, ErrBookNotFound) {
-		t.Fatalf("expected ErrBookNotFound after delete, got %v", err)
+	if b1.TotalDuration != 300 || b1.Tracks[0].Duration != 120 || b1.Tracks[1].Duration != 180 {
+		t.Fatalf("expected scanned durations to be stored, got %+v", b1)
 	}
 }
 
@@ -279,16 +220,11 @@ func TestBookInPlaylistReflectsOnTracks(t *testing.T) {
 		t.Fatalf("RemoveTrackFromPlaylist failed: %v", err)
 	}
 
-	var bookPlaylistCount, trackPlaylistCount int
+	var bookPlaylistCount int
 	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_id = ?`, bookID).Scan(&bookPlaylistCount)
 	if bookPlaylistCount != 1 {
 		t.Errorf("expected audiobook to remain 1 item in playlist, got count %d", bookPlaylistCount)
 	}
-	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_track_id IS NOT NULL`).Scan(&trackPlaylistCount)
-	if trackPlaylistCount != 0 {
-		t.Errorf("expected NO unpacked track items in playlist, got count %d", trackPlaylistCount)
-	}
-
 	bAfter, err := svc.Get(ctx, bookID)
 	if err != nil {
 		t.Fatalf("Get after track removal failed: %v", err)

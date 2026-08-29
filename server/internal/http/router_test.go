@@ -1531,8 +1531,7 @@ func TestPlaybackEndpoints(t *testing.T) {
 	cookie := register(t, handler, "admin", "secret")
 	seedEpisode(t, db, 1, 1)
 
-	getReq := httptest.NewRequest(nethttp.MethodGet, "/api/playback/1", nil)
-	getReq.SetPathValue("episodeId", "1")
+	getReq := httptest.NewRequest(nethttp.MethodGet, "/api/playback?episodeId=1", nil)
 	getReq.AddCookie(cookie)
 	getRec := httptest.NewRecorder()
 	handler.ServeHTTP(getRec, getReq)
@@ -1757,8 +1756,7 @@ func TestPlaybackGetReturnsSavedState(t *testing.T) {
 	now := time.Date(2026, 4, 24, 8, 0, 0, 0, time.UTC)
 	mustExecHTTP(t, db, `INSERT INTO playback (episode_id, position_seconds, last_updated) VALUES (1, 42, ?)`, now)
 
-	req := httptest.NewRequest(nethttp.MethodGet, "/api/playback/1", nil)
-	req.SetPathValue("episodeId", "1")
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/playback?episodeId=1", nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -1783,8 +1781,7 @@ func TestPlaybackGetReturnsServerErrorWhenLoadFails(t *testing.T) {
 		t.Fatalf("appDB.Close failed: %v", err)
 	}
 
-	req := httptest.NewRequest(nethttp.MethodGet, "/api/playback/1", nil)
-	req.SetPathValue("episodeId", "1")
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/playback?episodeId=1", nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

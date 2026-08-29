@@ -105,29 +105,6 @@ func (r *Router) handleAudiobooksRescan(w nethttp.ResponseWriter, req *nethttp.R
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{"success": true})
 }
 
-func (r *Router) handleAudiobookDelete(w nethttp.ResponseWriter, req *nethttp.Request) {
-	if _, ok := r.requireUser(w, req); !ok {
-		return
-	}
-
-	id, ok := r.pathInt64(w, req, "id")
-	if !ok {
-		return
-	}
-
-	deleteDiskFiles := req.URL.Query().Get("deleteFiles") == "true"
-	if err := r.audiobooks.Delete(req.Context(), id, deleteDiskFiles); err != nil {
-		if errors.Is(err, audiobooks.ErrBookNotFound) {
-			r.writeAPIError(w, nethttp.StatusNotFound, "AUDIOBOOK_NOT_FOUND", "Audiobook not found")
-			return
-		}
-		r.writeAPIError(w, nethttp.StatusInternalServerError, "DELETE_FAILED", "Failed to delete audiobook")
-		return
-	}
-
-	r.writeJSON(w, nethttp.StatusOK, map[string]any{"success": true})
-}
-
 func (r *Router) handleAudiobookTrackAudio(w nethttp.ResponseWriter, req *nethttp.Request) {
 	if _, ok := r.requireUser(w, req); !ok {
 		return
@@ -267,37 +244,4 @@ func (r *Router) handleAudiobookTrackPlaylistRemove(w nethttp.ResponseWriter, re
 	}
 
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{"success": true})
-}
-
-func (r *Router) handleAudiobookPlaybackPost(w nethttp.ResponseWriter, req *nethttp.Request) {
-	if _, ok := r.requireUser(w, req); !ok {
-		return
-	}
-
-	var payload struct {
-		TrackID         int64 `json:"trackId"`
-		PositionSeconds int64 `json:"positionSeconds"`
-		Completed       bool  `json:"completed"`
-	}
-	if !r.decodeJSON(w, req, &payload) {
-		return
-	}
-
-	nextTrackID, err := r.audiobooks.SaveTrackProgress(req.Context(), payload.TrackID, payload.PositionSeconds, payload.Completed)
-	if err != nil {
-		if errors.Is(err, audiobooks.ErrTrackNotFound) {
-			r.writeAPIError(w, nethttp.StatusNotFound, "TRACK_NOT_FOUND", "Track not found")
-			return
-		}
-		r.writeAPIError(w, nethttp.StatusInternalServerError, "PLAYBACK_UPDATE_FAILED", "Failed to save track progress")
-		return
-	}
-
-	r.writeJSON(w, nethttp.StatusOK, map[string]any{
-		"playback": map[string]any{
-			"trackId":         payload.TrackID,
-			"positionSeconds": payload.PositionSeconds,
-		},
-		"nextTrackId": nextTrackID,
-	})
 }

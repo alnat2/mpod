@@ -28,6 +28,12 @@ import {
   setAudioPosition,
 } from "./playback-audio";
 import type { QueueEpisode } from "./playback-context-types";
+import {
+  isAudiobookQueueItem,
+  queueItemKey,
+  sameQueueItem,
+  type QueueItemKey,
+} from "./playback-queue";
 
 type CommitPlayback = (
   nextPositionSeconds: number,
@@ -57,20 +63,20 @@ type UsePlaybackAudioOptions = {
   playing: boolean;
   positionSeconds: number;
   speedLabel: PlaybackSpeedLabel;
-  setActiveEpisodeId: Dispatch<SetStateAction<number | null>>;
+  setActiveItemKey: Dispatch<SetStateAction<QueueItemKey | null>>;
   setQueue: Dispatch<SetStateAction<QueueEpisode[]>>;
   setPlaying: Dispatch<SetStateAction<boolean>>;
   setPlaybackError: Dispatch<SetStateAction<string | null>>;
   setPositionSeconds: Dispatch<SetStateAction<number>>;
   setAudioDuration: Dispatch<
     SetStateAction<{
-      episodeId: number;
+      itemKey: QueueItemKey;
       durationSeconds: number;
     } | null>
   >;
   commitPlayback: CommitPlayback;
   commitCurrentPlayback: (options?: { beacon?: boolean }) => void;
-  commitActivePlayback: (episodeId: number) => Promise<void>;
+  commitActivePlayback: (episode: QueueEpisode) => Promise<void>;
   refreshPlaybackState: (
     episode: QueueEpisode,
     options?: { applyEvenIfNotNewer?: boolean }
@@ -97,7 +103,7 @@ export function usePlaybackAudio({
   playing,
   positionSeconds,
   speedLabel,
-  setActiveEpisodeId,
+  setActiveItemKey,
   setQueue,
   setPlaying,
   setPlaybackError,
@@ -111,10 +117,10 @@ export function usePlaybackAudio({
 }: UsePlaybackAudioOptions) {
   const sourceSwitchingRef = useRef(false);
   const sourceReloadCleanupRef = useRef<(() => void) | null>(null);
-  const completionInProgressEpisodeIdRef = useRef<number | null>(null);
+  const completionInProgressEpisodeIdRef = useRef<QueueItemKey | null>(null);
   // Track the source that is actually loaded, independently from fresher queue data.
   const sourceDownloadStateRef = useRef<{
-    episodeId: number;
+    itemKey: QueueItemKey;
     downloaded: boolean;
   } | null>(null);
 
@@ -127,9 +133,12 @@ export function usePlaybackAudio({
     const onTimeUpdate = () => {
       setPositionSeconds(audio.currentTime);
       const nextDuration = readAudioDuration(audio);
-      const episodeId = currentEpisodeRef.current?.id;
-      if (nextDuration && episodeId) {
-        setAudioDuration({ episodeId, durationSeconds: nextDuration });
+      const current = currentEpisodeRef.current;
+      if (nextDuration && current) {
+        setAudioDuration({
+          itemKey: queueItemKey(current),
+          durationSeconds: nextDuration,
+        });
       }
     };
 
@@ -154,8 +163,8 @@ export function usePlaybackAudio({
 
     const startQueuedEpisode = (episode: QueueEpisode) => {
       const nextPosition = episode.playback?.positionSeconds ?? 0;
-      setActiveEpisodeId(episode.id);
-      void commitActivePlayback(episode.id);
+      setActiveItemKey(queueItemKey(episode));
+	  void commitActivePlayback(episode);
       sourceReadyRef.current = false;
       primeAudioSource(
         audio,
@@ -178,27 +187,13 @@ export function usePlaybackAudio({
       setPlaybackError(null);
     };
 
-    const sameQueueItem = (left: QueueEpisode, right: QueueEpisode) => {
-      const leftIsAudiobook =
-        left.type === "audiobook" || left.audiobookId !== undefined;
-      const rightIsAudiobook =
-        right.type === "audiobook" || right.audiobookId !== undefined;
-      if (leftIsAudiobook || rightIsAudiobook) {
-        return (
-          leftIsAudiobook === rightIsAudiobook &&
-          (left.audiobookId ?? left.id) === (right.audiobookId ?? right.id)
-        );
-      }
-      return left.id === right.id;
-    };
-
     const startAfterCompletion = async (
-      completedEpisodeId: number,
+      completedItemKey: QueueItemKey,
       completedItem: QueueEpisode,
       queuedNextItem: QueueEpisode | null,
       response: PlaybackUpdateResponse | null
     ) => {
-      if (completionInProgressEpisodeIdRef.current !== completedEpisodeId) {
+      if (completionInProgressEpisodeIdRef.current !== completedItemKey) {
         return;
       }
 
@@ -227,7 +222,7 @@ export function usePlaybackAudio({
       if (!nextItem) {
         return;
       }
-      if (completionInProgressEpisodeIdRef.current !== completedEpisodeId) {
+      if (completionInProgressEpisodeIdRef.current !== completedItemKey) {
         return;
       }
 
@@ -245,15 +240,16 @@ export function usePlaybackAudio({
         finishedEpisode.duration
       );
       const currentQueue = queueRef.current;
+	  const finishedItemKey = queueItemKey(finishedEpisode);
       const currentIndex = currentQueue.findIndex(
-        (episode) => episode.id === finishedEpisode.id
+        (episode) => queueItemKey(episode) === finishedItemKey
       );
 	  const nextQueueItem =
 		currentIndex >= 0 ? (currentQueue[currentIndex + 1] ?? null) : null;
 
 	  playingRef.current = false;
 	  setPlaying(false);
-	  completionInProgressEpisodeIdRef.current = finishedEpisode.id;
+	  completionInProgressEpisodeIdRef.current = finishedItemKey;
 
       void commitPlayback(finishedPosition, {
         completed: true,
@@ -261,13 +257,13 @@ export function usePlaybackAudio({
         durationSeconds: finishedDuration,
 	  }).then(async (response) => {
 		await startAfterCompletion(
-		  finishedEpisode.id,
+		  finishedItemKey,
 		  finishedEpisode,
 		  nextQueueItem,
 		  response
 		);
 	  }).finally(() => {
-        if (completionInProgressEpisodeIdRef.current === finishedEpisode.id) {
+        if (completionInProgressEpisodeIdRef.current === finishedItemKey) {
           completionInProgressEpisodeIdRef.current = null;
         }
       });
@@ -287,9 +283,12 @@ export function usePlaybackAudio({
 
     const onDurationAvailable = () => {
       const nextDuration = readAudioDuration(audio);
-      const episodeId = currentEpisodeRef.current?.id;
-      if (nextDuration && episodeId) {
-        setAudioDuration({ episodeId, durationSeconds: nextDuration });
+      const current = currentEpisodeRef.current;
+      if (nextDuration && current) {
+        setAudioDuration({
+          itemKey: queueItemKey(current),
+          durationSeconds: nextDuration,
+        });
       }
     };
 
@@ -326,7 +325,7 @@ export function usePlaybackAudio({
     loadQueue,
     playingRef,
     queueRef,
-    setActiveEpisodeId,
+    setActiveItemKey,
     setAudioDuration,
     setPlaybackError,
     setPlaying,
@@ -338,7 +337,8 @@ export function usePlaybackAudio({
   ]);
 
   useEffect(() => {
-    if (sourceDownloadStateRef.current?.episodeId === currentEpisode?.id) {
+    const itemKey = currentEpisode ? queueItemKey(currentEpisode) : null;
+    if (sourceDownloadStateRef.current?.itemKey === itemKey) {
       return;
     }
     sourceReloadCleanupRef.current?.();
@@ -346,20 +346,21 @@ export function usePlaybackAudio({
     sourceSwitchingRef.current = false;
     sourceDownloadStateRef.current = currentEpisode
       ? {
-          episodeId: currentEpisode.id,
+          itemKey: queueItemKey(currentEpisode),
           downloaded: currentEpisode.downloaded,
         }
       : null;
   }, [currentEpisode]);
 
   const currentEpisodeId = currentEpisode?.id ?? null;
+  const currentItemKey = currentEpisode ? queueItemKey(currentEpisode) : null;
 
   useEffect(() => {
     const sourceDownloadState = sourceDownloadStateRef.current;
     if (
       currentEpisodeId === null ||
       !playing ||
-      sourceDownloadState?.episodeId !== currentEpisodeId ||
+      sourceDownloadState?.itemKey !== currentItemKey ||
       sourceDownloadState.downloaded
     ) {
       return;
@@ -394,7 +395,7 @@ export function usePlaybackAudio({
 
         const savedPosition = audio.currentTime;
         sourceDownloadStateRef.current = {
-          episodeId,
+          itemKey: `episode:${episodeId}`,
           downloaded: true,
         };
         sourceSwitchingRef.current = true;
@@ -403,7 +404,9 @@ export function usePlaybackAudio({
         sourceReadyRef.current = false;
         setQueue((current) =>
           current.map((item) =>
-            item.id === episodeId ? { ...item, downloaded: true } : item
+            queueItemKey(item) === `episode:${episodeId}`
+              ? { ...item, downloaded: true }
+              : item
           )
         );
 
@@ -414,7 +417,10 @@ export function usePlaybackAudio({
           setPositionSeconds,
           () => {
             sourceReloadCleanupRef.current = null;
-            if (currentEpisodeRef.current?.id !== episodeId) {
+            if (
+              !currentEpisodeRef.current ||
+              queueItemKey(currentEpisodeRef.current) !== `episode:${episodeId}`
+            ) {
               sourceSwitchingRef.current = false;
               return;
             }
@@ -459,6 +465,7 @@ export function usePlaybackAudio({
     audioRef,
     commitPlayback,
     currentEpisodeId,
+    currentItemKey,
     currentEpisodeRef,
     playing,
     playingRef,
@@ -572,14 +579,17 @@ export function usePlaybackAudio({
       return;
     }
 
-    if (completionInProgressEpisodeIdRef.current === currentEpisode?.id) {
+    if (
+      currentEpisode &&
+      completionInProgressEpisodeIdRef.current === queueItemKey(currentEpisode)
+    ) {
       return;
     }
 
     if (audio && currentEpisode) {
       void (async () => {
         const syncedEpisode = await refreshPlaybackState(currentEpisode);
-        void commitActivePlayback(syncedEpisode.id);
+        void commitActivePlayback(syncedEpisode);
         const nextPosition =
           syncedEpisode.playback?.positionSeconds ?? positionSeconds ?? 0;
         sourceReadyRef.current = false;
@@ -630,14 +640,22 @@ export function usePlaybackAudio({
       setPlaybackError(null);
       userInitiatedPlayRef.current = true;
       const queuedEpisode =
-        queue.find((episode) => episode.id === episodeId) ?? null;
+        queue.find(
+          (episode) =>
+            !isAudiobookQueueItem(episode) && episode.id === episodeId
+        ) ?? null;
       void (async () => {
         const syncedEpisode = queuedEpisode
           ? await refreshPlaybackState(queuedEpisode)
           : null;
         pendingPlayEpisodeIdRef.current = syncedEpisode ? null : episodeId;
-        setActiveEpisodeId(episodeId);
-        void commitActivePlayback(episodeId);
+        setActiveItemKey(`episode:${episodeId}`);
+        const activeItem = syncedEpisode ?? queuedEpisode;
+        if (activeItem) {
+          void commitActivePlayback(activeItem);
+        } else {
+          void api.playback.setActive(episodeId);
+        }
         const audio = audioRef.current;
         if (!audio) {
           setPlaying(true);
@@ -672,7 +690,65 @@ export function usePlaybackAudio({
       pendingPlayEpisodeIdRef,
       queue,
       refreshPlaybackState,
-      setActiveEpisodeId,
+      setActiveItemKey,
+      setPlaybackError,
+      setPlaying,
+      setPositionSeconds,
+      sourcePrimedRef,
+      sourceReadyRef,
+      speedLabel,
+      userInitiatedPlayRef,
+    ]
+  );
+
+  const playQueueItem = useCallback(
+    (item: QueueEpisode) => {
+      if (!isAudiobookQueueItem(item)) {
+        playEpisode(item.id);
+        return;
+      }
+
+      completionInProgressEpisodeIdRef.current = null;
+      setPlaybackError(null);
+      userInitiatedPlayRef.current = true;
+      void (async () => {
+        const syncedItem = await refreshPlaybackState(item);
+        setActiveItemKey(queueItemKey(syncedItem));
+        void commitActivePlayback(syncedItem);
+        const audio = audioRef.current;
+        if (!audio) {
+          setPlaying(true);
+          return;
+        }
+
+        const initialPosition = syncedItem.playback?.positionSeconds ?? 0;
+        sourceReadyRef.current = false;
+        primeAudioSource(
+          audio,
+          syncedItem,
+          speedLabel,
+          initialPosition,
+          setPositionSeconds,
+          () => {
+            sourcePrimedRef.current = true;
+          },
+          () => {
+            sourceReadyRef.current = true;
+            setPlaying(true);
+            void attemptAudioPlay(audio, (error) => {
+              setPlaying(false);
+              setPlaybackError(describeAudioError(error));
+            });
+          }
+        );
+      })();
+    },
+    [
+      audioRef,
+      commitActivePlayback,
+      playEpisode,
+      refreshPlaybackState,
+      setActiveItemKey,
       setPlaybackError,
       setPlaying,
       setPositionSeconds,
@@ -702,7 +778,7 @@ export function usePlaybackAudio({
       const initialPosition = track.isListened ? 0 : track.positionSeconds;
       if (track.isListened) {
         await api.playback.update({
-          episodeId: audiobookId,
+          audiobookId,
           trackId: track.id,
           positionSeconds: 0,
           durationSeconds: track.duration,
@@ -721,7 +797,8 @@ export function usePlaybackAudio({
         audioUrl: `/api/audiobooks/${audiobookId}/tracks/${track.id}/audio`,
         isListened: false,
         playback: {
-          episodeId: audiobookId,
+          audiobookId,
+          trackId: track.id,
           positionSeconds: initialPosition,
           lastUpdated: new Date().toISOString(),
         },
@@ -734,7 +811,7 @@ export function usePlaybackAudio({
             : episode
         )
       );
-      setActiveEpisodeId(nextEpisode.id);
+      setActiveItemKey(queueItemKey(nextEpisode));
 
       const audio = audioRef.current;
       if (!audio) {
@@ -765,7 +842,7 @@ export function usePlaybackAudio({
       audioRef,
       commitCurrentPlayback,
       queue,
-      setActiveEpisodeId,
+      setActiveItemKey,
       setPlaybackError,
       setPlaying,
       setPositionSeconds,
@@ -837,6 +914,7 @@ export function usePlaybackAudio({
 	return {
 	  playToggle,
 	  playEpisode,
+	  playQueueItem,
 	  playAudiobookTrack,
 	  seekForward,
 	  seekBackward,

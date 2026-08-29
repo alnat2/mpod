@@ -146,13 +146,15 @@ func TestAudiobookAPI(t *testing.T) {
 		t.Fatalf("GET /api/playlist returned %d: %s", rec.Code, rec.Body.String())
 	}
 
-	// 6. POST /api/audiobooks/playback (update position)
+	// 6. POST /api/playback (update position through the unified playback API)
 	pbPayload, _ := json.Marshal(map[string]any{
+		"audiobookId":     book.ID,
 		"trackId":         track1.ID,
 		"positionSeconds": 45,
+		"durationSeconds": 100,
 		"completed":       false,
 	})
-	req = httptest.NewRequest(nethttp.MethodPost, "/api/audiobooks/playback", bytes.NewReader(pbPayload))
+	req = httptest.NewRequest(nethttp.MethodPost, "/api/playback", bytes.NewReader(pbPayload))
 	req.AddCookie(cookie)
 	req.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()
@@ -162,13 +164,15 @@ func TestAudiobookAPI(t *testing.T) {
 		t.Fatalf("POST playback returned %d: %s", rec.Code, rec.Body.String())
 	}
 
-	// 7. POST /api/audiobooks/playback (complete track 1 -> returns nextTrackId: 2)
+	// 7. POST /api/playback (complete track 1 -> returns nextTrackId: 2)
 	pbCompletePayload, _ := json.Marshal(map[string]any{
+		"audiobookId":     book.ID,
 		"trackId":         track1.ID,
 		"positionSeconds": 100,
+		"durationSeconds": 100,
 		"completed":       true,
 	})
-	req = httptest.NewRequest(nethttp.MethodPost, "/api/audiobooks/playback", bytes.NewReader(pbCompletePayload))
+	req = httptest.NewRequest(nethttp.MethodPost, "/api/playback", bytes.NewReader(pbCompletePayload))
 	req.AddCookie(cookie)
 	req.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()
@@ -198,14 +202,4 @@ func TestAudiobookAPI(t *testing.T) {
 		t.Fatalf("DELETE playlist returned %d: %s", rec.Code, rec.Body.String())
 	}
 
-	// 9. DELETE /api/audiobooks/:id (delete audiobook)
-	req = httptest.NewRequest(nethttp.MethodDelete, "/api/audiobooks/1?deleteFiles=false", nil)
-	req.SetPathValue("id", "1")
-	req.AddCookie(cookie)
-	rec = httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != nethttp.StatusOK {
-		t.Fatalf("DELETE audiobook returned %d: %s", rec.Code, rec.Body.String())
-	}
 }

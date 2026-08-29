@@ -2,6 +2,7 @@ package http
 
 import (
 	nethttp "net/http"
+	"strconv"
 	"time"
 
 	"github.com/cross/mpod/server/internal/playback"
@@ -13,12 +14,39 @@ func (r *Router) handlePlaybackGet(w nethttp.ResponseWriter, req *nethttp.Reques
 		return
 	}
 
-	episodeID, ok := r.pathInt64(w, req, "episodeId")
-	if !ok {
+	episodeValue := req.URL.Query().Get("episodeId")
+	audiobookValue := req.URL.Query().Get("audiobookId")
+	if (episodeValue == "") == (audiobookValue == "") {
+		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_PLAYBACK_TARGET", "Provide exactly one of episodeId or audiobookId")
 		return
 	}
 
-	state, err := r.playback.Get(req.Context(), episodeID)
+	var state *playback.State
+	var err error
+	if episodeValue != "" {
+		episodeID, parseErr := strconv.ParseInt(episodeValue, 10, 64)
+		if parseErr != nil || episodeID <= 0 {
+			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_PLAYBACK_TARGET", "episodeId must be a positive integer")
+			return
+		}
+		state, err = r.playback.GetEpisode(req.Context(), episodeID)
+	} else {
+		audiobookID, parseErr := strconv.ParseInt(audiobookValue, 10, 64)
+		if parseErr != nil || audiobookID <= 0 {
+			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_PLAYBACK_TARGET", "audiobookId must be a positive integer")
+			return
+		}
+		var trackID *int64
+		if trackValue := req.URL.Query().Get("trackId"); trackValue != "" {
+			parsedTrackID, trackErr := strconv.ParseInt(trackValue, 10, 64)
+			if trackErr != nil || parsedTrackID <= 0 {
+				r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_PLAYBACK_TARGET", "trackId must be a positive integer")
+				return
+			}
+			trackID = &parsedTrackID
+		}
+		state, err = r.playback.GetAudiobook(req.Context(), audiobookID, trackID)
+	}
 	if err != nil {
 		r.writeAPIError(w, nethttp.StatusInternalServerError, "PLAYBACK_LOAD_FAILED", "Failed to load playback state")
 		return
@@ -85,7 +113,8 @@ func (r *Router) handlePlaybackPost(w nethttp.ResponseWriter, req *nethttp.Reque
 	}
 
 	var payload struct {
-		EpisodeID       int64  `json:"episodeId"`
+		EpisodeID       *int64 `json:"episodeId"`
+		AudiobookID     *int64 `json:"audiobookId"`
 		TrackID         *int64 `json:"trackId"`
 		PositionSeconds int64  `json:"positionSeconds"`
 		DurationSeconds int64  `json:"durationSeconds"`
@@ -94,6 +123,10 @@ func (r *Router) handlePlaybackPost(w nethttp.ResponseWriter, req *nethttp.Reque
 		ClientUpdatedAt string `json:"clientUpdatedAt"`
 	}
 	if !r.decodeJSON(w, req, &payload) {
+		return
+	}
+	if (payload.EpisodeID == nil) == (payload.AudiobookID == nil) || (payload.AudiobookID != nil && payload.TrackID == nil) {
+		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_PLAYBACK_TARGET", "Provide an episodeId or an audiobookId with trackId")
 		return
 	}
 
@@ -108,7 +141,8 @@ func (r *Router) handlePlaybackPost(w nethttp.ResponseWriter, req *nethttp.Reque
 	}
 
 	result, err := r.playback.Update(req.Context(), playback.UpdateInput{
-		EpisodeID:       payload.EpisodeID,
+		EpisodeID:       valueOrZero(payload.EpisodeID),
+		AudiobookID:     payload.AudiobookID,
 		TrackID:         payload.TrackID,
 		PositionSeconds: payload.PositionSeconds,
 		DurationSeconds: payload.DurationSeconds,
@@ -122,6 +156,8 @@ func (r *Router) handlePlaybackPost(w nethttp.ResponseWriter, req *nethttp.Reque
 			r.writeAPIError(w, nethttp.StatusNotFound, "EPISODE_NOT_FOUND", "Episode was not found")
 		case playback.ErrInvalidPosition:
 			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_POSITION", "positionSeconds must be zero or greater")
+		case playback.ErrInvalidTarget:
+			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_PLAYBACK_TARGET", "Invalid playback target")
 		default:
 			r.writeAPIError(w, nethttp.StatusInternalServerError, "PLAYBACK_UPDATE_FAILED", "Failed to update playback")
 		}
@@ -129,6 +165,13 @@ func (r *Router) handlePlaybackPost(w nethttp.ResponseWriter, req *nethttp.Reque
 	}
 
 	r.writeJSON(w, nethttp.StatusOK, result)
+}
+
+func valueOrZero(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 func (r *Router) handlePlaylistList(w nethttp.ResponseWriter, req *nethttp.Request) {

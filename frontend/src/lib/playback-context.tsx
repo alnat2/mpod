@@ -17,6 +17,11 @@ import {
 } from "@/components/mpod/playback";
 import { api } from "./api";
 import { getPositiveDuration } from "./playback-audio";
+import {
+  isAudiobookQueueItem,
+  queueItemKey,
+  type QueueItemKey,
+} from "./playback-queue";
 import type {
   PlaybackContextType,
   PlaybackDispatchContextType,
@@ -38,13 +43,13 @@ const PlaybackDispatchContext =
 
 export function PlaybackProvider({ children }: { children: ReactNode }) {
   const [queue, setQueue] = useState<QueueEpisode[]>([]);
-  const [activeEpisodeId, setActiveEpisodeId] = useState<number | null>(null);
+  const [activeItemKey, setActiveItemKey] = useState<QueueItemKey | null>(null);
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [positionSeconds, setPositionSeconds] = useState(0);
   const [audioDuration, setAudioDuration] = useState<{
-    episodeId: number;
+    itemKey: QueueItemKey;
     durationSeconds: number;
   } | null>(null);
   const [podcastSpeed, setPodcastSpeed] =
@@ -62,17 +67,17 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const currentEpisodeDurationRef = useRef(0);
   const pendingPlayEpisodeIdRef = useRef<number | null>(null);
   const activeEpisode =
-    activeEpisodeId !== null
-      ? queue.find((episode) => episode.id === activeEpisodeId) ?? null
+    activeItemKey !== null
+      ? queue.find((episode) => queueItemKey(episode) === activeItemKey) ?? null
       : null;
   const currentEpisode = activeEpisode ?? queue[0] ?? null;
   const isAudiobook =
     currentEpisode?.type === "audiobook" || Boolean(currentEpisode?.audiobookId);
   const speedLabel = isAudiobook ? audiobookSpeed : podcastSpeed;
   const speedLabelRef = useRef<PlaybackSpeedLabel>(speedLabel);
-  const currentEpisodeId = currentEpisode?.id;
+  const currentItemKey = currentEpisode ? queueItemKey(currentEpisode) : undefined;
   const currentAudioDuration =
-    audioDuration && audioDuration.episodeId === currentEpisodeId
+    audioDuration && audioDuration.itemKey === currentItemKey
       ? audioDuration.durationSeconds
       : 0;
   const currentEpisodeDuration = getPositiveDuration(
@@ -114,11 +119,10 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     currentEpisodeRef,
     currentEpisodeDurationRef,
     playingRef,
-    queueRef,
     playing,
-    currentEpisodeId,
+    currentItemKey,
     setQueue,
-    setActiveEpisodeId,
+    setActiveItemKey,
     setLoading,
     setPositionSeconds,
     setSpeedLabel: setPodcastSpeed,
@@ -132,19 +136,21 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     }
 
     const episodeIndex = queue.findIndex(
-      (episode) => episode.id === pendingEpisodeId
+      (episode) =>
+        !isAudiobookQueueItem(episode) && episode.id === pendingEpisodeId
     );
     if (episodeIndex < 0) {
       return;
     }
 
     pendingPlayEpisodeIdRef.current = null;
-    setActiveEpisodeId(pendingEpisodeId);
+    setActiveItemKey(`episode:${pendingEpisodeId}`);
   }, [queue]);
 
 	const {
 	  playToggle,
 	  playEpisode,
+	  playQueueItem,
 	  playAudiobookTrack,
 	  seekTo,
 	  seekForward,
@@ -166,7 +172,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       playing,
       positionSeconds,
       speedLabel,
-      setActiveEpisodeId,
+      setActiveItemKey,
       setQueue,
       setPlaying,
       setPlaybackError,
@@ -240,6 +246,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       clearPlaybackError,
       playToggle,
       playEpisode,
+      playQueueItem,
       playAudiobookTrack,
       seekTo,
       seekForward,
@@ -253,6 +260,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       clearPlaybackError,
       playToggle,
       playEpisode,
+      playQueueItem,
       playAudiobookTrack,
       seekTo,
       seekForward,

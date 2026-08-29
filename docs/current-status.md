@@ -77,11 +77,14 @@ The Go backend scaffold is now in place with:
 - focused backend tests for playback sync and feed identity behavior
 - audiobook directory scanning and rescan endpoints
 - audiobook metadata, cover, chapter, and Range-enabled audio endpoints
+- MP3 and M4A/M4B duration extraction during audiobook scans, before browser playback
 - audiobook playlist operations for whole books and individual chapters
 - one aggregated playlist item per audiobook, backed by explicit selected-chapter membership
 - audiobook playback progress, active playback, selected-chapter transitions, and natural-completion cleanup
 - reset of audiobook progress/listened state when the book leaves the playlist
 - separate persisted podcast and audiobook playback speed preferences
+- typed podcast/audiobook playback targets and queue identities, so equal numeric IDs cannot select the wrong media
+- removal of the compatibility-only audiobook playlist column, exclusion table, and duplicate audiobook playback/delete endpoints
 
 Current audiobook UI includes:
 - separate `Abooks` navigation and library screen
@@ -98,11 +101,10 @@ Current audiobook UI includes:
 
 When implementation resumes, the next likely steps are:
 1. continue frontend/backend integration polish
-2. add reliable duration extraction for audiobook chapters that have not yet been opened by the browser player
-3. remove compatibility-only legacy audiobook API/schema paths after upgrade compatibility is no longer needed
-4. verify critical podcast and audiobook flows against real backend data
-5. add broader end-to-end QA for library rescans and mixed-media queue transitions
-6. polish Docker/runtime packaging
+2. verify critical podcast and audiobook flows against real backend data
+3. compare the integrated UI with the approved Figma frames
+4. add broader end-to-end QA for library rescans and mixed-media queue transitions
+5. polish Docker/runtime packaging
 
 ## Open Topics
 

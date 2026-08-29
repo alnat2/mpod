@@ -59,7 +59,6 @@ func (s *Service) List(ctx context.Context) ([]Item, error) {
 		FROM playlist
 		LEFT JOIN episodes ON episodes.id = playlist.episode_id
 		LEFT JOIN audiobooks ON audiobooks.id = playlist.audiobook_id
-		WHERE playlist.audiobook_track_id IS NULL
 		ORDER BY playlist.position ASC, playlist.id ASC
 	`)
 	if err != nil {

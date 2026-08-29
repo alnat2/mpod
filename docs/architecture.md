@@ -309,6 +309,7 @@ Responsible for:
 - grouping folders and single files into Audiobooks and Tracks/Chapters
 - treating directories without direct audio files as navigable collection levels
 - parsing audio duration and extracting cover art (folder files `cover.jpg`/`png`, embedded ID3v2 APIC / MP4 `covr`, or 3D fallback `fallback-audio`)
+- keeping playback and queue identities media-typed (`episodeId`, or `audiobookId` with `trackId`) instead of relying on numeric IDs that can overlap across tables
 - running a background `fsnotify` (`inotify`) watcher with debounced rescanning
 - keeping newly discovered tracks out of already configured playlist items until the user selects them
 - serving audiobook chapter audio with `Range` request support

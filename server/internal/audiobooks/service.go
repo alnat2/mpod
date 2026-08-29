@@ -521,19 +521,6 @@ func (s *Service) RemoveTrackFromPlaylist(ctx context.Context, trackID int64) er
 	return tx.Commit()
 }
 
-func (s *Service) RemoveFromPlaylist(ctx context.Context, bookID int64) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin remove audiobook tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	if err := resetAudiobookTx(ctx, tx, bookID, s.now().UTC()); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
 func resetAudiobookTx(ctx context.Context, tx *sql.Tx, bookID int64, now time.Time) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM playlist WHERE audiobook_id = ?`, bookID); err != nil {
 		return fmt.Errorf("remove audiobook from playlist: %w", err)
@@ -590,82 +577,4 @@ func (s *Service) GetCoverData(ctx context.Context, bookID int64) ([]byte, strin
 func (s *Service) GetCoverPath(ctx context.Context, bookID int64) (string, error) {
 	_, _, filePath, err := s.GetCoverData(ctx, bookID)
 	return filePath, err
-}
-
-func (s *Service) Delete(ctx context.Context, bookID int64, deleteDiskFiles bool) error {
-	var id int64
-	err := s.db.QueryRowContext(ctx, `SELECT id FROM audiobooks WHERE id = ?`, bookID).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrBookNotFound
-	}
-	if err != nil {
-		return fmt.Errorf("query book for delete: %w", err)
-	}
-
-	// Delete from DB (cascades to tracks, playback, playlist).
-	// Audiobook directory is strictly read-only: disk files are never deleted.
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM audiobooks WHERE id = ?`, bookID); err != nil {
-		return fmt.Errorf("delete audiobook db record: %w", err)
-	}
-
-	return nil
-}
-
-func (s *Service) SaveTrackProgress(ctx context.Context, trackID int64, positionSeconds int64, completed bool) (nextTrackID *int64, err error) {
-	track, err := s.GetTrack(ctx, trackID)
-	if err != nil {
-		return nil, err
-	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("begin save progress tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	now := s.now().UTC()
-
-	if completed {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE audiobook_tracks SET is_listened = 1 WHERE id = ?
-		`, trackID); err != nil {
-			return nil, fmt.Errorf("mark track listened: %w", err)
-		}
-
-		// Find next track in the same audiobook
-		var nextID int64
-		err := tx.QueryRowContext(ctx, `
-			SELECT id FROM audiobook_tracks
-			WHERE audiobook_id = ? AND track_number > ?
-			ORDER BY track_number ASC LIMIT 1
-		`, track.AudiobookID, track.TrackNumber).Scan(&nextID)
-
-		if err == nil {
-			nextTrackID = &nextID
-		} else if errors.Is(err, sql.ErrNoRows) {
-			// This was the last track of the book!
-			// Remove audiobook from playlist
-			if _, err := tx.ExecContext(ctx, `DELETE FROM playlist WHERE audiobook_id = ?`, track.AudiobookID); err != nil {
-				return nil, fmt.Errorf("remove completed audiobook from playlist: %w", err)
-			}
-			nextTrackID = nil
-		} else {
-			return nil, fmt.Errorf("query next track: %w", err)
-		}
-	} else {
-		// Update position
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO audiobook_playback (track_id, audiobook_id, position_seconds, last_updated)
-			VALUES (?, ?, ?, ?)
-			ON CONFLICT (track_id) DO UPDATE SET position_seconds = excluded.position_seconds, last_updated = excluded.last_updated
-		`, trackID, track.AudiobookID, positionSeconds, now); err != nil {
-			return nil, fmt.Errorf("update track playback: %w", err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit track progress: %w", err)
-	}
-
-	return nextTrackID, nil
 }

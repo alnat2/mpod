@@ -64,7 +64,9 @@ export type PlaylistItem = {
 };
 
 export type PlaybackState = {
-  episodeId: number;
+  episodeId?: number;
+  audiobookId?: number;
+  trackId?: number;
   positionSeconds: number;
   lastUpdated: string;
 };
@@ -162,16 +164,6 @@ export type Audiobook = {
   tracks?: AudiobookTrack[];
   createdAt: string;
   updatedAt: string;
-};
-
-export type AudiobookPlaybackState = {
-  trackId: number;
-  positionSeconds: number;
-};
-
-export type AudiobookPlaybackResponse = {
-  playback: AudiobookPlaybackState;
-  nextTrackId: number | null;
 };
 
 type RequestOptions = Omit<RequestInit, "body"> & {
@@ -348,12 +340,20 @@ export const api = {
         }
       );
     },
-    get: (episodeId: number) =>
+    get: (target: { episodeId: number } | { audiobookId: number; trackId?: number }) =>
       apiRequest<{ playback: PlaybackState | null }>(
-        `/api/playback/${episodeId}`
+        `/api/playback?${new URLSearchParams(
+          "episodeId" in target
+            ? { episodeId: String(target.episodeId) }
+            : {
+                audiobookId: String(target.audiobookId),
+                ...(target.trackId ? { trackId: String(target.trackId) } : {}),
+              }
+        )}`
       ),
     update: (payload: {
       episodeId?: number;
+      audiobookId?: number;
       trackId?: number;
       positionSeconds: number;
       durationSeconds?: number;
@@ -415,22 +415,6 @@ export const api = {
           signal,
         }
       ),
-    saveProgress: (
-      payload: {
-        trackId: number;
-        positionSeconds: number;
-        completed?: boolean;
-      },
-      signal?: AbortSignal
-    ) =>
-      apiRequest<AudiobookPlaybackResponse>("/api/audiobooks/playback", {
-        method: "POST",
-        body: {
-          completed: false,
-          ...payload,
-        },
-        signal,
-      }),
     coverUrl: (id: number) => `/api/audiobooks/${id}/cover`,
     trackAudioUrl: (id: number, trackId: number) =>
       `/api/audiobooks/${id}/tracks/${trackId}/audio`,
