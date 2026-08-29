@@ -38,7 +38,7 @@ export function AudiobookChaptersModal({
       <Card
         data-slot="abook-chapters-modal"
         className={cn(
-          "flex w-full min-w-[320px] max-w-[720px] flex-col gap-4 overflow-hidden rounded-[20px] border-border bg-card px-4 py-5 shadow-xl sm:min-w-0 sm:gap-5 sm:p-8",
+          "flex w-full min-w-[320px] max-w-[720px] flex-col gap-4 overflow-hidden rounded-[20px] border-0 bg-card px-4 py-5 shadow-xl ring-1 ring-border sm:min-w-0 sm:gap-5 sm:p-8",
           className
         )}
       >
@@ -79,8 +79,8 @@ export function AudiobookChaptersModal({
           </Button>
         </div>
 
-        <ScrollArea className="h-[360px] w-full sm:h-[408px] [&_[data-slot=scroll-area-scrollbar]]:w-1.5 [&_[data-slot=scroll-area-scrollbar]]:border-0 [&_[data-slot=scroll-area-scrollbar]]:p-0 [&_[data-slot=scroll-area-thumb]]:bg-muted-foreground">
-          <div className="flex flex-col gap-1 pr-6">
+        <ScrollArea className="h-[360px] w-full sm:h-[408px] [&_[data-slot=scroll-area-scrollbar]]:w-1.5 [&_[data-slot=scroll-area-scrollbar]]:border-0 [&_[data-slot=scroll-area-scrollbar]]:p-0 [&_[data-slot=scroll-area-thumb]]:bg-muted-foreground [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:!min-w-0 [&_[data-slot=scroll-area-viewport]>div]:!w-full">
+          <div className="flex w-full min-w-0 flex-col gap-1 overflow-hidden pr-6">
             {tracks.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 No chapters found.
@@ -95,7 +95,7 @@ export function AudiobookChaptersModal({
                     key={track.id}
                     data-slot="chapter-item"
                     data-in-playlist={inPlaylist ? "true" : undefined}
-                    className="flex h-[70px] shrink-0 items-center gap-3 rounded-sm bg-card px-1 text-foreground shadow-xs"
+                    className="flex h-[70px] w-full min-w-0 shrink-0 items-center gap-3 overflow-hidden rounded-sm bg-card px-1 text-foreground shadow-xs"
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-1">
                       <HugeiconsIcon

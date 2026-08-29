@@ -44,7 +44,16 @@ describe("AudiobookPlaybackChaptersModal", () => {
     );
     expect(
       document.querySelector('[data-slot="abook-playback-chapters-modal"]')
-    ).toHaveClass("max-w-[720px]", "sm:p-8");
+    ).toHaveClass("max-w-[720px]", "border-0", "ring-1", "sm:p-8");
+    expect(document.querySelector('[data-current="true"]')).toHaveClass(
+      "w-full",
+      "min-w-0",
+      "overflow-hidden"
+    );
+    expect(document.querySelector('[data-slot="scroll-area"]')).toHaveClass(
+      "[&_[data-slot=scroll-area-viewport]>div]:!block",
+      "[&_[data-slot=scroll-area-viewport]>div]:!w-full"
+    );
     expect(screen.getByRole("button", { name: "Pause Current" })).toHaveClass(
       "size-11"
     );

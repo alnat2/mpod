@@ -44,7 +44,7 @@ export function AudiobookPlaybackChaptersModal({
     <ModalScreen title={audiobook.title} onClose={onClose}>
       <Card
         data-slot="abook-playback-chapters-modal"
-        className="flex w-full min-w-[320px] max-w-[720px] flex-col gap-4 overflow-hidden rounded-[20px] border-border bg-card px-4 py-5 shadow-xl sm:min-w-0 sm:gap-5 sm:p-8"
+        className="flex w-full min-w-[320px] max-w-[720px] flex-col gap-4 overflow-hidden rounded-[20px] border-0 bg-card px-4 py-5 shadow-xl ring-1 ring-border sm:min-w-0 sm:gap-5 sm:p-8"
       >
         <div className="flex items-center gap-6">
           <div className="flex min-w-0 flex-1 items-start gap-2">
@@ -82,8 +82,8 @@ export function AudiobookPlaybackChaptersModal({
           </Button>
         </div>
 
-        <ScrollArea className="h-[360px] w-full sm:h-[408px] [&_[data-slot=scroll-area-scrollbar]]:w-1.5 [&_[data-slot=scroll-area-scrollbar]]:border-0 [&_[data-slot=scroll-area-scrollbar]]:p-0 [&_[data-slot=scroll-area-thumb]]:bg-muted-foreground">
-          <div className="flex flex-col gap-1 pr-6">
+        <ScrollArea className="h-[360px] w-full sm:h-[408px] [&_[data-slot=scroll-area-scrollbar]]:w-1.5 [&_[data-slot=scroll-area-scrollbar]]:border-0 [&_[data-slot=scroll-area-scrollbar]]:p-0 [&_[data-slot=scroll-area-thumb]]:bg-muted-foreground [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:!min-w-0 [&_[data-slot=scroll-area-viewport]>div]:!w-full">
+          <div className="flex w-full min-w-0 flex-col gap-1 overflow-hidden pr-6">
             {tracks.map((track) => {
               const current = track.id === currentTrackId;
               const completed = track.isListened && !current;
@@ -111,7 +111,7 @@ export function AudiobookPlaybackChaptersModal({
                 <div
                   key={track.id}
                   className={cn(
-                    "flex h-[70px] shrink-0 items-center gap-3 rounded-sm px-1 text-foreground shadow-xs",
+                    "flex h-[70px] w-full min-w-0 shrink-0 items-center gap-3 overflow-hidden rounded-sm px-1 text-foreground shadow-xs",
                     current ? "bg-accent" : "bg-card"
                   )}
                   data-current={current ? "true" : undefined}

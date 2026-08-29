@@ -70,11 +70,20 @@ describe("AudiobookChaptersModal", () => {
     expect(screen.getAllByText("40m")).toHaveLength(3);
     expect(document.querySelector('[data-slot="abook-chapters-modal"]')).toHaveClass(
       "max-w-[720px]",
+      "border-0",
+      "ring-1",
       "sm:p-8"
     );
     expect(document.querySelector('[data-slot="chapter-item"]')).toHaveClass(
       "h-[70px]",
+      "w-full",
+      "min-w-0",
+      "overflow-hidden",
       "px-1"
+    );
+    expect(document.querySelector('[data-slot="scroll-area"]')).toHaveClass(
+      "[&_[data-slot=scroll-area-viewport]>div]:!block",
+      "[&_[data-slot=scroll-area-viewport]>div]:!w-full"
     );
     expect(screen.getAllByText("40m")[0]).toHaveClass("w-20");
     expect(
