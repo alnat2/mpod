@@ -8,7 +8,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Build backend
-FROM golang:1.24-alpine AS backend-builder
+FROM golang:1.26.7-alpine3.24 AS backend-builder
 RUN apk add --no-cache build-base
 WORKDIR /src/server
 
@@ -19,10 +19,11 @@ RUN go mod download
 # Layer 2: application source (changes on every code edit)
 COPY server/ ./
 
-RUN CGO_ENABLED=1 GOOS=linux go build -o /out/mpod ./cmd/mpod
+RUN CGO_ENABLED=1 GOOS=linux \
+    go build -buildmode=pie -o /out/mpod ./cmd/mpod
 
 # Final image
-FROM alpine:3.22
+FROM alpine:3.24.1
 RUN adduser -D -h /app mpod \
     && mkdir -p /data /app \
     && chown -R mpod:mpod /data /app
