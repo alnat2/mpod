@@ -45,3 +45,14 @@ frontend/skills-lock.json
 
 # Go vendor (Dockerfile uses go mod download instead)
 server/vendor
+
+# Local dev/test artifacts (never ship into the image)
+server/.gocache
+server/mpod-bin
+server/test.db
+server/local-test-data
+server/cookie.txt
+cookie.txt
+get-queue.sh
+mcp_wrapper.sh
+test-queue.sh
