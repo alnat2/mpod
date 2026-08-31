@@ -923,6 +923,77 @@ func TestIndividualTrackInQueue(t *testing.T) {
 	}
 }
 
+func TestAudiobookCompletionAdvancesWithoutPreexistingActivePlaybackAndPreservesFiles(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	firstPath := filepath.Join(t.TempDir(), "01.mp3")
+	secondPath := filepath.Join(t.TempDir(), "02.mp3")
+	if err := os.WriteFile(firstPath, []byte("first"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(secondPath, []byte("second"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path) VALUES (1, 'Book', 'Author', 'Book')`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'Chapter 1', 'Book/01.mp3', ?, 10), (11, 1, 2, 'Chapter 2', 'Book/02.mp3', ?, 10)`, firstPath, secondPath)
+	mustExec(t, db.SQL, `INSERT INTO playlist (audiobook_id, position) VALUES (1, 1)`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10), (1, 11)`)
+
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+	bookID, firstTrackID := int64(1), int64(10)
+	result, err := service.Update(context.Background(), UpdateInput{
+		AudiobookID: &bookID, TrackID: &firstTrackID, PositionSeconds: 10, DurationSeconds: 10, Completed: true,
+	})
+	if err != nil {
+		t.Fatalf("complete first chapter: %v", err)
+	}
+	if result.NextTrackID == nil || *result.NextTrackID != 11 {
+		t.Fatalf("expected next track 11, got %v", result.NextTrackID)
+	}
+
+	var listened bool
+	if err := db.SQL.QueryRow(`SELECT is_listened FROM audiobook_tracks WHERE id = 10`).Scan(&listened); err != nil {
+		t.Fatal(err)
+	}
+	if !listened {
+		t.Fatal("expected first chapter to be listened")
+	}
+	var playlistCount int
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM playlist WHERE audiobook_id = 1`).Scan(&playlistCount); err != nil {
+		t.Fatal(err)
+	}
+	if playlistCount != 1 {
+		t.Fatalf("expected audiobook to remain in playlist after intermediate completion, got %d", playlistCount)
+	}
+	active, err := service.GetActive(context.Background())
+	if err != nil {
+		t.Fatalf("load active playback after intermediate completion: %v", err)
+	}
+	if active == nil || active.AudiobookID == nil || *active.AudiobookID != bookID || active.AudiobookTrackID == nil || *active.AudiobookTrackID != 11 {
+		t.Fatalf("expected active audiobook track 11 after intermediate completion, got %+v", active)
+	}
+
+	secondTrackID := int64(11)
+	if _, err := service.Update(context.Background(), UpdateInput{
+		AudiobookID: &bookID, TrackID: &secondTrackID, PositionSeconds: 10, DurationSeconds: 10, Completed: true,
+	}); err != nil {
+		t.Fatalf("complete final chapter: %v", err)
+	}
+	if err := db.SQL.QueryRow(`SELECT COUNT(*) FROM playlist WHERE audiobook_id = 1`).Scan(&playlistCount); err != nil {
+		t.Fatal(err)
+	}
+	if playlistCount != 0 {
+		t.Fatalf("expected audiobook removed after final completion, got %d playlist rows", playlistCount)
+	}
+	if _, err := os.Stat(firstPath); err != nil {
+		t.Fatalf("first audiobook source file was removed: %v", err)
+	}
+	if _, err := os.Stat(secondPath); err != nil {
+		t.Fatalf("second audiobook source file was removed: %v", err)
+	}
+}
+
 func newTestDB(t *testing.T) *storage.DB {
 	t.Helper()
 

@@ -618,7 +618,15 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 				LIMIT 1
 			`, abID, *input.TrackID).Scan(&nextTrackID)
 			if err == nil {
-				if _, err := tx.ExecContext(ctx, `UPDATE active_playback SET audiobook_id = ?, audiobook_track_id = ?, last_updated = ? WHERE singleton_id = 1`, abID, nextTrackID, now); err != nil {
+				if _, err := tx.ExecContext(ctx, `
+					INSERT INTO active_playback (singleton_id, episode_id, audiobook_id, audiobook_track_id, last_updated)
+					VALUES (1, NULL, ?, ?, ?)
+					ON CONFLICT (singleton_id) DO UPDATE SET
+						episode_id = NULL,
+						audiobook_id = excluded.audiobook_id,
+						audiobook_track_id = excluded.audiobook_track_id,
+						last_updated = excluded.last_updated
+				`, abID, nextTrackID, now); err != nil {
 					return UpdateResult{}, fmt.Errorf("advance active audiobook track: %w", err)
 				}
 				if err := tx.Commit(); err != nil {

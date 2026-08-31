@@ -1936,4 +1936,106 @@ describe("PlaybackProvider", () => {
 
     expect(audio.src).toContain("/api/audiobooks/100/tracks/502/audio");
   });
+
+  it("completes audiobook chapters and advances using the backend completion response", async () => {
+    const user = userEvent.setup();
+    const firstTrack = {
+      id: 501,
+      audiobookId: 100,
+      trackNumber: 1,
+      title: "Chapter 1",
+      audioUrl: "/api/audiobooks/100/tracks/501/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: { audiobookId: 100, trackId: 501, positionSeconds: 0, lastUpdated: "2026-05-22T08:00:00Z" },
+    };
+    const secondTrack = {
+      ...firstTrack,
+      id: 502,
+      trackNumber: 2,
+      title: "Chapter 2",
+      audioUrl: "/api/audiobooks/100/tracks/502/audio",
+      playback: { audiobookId: 100, trackId: 502, positionSeconds: 0, lastUpdated: "2026-05-22T08:00:00Z" },
+    };
+    let currentTrack = firstTrack;
+    const queueSpy = vi.mocked(api.playback.queue).mockImplementation(async () => ({
+      queue: [{
+        id: 100,
+        podcastId: 0,
+        type: "audiobook" as const,
+        audiobookId: 100,
+        trackId: currentTrack.id,
+        trackNumber: currentTrack.trackNumber,
+        title: "Sample Audiobook",
+        description: "",
+        podcastTitle: "Sample Author",
+        author: "Sample Author",
+        audioUrl: currentTrack.audioUrl,
+        duration: currentTrack.duration,
+        downloaded: true,
+        isListened: false,
+        publishedAt: null,
+        playback: currentTrack.playback,
+      }],
+      activePlayback: { audiobookId: 100, trackId: currentTrack.id, lastUpdated: "2026-05-22T08:00:00Z" },
+    }))
+      .mockImplementationOnce(async () => ({
+        queue: [{
+          id: 100, podcastId: 0, type: "audiobook" as const, audiobookId: 100,
+          trackId: firstTrack.id, trackNumber: 1, title: "Sample Audiobook", description: "",
+          podcastTitle: "Sample Author", author: "Sample Author", audioUrl: firstTrack.audioUrl,
+          duration: 100, downloaded: true, isListened: false, publishedAt: null, playback: firstTrack.playback,
+        }],
+        activePlayback: { audiobookId: 100, trackId: firstTrack.id, lastUpdated: "2026-05-22T08:00:00Z" },
+      }))
+      .mockImplementationOnce(async () => {
+        currentTrack = secondTrack;
+        return {
+          queue: [{
+            id: 100, podcastId: 0, type: "audiobook" as const, audiobookId: 100,
+            trackId: secondTrack.id, trackNumber: 2, title: "Sample Audiobook", description: "",
+            podcastTitle: "Sample Author", author: "Sample Author", audioUrl: secondTrack.audioUrl,
+            duration: 100, downloaded: true, isListened: false, publishedAt: null, playback: secondTrack.playback,
+          }],
+          activePlayback: { audiobookId: 100, trackId: secondTrack.id, lastUpdated: "2026-05-22T08:01:00Z" },
+        };
+      });
+    const updateSpy = vi.mocked(api.playback.update).mockImplementation(async (payload) => ({
+      playback: { audiobookId: 100, trackId: payload.trackId ?? 501, positionSeconds: payload.positionSeconds, lastUpdated: "2026-05-22T08:01:00Z" },
+      nextTrackId: payload.trackId === firstTrack.id && payload.completed ? secondTrack.id : null,
+      nextEpisodeId: null,
+    }));
+
+    function AudiobookCompletionHarness() {
+      const { queue, playQueueItem, currentEpisode, playing } = usePlayback();
+      return <>
+        <div data-testid="current-title">{currentEpisode?.title}</div>
+        <div data-testid="track-id">{currentEpisode?.trackId}</div>
+        <div data-testid="playing">{playing ? "yes" : "no"}</div>
+        <button
+          type="button"
+          onClick={() => {
+            const item = queue[0];
+            if (item) playQueueItem(item);
+          }}
+        >
+          Play audiobook
+        </button>
+      </>;
+    }
+
+    render(<PlaybackProvider><AudiobookCompletionHarness /></PlaybackProvider>);
+    await waitFor(() => expect(screen.getByTestId("track-id")).toHaveTextContent("501"));
+    await user.click(screen.getByRole("button", { name: "Play audiobook" }));
+    const audio = FakeAudio.first;
+    audio.currentTime = 100;
+    audio.emit("ended");
+
+    await waitFor(() => expect(screen.getByTestId("track-id")).toHaveTextContent("502"));
+    expect(audio.src).toContain("/api/audiobooks/100/tracks/502/audio");
+    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({ audiobookId: 100, trackId: 501, completed: true }));
+    expect(queueSpy).toHaveBeenCalledTimes(2);
+  });
 });
