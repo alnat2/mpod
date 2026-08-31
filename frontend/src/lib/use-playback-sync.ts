@@ -92,16 +92,16 @@ export function usePlaybackSync({
       options: {
         completed?: boolean;
         didSeek?: boolean;
-        episodeId?: number;
         durationSeconds?: number;
+        target?: QueueEpisode;
       } = {}
     ) => {
-      const episode = currentEpisodeRef.current;
+      const episode = options.target ?? currentEpisodeRef.current;
       const isAudiobook = episode ? isAudiobookQueueItem(episode) : false;
       const trackId = isAudiobook ? episode?.trackId : undefined;
       const mediaID = isAudiobook
         ? (episode?.audiobookId ?? episode?.id)
-        : (options.episodeId ?? episode?.id);
+        : episode?.id;
       if (mediaID == null) return null;
 
       try {

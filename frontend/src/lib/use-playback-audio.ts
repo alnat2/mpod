@@ -40,8 +40,8 @@ type CommitPlayback = (
   options?: {
     completed?: boolean;
     didSeek?: boolean;
-    episodeId?: number;
     durationSeconds?: number;
+    target?: QueueEpisode;
   }
 ) => Promise<PlaybackUpdateResponse | null>;
 
@@ -118,6 +118,7 @@ export function usePlaybackAudio({
   const sourceSwitchingRef = useRef(false);
   const sourceReloadCleanupRef = useRef<(() => void) | null>(null);
   const completionInProgressEpisodeIdRef = useRef<QueueItemKey | null>(null);
+  const completedAudioSourceRef = useRef<string | null>(null);
   // Track the source that is actually loaded, independently from fresher queue data.
   const sourceDownloadStateRef = useRef<{
     itemKey: QueueItemKey;
@@ -130,18 +131,6 @@ export function usePlaybackAudio({
     sourcePrimedRef.current = false;
     sourceReadyRef.current = false;
 
-    const onTimeUpdate = () => {
-      setPositionSeconds(audio.currentTime);
-      const nextDuration = readAudioDuration(audio);
-      const current = currentEpisodeRef.current;
-      if (nextDuration && current) {
-        setAudioDuration({
-          itemKey: queueItemKey(current),
-          durationSeconds: nextDuration,
-        });
-      }
-    };
-
     const onPlaying = () => {
       playingRef.current = true;
       setPlaying(true);
@@ -149,22 +138,10 @@ export function usePlaybackAudio({
       setPlaybackError(null);
     };
 
-    const onPause = () => {
-      if (sourceSwitchingRef.current) {
-        return;
-      }
-      const shouldCommitPlayback = playingRef.current;
-      playingRef.current = false;
-      setPlaying(false);
-      if (shouldCommitPlayback) {
-        commitCurrentPlayback();
-      }
-    };
-
     const startQueuedEpisode = (episode: QueueEpisode) => {
       const nextPosition = episode.playback?.positionSeconds ?? 0;
       setActiveItemKey(queueItemKey(episode));
-	  void commitActivePlayback(episode);
+      void commitActivePlayback(episode);
       sourceReadyRef.current = false;
       primeAudioSource(
         audio,
@@ -226,12 +203,19 @@ export function usePlaybackAudio({
         return;
       }
 
-	  startQueuedEpisode(nextItem);
+      startQueuedEpisode(nextItem);
     };
 
-    const onEnded = () => {
+    const completeCurrentPlayback = () => {
       const finishedEpisode = currentEpisodeRef.current;
       if (!finishedEpisode) {
+        return;
+      }
+      const finishedSource = audio.currentSrc || audio.src;
+      if (
+        finishedSource &&
+        completedAudioSourceRef.current === finishedSource
+      ) {
         return;
       }
       const finishedPosition = audio.currentTime;
@@ -240,33 +224,71 @@ export function usePlaybackAudio({
         finishedEpisode.duration
       );
       const currentQueue = queueRef.current;
-	  const finishedItemKey = queueItemKey(finishedEpisode);
+      const finishedItemKey = queueItemKey(finishedEpisode);
       const currentIndex = currentQueue.findIndex(
         (episode) => queueItemKey(episode) === finishedItemKey
       );
-	  const nextQueueItem =
-		currentIndex >= 0 ? (currentQueue[currentIndex + 1] ?? null) : null;
+      const nextQueueItem =
+        currentIndex >= 0 ? (currentQueue[currentIndex + 1] ?? null) : null;
 
-	  playingRef.current = false;
-	  setPlaying(false);
-	  completionInProgressEpisodeIdRef.current = finishedItemKey;
+      playingRef.current = false;
+      setPlaying(false);
+      completionInProgressEpisodeIdRef.current = finishedItemKey;
+      completedAudioSourceRef.current = finishedSource;
 
       void commitPlayback(finishedPosition, {
         completed: true,
-        episodeId: finishedEpisode.id,
         durationSeconds: finishedDuration,
-	  }).then(async (response) => {
-		await startAfterCompletion(
-		  finishedItemKey,
-		  finishedEpisode,
-		  nextQueueItem,
-		  response
-		);
-	  }).finally(() => {
-        if (completionInProgressEpisodeIdRef.current === finishedItemKey) {
-          completionInProgressEpisodeIdRef.current = null;
-        }
-      });
+        target: finishedEpisode,
+      })
+        .then(async (response) => {
+          await startAfterCompletion(
+            finishedItemKey,
+            finishedEpisode,
+            nextQueueItem,
+            response
+          );
+        })
+        .finally(() => {
+          if (completionInProgressEpisodeIdRef.current === finishedItemKey) {
+            completionInProgressEpisodeIdRef.current = null;
+          }
+        });
+    };
+
+    const onTimeUpdate = () => {
+      setPositionSeconds(audio.currentTime);
+      const nextDuration = readAudioDuration(audio);
+      const current = currentEpisodeRef.current;
+      if (nextDuration && current) {
+        setAudioDuration({
+          itemKey: queueItemKey(current),
+          durationSeconds: nextDuration,
+        });
+      }
+      if (audio.ended) {
+        completeCurrentPlayback();
+      }
+    };
+
+    const onPause = () => {
+      if (audio.ended) {
+        completeCurrentPlayback();
+        return;
+      }
+      if (sourceSwitchingRef.current) {
+        return;
+      }
+      const shouldCommitPlayback = playingRef.current;
+      playingRef.current = false;
+      setPlaying(false);
+      if (shouldCommitPlayback) {
+        commitCurrentPlayback();
+      }
+    };
+
+    const onEnded = () => {
+      completeCurrentPlayback();
     };
 
     const onError = () => {
@@ -587,6 +609,7 @@ export function usePlaybackAudio({
     }
 
     if (audio && currentEpisode) {
+      completedAudioSourceRef.current = null;
       void (async () => {
         const syncedEpisode = await refreshPlaybackState(currentEpisode);
         void commitActivePlayback(syncedEpisode);
@@ -637,6 +660,7 @@ export function usePlaybackAudio({
   const playEpisode = useCallback(
     (episodeId: number) => {
       completionInProgressEpisodeIdRef.current = null;
+      completedAudioSourceRef.current = null;
       setPlaybackError(null);
       userInitiatedPlayRef.current = true;
       const queuedEpisode =
@@ -709,6 +733,7 @@ export function usePlaybackAudio({
       }
 
       completionInProgressEpisodeIdRef.current = null;
+      completedAudioSourceRef.current = null;
       setPlaybackError(null);
       userInitiatedPlayRef.current = true;
       void (async () => {
@@ -771,6 +796,7 @@ export function usePlaybackAudio({
       }
 
       completionInProgressEpisodeIdRef.current = null;
+      completedAudioSourceRef.current = null;
       setPlaybackError(null);
       userInitiatedPlayRef.current = true;
       commitCurrentPlayback();
