@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   type Dispatch,
   type RefObject,
   type SetStateAction,
@@ -13,7 +14,11 @@ import {
   type PlaybackSpeedLabel,
 } from "@/components/mpod/playback";
 import { api, type PlaybackState } from "./api";
-import { clampPosition, setAudioPosition } from "./playback-audio";
+import {
+  clampPosition,
+  getPositiveDuration,
+  setAudioPosition,
+} from "./playback-audio";
 import type { QueueEpisode } from "./playback-context-types";
 import {
   activePlaybackKey,
@@ -57,6 +62,13 @@ function isNewerPlaybackState(
   );
 }
 
+function playbackDurationSeconds(
+  episode: QueueEpisode,
+  fallbackDurationSeconds: number
+) {
+  return getPositiveDuration(episode.duration, fallbackDurationSeconds);
+}
+
 export function usePlaybackSync({
   audioRef,
   sourcePrimedRef,
@@ -75,6 +87,13 @@ export function usePlaybackSync({
 }: UsePlaybackSyncOptions) {
   const queueRequests = useLatestRequest();
   const settingsRequests = useLatestRequest();
+  const completedPlaybackTargetsRef = useRef(new Set<string>());
+  const playbackTargetKey = useCallback((episode: QueueEpisode) => {
+    if (isAudiobookQueueItem(episode)) {
+      return `audiobook:${episode.audiobookId ?? episode.id}:track:${episode.trackId ?? "unknown"}`;
+    }
+    return `episode:${episode.id}`;
+  }, []);
   const writePlaybackState = useCallback(
     (itemKey: QueueItemKey, playback: PlaybackState | null) => {
       setQueue((current) =>
@@ -97,17 +116,30 @@ export function usePlaybackSync({
       } = {}
     ) => {
       const episode = options.target ?? currentEpisodeRef.current;
-      const isAudiobook = episode ? isAudiobookQueueItem(episode) : false;
-      const trackId = isAudiobook ? episode?.trackId : undefined;
+      if (!episode) return null;
+      const isAudiobook = isAudiobookQueueItem(episode);
+      const trackId = isAudiobook ? episode.trackId : undefined;
       const mediaID = isAudiobook
-        ? (episode?.audiobookId ?? episode?.id)
-        : episode?.id;
+        ? (episode.audiobookId ?? episode.id)
+        : episode.id;
       if (mediaID == null) return null;
+      const targetKey = playbackTargetKey(episode);
+      const completed = options.completed ?? false;
+      if (!completed && completedPlaybackTargetsRef.current.has(targetKey)) {
+        return null;
+      }
+      if (completed) {
+        completedPlaybackTargetsRef.current.add(targetKey);
+      }
 
       try {
         const durationSeconds =
-          options.durationSeconds ?? currentEpisodeDurationRef.current;
-        return await api.playback.update({
+          options.durationSeconds ??
+          playbackDurationSeconds(
+            episode,
+            currentEpisodeDurationRef.current
+          );
+        const response = await api.playback.update({
           ...(isAudiobook
             ? { audiobookId: mediaID, trackId }
             : { episodeId: mediaID }),
@@ -115,16 +147,17 @@ export function usePlaybackSync({
             clampPosition(nextPositionSeconds, durationSeconds)
           ),
           durationSeconds: Math.round(durationSeconds),
-          completed: options.completed ?? false,
+          completed,
           didSeek: options.didSeek ?? false,
           clientUpdatedAt: new Date().toISOString(),
         });
+        return response;
       } catch {
         // Silently fail for background sync.
         return null;
       }
     },
-    [currentEpisodeDurationRef, currentEpisodeRef]
+    [currentEpisodeDurationRef, currentEpisodeRef, playbackTargetKey]
   );
 
   const commitPlaybackBeacon = useCallback(
@@ -139,7 +172,15 @@ export function usePlaybackSync({
       }
 
       const isAudiobook = isAudiobookQueueItem(episode);
-      const durationSeconds = currentEpisodeDurationRef.current;
+      if (
+        completedPlaybackTargetsRef.current.has(playbackTargetKey(episode))
+      ) {
+        return true;
+      }
+      const durationSeconds = playbackDurationSeconds(
+        episode,
+        currentEpisodeDurationRef.current
+      );
       const body = JSON.stringify({
         ...(isAudiobook
           ? {
@@ -161,7 +202,14 @@ export function usePlaybackSync({
         new Blob([body], { type: "application/json" })
       );
     },
-    [currentEpisodeDurationRef, currentEpisodeRef]
+    [currentEpisodeDurationRef, currentEpisodeRef, playbackTargetKey]
+  );
+
+  const allowPlaybackProgress = useCallback(
+    (episode: QueueEpisode) => {
+      completedPlaybackTargetsRef.current.delete(playbackTargetKey(episode));
+    },
+    [playbackTargetKey]
   );
 
   const commitCurrentPlayback = useCallback(
@@ -385,6 +433,7 @@ export function usePlaybackSync({
   return {
     commitPlayback,
     commitCurrentPlayback,
+    allowPlaybackProgress,
     commitActivePlayback,
     refreshPlaybackState,
     loadQueue,

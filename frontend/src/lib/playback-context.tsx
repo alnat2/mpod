@@ -108,6 +108,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const {
     commitPlayback,
     commitCurrentPlayback,
+    allowPlaybackProgress,
     commitActivePlayback,
     refreshPlaybackState,
     loadQueue,
@@ -180,6 +181,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       setAudioDuration,
       commitPlayback,
       commitCurrentPlayback,
+      allowPlaybackProgress,
       commitActivePlayback,
       refreshPlaybackState,
       loadQueue,

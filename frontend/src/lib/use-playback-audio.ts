@@ -76,6 +76,7 @@ type UsePlaybackAudioOptions = {
   >;
   commitPlayback: CommitPlayback;
   commitCurrentPlayback: (options?: { beacon?: boolean }) => void;
+  allowPlaybackProgress: (episode: QueueEpisode) => void;
   commitActivePlayback: (episode: QueueEpisode) => Promise<void>;
   refreshPlaybackState: (
     episode: QueueEpisode,
@@ -111,6 +112,7 @@ export function usePlaybackAudio({
   setAudioDuration,
   commitPlayback,
   commitCurrentPlayback,
+  allowPlaybackProgress,
   commitActivePlayback,
   refreshPlaybackState,
   loadQueue,
@@ -140,6 +142,7 @@ export function usePlaybackAudio({
 
     const startQueuedEpisode = (episode: QueueEpisode) => {
       const nextPosition = episode.playback?.positionSeconds ?? 0;
+      currentEpisodeRef.current = episode;
       setActiveItemKey(queueItemKey(episode));
       void commitActivePlayback(episode);
       sourceReadyRef.current = false;
@@ -340,6 +343,7 @@ export function usePlaybackAudio({
     };
   }, [
     audioRef,
+    allowPlaybackProgress,
     commitActivePlayback,
     commitCurrentPlayback,
     commitPlayback,
@@ -610,6 +614,7 @@ export function usePlaybackAudio({
 
     if (audio && currentEpisode) {
       completedAudioSourceRef.current = null;
+      allowPlaybackProgress(currentEpisode);
       void (async () => {
         const syncedEpisode = await refreshPlaybackState(currentEpisode);
         void commitActivePlayback(syncedEpisode);
@@ -641,6 +646,7 @@ export function usePlaybackAudio({
     setPlaying(true);
   }, [
     audioRef,
+    allowPlaybackProgress,
     commitActivePlayback,
     commitCurrentPlayback,
     currentEpisode,
@@ -668,6 +674,9 @@ export function usePlaybackAudio({
           (episode) =>
             !isAudiobookQueueItem(episode) && episode.id === episodeId
         ) ?? null;
+      if (queuedEpisode) {
+        allowPlaybackProgress(queuedEpisode);
+      }
       void (async () => {
         const syncedEpisode = queuedEpisode
           ? await refreshPlaybackState(queuedEpisode)
@@ -710,6 +719,7 @@ export function usePlaybackAudio({
     },
     [
       audioRef,
+      allowPlaybackProgress,
       commitActivePlayback,
       pendingPlayEpisodeIdRef,
       queue,
@@ -734,6 +744,7 @@ export function usePlaybackAudio({
 
       completionInProgressEpisodeIdRef.current = null;
       completedAudioSourceRef.current = null;
+      allowPlaybackProgress(item);
       setPlaybackError(null);
       userInitiatedPlayRef.current = true;
       void (async () => {
@@ -770,6 +781,7 @@ export function usePlaybackAudio({
     },
     [
       audioRef,
+      allowPlaybackProgress,
       commitActivePlayback,
       playEpisode,
       refreshPlaybackState,
@@ -795,6 +807,7 @@ export function usePlaybackAudio({
         return;
       }
 
+      allowPlaybackProgress({ ...queuedBook, trackId: track.id });
       completionInProgressEpisodeIdRef.current = null;
       completedAudioSourceRef.current = null;
       setPlaybackError(null);
@@ -866,6 +879,7 @@ export function usePlaybackAudio({
     },
     [
       audioRef,
+      allowPlaybackProgress,
       commitCurrentPlayback,
       queue,
       setActiveItemKey,

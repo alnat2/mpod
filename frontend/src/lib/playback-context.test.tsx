@@ -28,6 +28,7 @@ class FakeAudio {
 
   src = "";
   private currentTimeValue = 0;
+  onCurrentTimeSet: ((value: number) => void) | null = null;
   throwOnCurrentTimeSet = false;
   duration = 0;
   readyState = 1;
@@ -62,6 +63,7 @@ class FakeAudio {
       throw new DOMException("Seek is not ready", "NotSupportedError");
     }
     this.currentTimeValue = value;
+    this.onCurrentTimeSet?.(value);
   }
 
   addEventListener(type: string, listener: () => void) {
@@ -2043,6 +2045,28 @@ describe("PlaybackProvider", () => {
 
   it("completes an audiobook from the media ended state before the ended event arrives", async () => {
     const user = userEvent.setup();
+    const sendBeaconSpy = vi.fn(
+      (url: string | URL, data?: BodyInit | null) => {
+        void url;
+        void data;
+        return true;
+      }
+    );
+    Object.defineProperty(navigator, "sendBeacon", {
+      configurable: true,
+      value: sendBeaconSpy,
+    });
+    let progressIntervalCallback: (() => void) | null = null;
+    const originalSetInterval = window.setInterval.bind(window);
+    vi.spyOn(window, "setInterval").mockImplementation((handler, timeout) => {
+      if (timeout === 15_000 && typeof handler === "function") {
+        progressIntervalCallback = handler;
+      }
+      return originalSetInterval(
+        handler,
+        timeout
+      ) as unknown as ReturnType<typeof setInterval>;
+    });
     const firstTrack = {
       id: 501,
       trackNumber: 1,
@@ -2060,9 +2084,11 @@ describe("PlaybackProvider", () => {
       id: 502,
       trackNumber: 2,
       audioUrl: "/api/audiobooks/100/tracks/502/audio",
+      duration: 107,
       playback: {
         ...firstTrack.playback,
         trackId: 502,
+        positionSeconds: 29,
       },
     };
     const followingEpisode = {
@@ -2172,6 +2198,7 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("track-id")).toHaveTextContent("501")
     );
     await user.click(screen.getByRole("button", { name: "Play audiobook" }));
+    await waitFor(() => expect(progressIntervalCallback).not.toBeNull());
 
     const audio = FakeAudio.first;
     audio.duration = 103;
@@ -2226,6 +2253,33 @@ describe("PlaybackProvider", () => {
         completed: true,
       })
     );
+    const firstCompletionCallIndex = updateSpy.mock.calls.findIndex(
+      ([payload]) =>
+        payload.completed && payload.trackId === firstTrack.id
+    );
+    (progressIntervalCallback as (() => void) | null)?.();
+    window.dispatchEvent(new Event("pagehide"));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      updateSpy.mock.calls
+        .slice(firstCompletionCallIndex + 1)
+        .filter(
+          ([payload]) =>
+            !payload.completed && payload.trackId === firstTrack.id
+        )
+    ).toHaveLength(0);
+    expect(sendBeaconSpy).not.toHaveBeenCalled();
+
+    audio.onCurrentTimeSet = (value) => {
+      if (value !== secondTrack.playback.positionSeconds) {
+        return;
+      }
+      audio.onCurrentTimeSet = null;
+      progressIntervalCallback?.();
+      window.dispatchEvent(new Event("pagehide"));
+    };
     await act(async () => {
       firstCompletion.resolve({
         playback: {
@@ -2250,6 +2304,48 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("playing")).toHaveTextContent("yes")
     );
     audio.emit("playing");
+
+    const progressCallsAfterFirstCompletion = updateSpy.mock.calls
+      .slice(firstCompletionCallIndex + 1)
+      .map(([payload]) => payload)
+      .filter((payload) => !payload.completed);
+    expect(progressCallsAfterFirstCompletion).not.toContainEqual(
+      expect.objectContaining({ trackId: firstTrack.id })
+    );
+    expect(progressCallsAfterFirstCompletion).toContainEqual(
+      expect.objectContaining({
+        audiobookId: 100,
+        trackId: secondTrack.id,
+        positionSeconds: secondTrack.playback.positionSeconds,
+        durationSeconds: secondTrack.duration,
+        completed: false,
+      })
+    );
+    expect(sendBeaconSpy).toHaveBeenCalledTimes(1);
+    const beaconBody = sendBeaconSpy.mock.calls[0]?.[1];
+    expect(beaconBody).toBeInstanceOf(Blob);
+    if (!(beaconBody instanceof Blob)) {
+      throw new Error("Expected playback beacon body");
+    }
+    const beaconPayload = await new Promise<Record<string, unknown>>(
+      (resolve, reject) => {
+        const reader = new FileReader();
+        reader.addEventListener("load", () => {
+          resolve(JSON.parse(String(reader.result)) as Record<string, unknown>);
+        });
+        reader.addEventListener("error", () => reject(reader.error));
+        reader.readAsText(beaconBody);
+      }
+    );
+    expect(beaconPayload).toEqual(
+      expect.objectContaining({
+        audiobookId: 100,
+        trackId: secondTrack.id,
+        positionSeconds: secondTrack.playback.positionSeconds,
+        durationSeconds: secondTrack.duration,
+        completed: false,
+      })
+    );
 
     audio.duration = 107;
     audio.currentTime = 107;
@@ -2286,5 +2382,161 @@ describe("PlaybackProvider", () => {
         completed: true,
       })
     );
+    expect(
+      updateSpy.mock.calls.filter(
+        ([payload]) =>
+          payload.completed && payload.trackId === firstTrack.id
+      )
+    ).toHaveLength(1);
+  });
+
+  it("keeps a rejected audiobook completion locked until explicit replay", async () => {
+    const user = userEvent.setup();
+    const sendBeaconSpy = vi.fn(
+      (url: string | URL, data?: BodyInit | null) => {
+        void url;
+        void data;
+        return true;
+      }
+    );
+    Object.defineProperty(navigator, "sendBeacon", {
+      configurable: true,
+      value: sendBeaconSpy,
+    });
+    let progressIntervalCallback: (() => void) | null = null;
+    const originalSetInterval = window.setInterval.bind(window);
+    vi.spyOn(window, "setInterval").mockImplementation((handler, timeout) => {
+      if (timeout === 15_000 && typeof handler === "function") {
+        progressIntervalCallback = handler;
+      }
+      return originalSetInterval(
+        handler,
+        timeout
+      ) as unknown as ReturnType<typeof setInterval>;
+    });
+    const audiobookItem = {
+      id: 100,
+      podcastId: 0,
+      type: "audiobook" as const,
+      audiobookId: 100,
+      trackId: 501,
+      trackNumber: 1,
+      trackCount: 1,
+      title: "Sample Audiobook",
+      description: "",
+      podcastTitle: "Sample Author",
+      author: "Sample Author",
+      audioUrl: "/api/audiobooks/100/tracks/501/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: {
+        audiobookId: 100,
+        trackId: 501,
+        positionSeconds: 0,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    };
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [audiobookItem],
+      activePlayback: {
+        audiobookId: 100,
+        trackId: 501,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    });
+    const updateSpy = vi
+      .mocked(api.playback.update)
+      .mockImplementation(async (payload) => {
+        if (payload.completed) {
+          throw new Error("completion rejected");
+        }
+        return {
+          playback: {
+            audiobookId: 100,
+            trackId: payload.trackId ?? 501,
+            positionSeconds: payload.positionSeconds,
+            lastUpdated: "2026-05-22T08:01:00Z",
+          },
+          nextTrackId: null,
+          nextEpisodeId: null,
+        };
+      });
+
+    function RejectedCompletionHarness() {
+      const { queue, currentEpisode, playQueueItem } = usePlayback();
+      return (
+        <>
+          <div data-testid="rejected-track-id">{currentEpisode?.trackId}</div>
+          <button
+            type="button"
+            onClick={() => {
+              const item = queue[0];
+              if (item) playQueueItem(item);
+            }}
+          >
+            Replay rejected audiobook
+          </button>
+        </>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <RejectedCompletionHarness />
+      </PlaybackProvider>
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("rejected-track-id")).toHaveTextContent("501")
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Replay rejected audiobook" })
+    );
+    await waitFor(() => expect(progressIntervalCallback).not.toBeNull());
+
+    const audio = FakeAudio.first;
+    audio.duration = 100;
+    audio.currentTime = 100;
+    audio.ended = true;
+    audio.emit("timeupdate");
+    await waitFor(() =>
+      expect(
+        updateSpy.mock.calls.filter(
+          ([payload]) => payload.completed && payload.trackId === 501
+        )
+      ).toHaveLength(1)
+    );
+
+    (progressIntervalCallback as (() => void) | null)?.();
+    window.dispatchEvent(new Event("pagehide"));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      updateSpy.mock.calls.filter(
+        ([payload]) => !payload.completed && payload.trackId === 501
+      )
+    ).toHaveLength(0);
+    expect(sendBeaconSpy).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", { name: "Replay rejected audiobook" })
+    );
+    audio.currentTime = 40;
+    (progressIntervalCallback as (() => void) | null)?.();
+    window.dispatchEvent(new Event("pagehide"));
+    await waitFor(() =>
+      expect(updateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          audiobookId: 100,
+          trackId: 501,
+          positionSeconds: 40,
+          durationSeconds: 100,
+          completed: false,
+        })
+      )
+    );
+    expect(sendBeaconSpy).toHaveBeenCalledTimes(1);
   });
 });
