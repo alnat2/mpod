@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { api, type Episode, type Podcast } from "@/lib/api";
+import { api, ApiError, type Episode, type Podcast } from "@/lib/api";
 import { SubscriptionsCacheProvider } from "@/lib/subscriptions-cache-provider";
 
 import { SubscriptionsScreen } from "./subscriptions-screen";
@@ -680,6 +680,154 @@ describe("SubscriptionsScreen", () => {
     expect(
       within(row).getByRole("button", { name: "Mark as unlistened" })
     ).toBeInTheDocument();
+  });
+
+  it("marks all podcast episodes as listened via single POST endpoint on desktop and updates UI", async () => {
+    const user = userEvent.setup();
+    const secondEpisode: Episode = {
+      ...baseEpisode,
+      id: 102,
+      title: "QA second episode",
+    };
+    const thirdEpisode: Episode = {
+      ...baseEpisode,
+      id: 103,
+      title: "QA third episode",
+    };
+    vi.spyOn(api.episodes, "list")
+      .mockResolvedValueOnce({
+        episodes: [baseEpisode, secondEpisode, thirdEpisode],
+      })
+      .mockResolvedValue({
+        episodes: [
+          { ...baseEpisode, isListened: true },
+          { ...secondEpisode, isListened: true },
+          { ...thirdEpisode, isListened: true },
+        ],
+      });
+
+    const markAllListenedSpy = vi
+      .spyOn(api.podcasts, "markAllListened")
+      .mockResolvedValue({ success: true, markedEpisodes: 3 });
+    const setListenedSpy = vi.spyOn(api.episodes, "setListened");
+
+    renderSubscriptionsScreen();
+
+    expect(await screen.findByText("3 / 3 episodes")).toBeInTheDocument();
+    expect(screen.getByText("QA reorder third")).toBeInTheDocument();
+    expect(screen.getByText("QA second episode")).toBeInTheDocument();
+    expect(screen.getByText("QA third episode")).toBeInTheDocument();
+
+    const markAllButton = screen.getByRole("button", {
+      name: "Mark all listened",
+    });
+    await user.click(markAllButton);
+
+    await waitFor(() => {
+      expect(markAllListenedSpy).toHaveBeenCalledTimes(1);
+      expect(markAllListenedSpy).toHaveBeenCalledWith(podcast.id);
+    });
+
+    expect(setListenedSpy).not.toHaveBeenCalled();
+    expect(reloadQueueMock).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => {
+      expect(screen.getByText("All caught up")).toBeInTheDocument();
+      expect(screen.getByText("1 podcast · 0 unlistened")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: "Mark all listened" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("marks all podcast episodes as listened via single POST endpoint on mobile", async () => {
+    const user = userEvent.setup();
+    setViewportMatch(true);
+    globalThis.IntersectionObserver =
+      makeIntersectingObserver() as unknown as typeof IntersectionObserver;
+
+    const secondEpisode: Episode = {
+      ...baseEpisode,
+      id: 102,
+      title: "QA mobile second episode",
+    };
+    vi.spyOn(api.episodes, "list").mockResolvedValue({
+      episodes: [baseEpisode, secondEpisode],
+    });
+
+    const markAllListenedSpy = vi
+      .spyOn(api.podcasts, "markAllListened")
+      .mockResolvedValue({ success: true, markedEpisodes: 2 });
+    const setListenedSpy = vi.spyOn(api.episodes, "setListened");
+
+    renderSubscriptionsScreen();
+
+    const markAllButton = await screen.findByRole("button", {
+      name: "Mark all listened",
+    });
+    await user.click(markAllButton);
+
+    await waitFor(() => {
+      expect(markAllListenedSpy).toHaveBeenCalledTimes(1);
+      expect(markAllListenedSpy).toHaveBeenCalledWith(podcast.id);
+    });
+
+    expect(setListenedSpy).not.toHaveBeenCalled();
+    expect(reloadQueueMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rolls back optimistic updates, shows an error banner, and does not reload the queue when Mark all listened fails", async () => {
+    const user = userEvent.setup();
+    const secondEpisode: Episode = {
+      ...baseEpisode,
+      id: 102,
+      title: "QA second episode",
+    };
+    vi.spyOn(api.episodes, "list").mockResolvedValue({
+      episodes: [baseEpisode, secondEpisode],
+    });
+
+    const markAllListenedSpy = vi
+      .spyOn(api.podcasts, "markAllListened")
+      .mockRejectedValue(
+        new ApiError(
+          "Failed to mark podcast episodes listened",
+          "PODCAST_MARK_ALL_LISTENED_FAILED",
+          500
+        )
+      );
+    const setListenedSpy = vi.spyOn(api.episodes, "setListened");
+
+    renderSubscriptionsScreen();
+
+    expect(await screen.findByText("Build Your SaaS")).toBeInTheDocument();
+    expect(screen.getByText("QA reorder third")).toBeInTheDocument();
+    expect(screen.getByText("QA second episode")).toBeInTheDocument();
+    expect(screen.getByText("2 / 2 episodes")).toBeInTheDocument();
+
+    const markAllButton = screen.getByRole("button", {
+      name: "Mark all listened",
+    });
+    await user.click(markAllButton);
+
+    await waitFor(() => {
+      expect(markAllListenedSpy).toHaveBeenCalledWith(podcast.id);
+    });
+
+    expect(
+      await screen.findByText("Failed to mark podcast episodes listened")
+    ).toBeInTheDocument();
+
+    expect(screen.getByText("Build Your SaaS")).toBeInTheDocument();
+    expect(screen.getByText("QA reorder third")).toBeInTheDocument();
+    expect(screen.getByText("QA second episode")).toBeInTheDocument();
+    expect(screen.getByText("2 / 2 episodes")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Mark all listened" })
+    ).toBeInTheDocument();
+
+    expect(reloadQueueMock).not.toHaveBeenCalled();
+    expect(setListenedSpy).not.toHaveBeenCalled();
   });
 
   it("keeps the page content visible while reconciling after mark listened", async () => {

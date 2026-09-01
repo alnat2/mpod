@@ -282,6 +282,45 @@ export function useSubscriptionActions({
     }
   }
 
+  async function markAllListened(podcastId: number) {
+    setActionError(null);
+    const targetPodcast = podcasts.find((podcast) => podcast.id === podcastId);
+    if (!targetPodcast) {
+      return;
+    }
+
+    const previousPodcasts = podcasts;
+    const exitingIds = !showAll ? [podcastId] : [];
+
+    await animatePodcastExit(exitingIds);
+
+    setPodcasts((current) =>
+      current.map((podcast) =>
+        podcast.id === podcastId
+          ? {
+              ...podcast,
+              episodes: podcast.episodes.map((episode) => ({
+                ...episode,
+                isListened: true,
+                inPlaylist: false,
+                downloaded: false,
+              })),
+            }
+          : podcast
+      )
+    );
+    clearPodcastExit(exitingIds);
+
+    try {
+      await api.podcasts.markAllListened(podcastId);
+      await reloadQueue();
+      setReloadKey((current) => current + 1);
+    } catch (caught) {
+      setPodcasts(previousPodcasts);
+      setActionError(getErrorMessage(caught));
+    }
+  }
+
   async function removeFromPlaylist(
     episode: Pick<Episode, "id" | "title">
   ) {
@@ -309,6 +348,7 @@ export function useSubscriptionActions({
   return {
     actionError,
     exitingPodcastIds,
+    markAllListened,
     markListened,
     pendingActions,
     pendingUnsubscribePodcastIds,

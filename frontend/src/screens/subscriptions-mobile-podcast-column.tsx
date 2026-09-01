@@ -30,6 +30,7 @@ function episodeSummaryLabel(totalCount: number, unlistenedCount: number) {
 
 type MobilePodcastColumnProps = {
   onAddToPlaylist: (episodeId: number) => void;
+  onMarkAllListened: (podcastId: number) => void;
   onMarkListened: (
     episodes: Array<Pick<Episode, "id" | "title">>,
     isListened: boolean
@@ -44,6 +45,7 @@ type MobilePodcastColumnProps = {
 
 export function MobilePodcastColumn({
   onAddToPlaylist,
+  onMarkAllListened,
   onMarkListened,
   onRemoveFromPlaylist,
   onShowNotes,
@@ -153,12 +155,7 @@ export function MobilePodcastColumn({
                   variant="link"
                   type="button"
                   className="h-auto whitespace-normal py-1 text-right leading-tight"
-                  onClick={() =>
-                    onMarkListened(
-                      visibleEpisodes.filter((episode) => !episode.isListened),
-                      true
-                    )
-                  }
+                  onClick={() => onMarkAllListened(podcast.id)}
                 >
                   Mark all listened
                 </Button>

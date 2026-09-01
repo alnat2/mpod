@@ -92,6 +92,7 @@ export function SubscriptionsScreen() {
   const {
     actionError,
     exitingPodcastIds,
+    markAllListened,
     markListened,
     pendingActions,
     pendingUnsubscribePodcastIds,
@@ -292,6 +293,9 @@ export function SubscriptionsScreen() {
                               visibleEpisodes={episodes}
                               showAll={showAll}
                               podcastCardNode={renderPodcastCard(podcast)}
+                              onMarkAllListened={(podcastId) =>
+                                void markAllListened(podcastId)
+                              }
                               onMarkListened={(items, isListened) =>
                                 void markListened(items, isListened)
                               }
@@ -318,6 +322,9 @@ export function SubscriptionsScreen() {
                       key={`${selectedPodcast.id}-${showAll ? "all" : "unlistened"}`}
                       podcast={selectedPodcast}
                       visibleEpisodes={visibleEpisodes}
+                      onMarkAllListened={(podcastId) =>
+                        void markAllListened(podcastId)
+                      }
                       onMarkListened={(items, isListened) =>
                         void markListened(items, isListened)
                       }

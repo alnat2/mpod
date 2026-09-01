@@ -26,6 +26,7 @@ const DEFAULT_EPISODE_VIEWPORT_HEIGHT = 350;
 
 type SubscriptionsDesktopEpisodeListProps = {
   onAddToPlaylist: (episodeId: number) => void;
+  onMarkAllListened: (podcastId: number) => void;
   onMarkListened: (
     episodes: Array<Pick<Episode, "id" | "title">>,
     isListened: boolean
@@ -42,6 +43,7 @@ function episodeSummaryLabel(totalCount: number, unlistenedCount: number) {
 
 export function SubscriptionsDesktopEpisodeList({
   onAddToPlaylist,
+  onMarkAllListened,
   onMarkListened,
   onRemoveFromPlaylist,
   onShowNotes,
@@ -124,12 +126,7 @@ export function SubscriptionsDesktopEpisodeList({
               variant="link"
               type="button"
               className="h-auto whitespace-normal py-1 text-right leading-tight"
-              onClick={() =>
-                onMarkListened(
-                  visibleEpisodes.filter((episode) => !episode.isListened),
-                  true
-                )
-              }
+              onClick={() => onMarkAllListened(podcast.id)}
             >
               Mark all listened
             </Button>
