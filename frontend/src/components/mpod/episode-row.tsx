@@ -1,8 +1,9 @@
-import type {
-  DragEventHandler,
-  MouseEventHandler,
-  PointerEventHandler,
-  ReactNode,
+import {
+  memo,
+  type DragEventHandler,
+  type MouseEventHandler,
+  type PointerEventHandler,
+  type ReactNode,
 } from "react";
 
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -132,7 +133,7 @@ function EpisodeIconButton({
   );
 }
 
-export function EpisodeRow({
+export const EpisodeRow = memo(function EpisodeRow({
   className,
   compactMobile = false,
   current,
@@ -338,4 +339,4 @@ export function EpisodeRow({
       ) : null}
     </div>
   );
-}
+});

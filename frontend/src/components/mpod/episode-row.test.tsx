@@ -315,4 +315,40 @@ describe("EpisodeRow", () => {
       screen.getByText("Robert Galbraith · Chapter 3 / 15 · now playing")
     ).toBeInTheDocument();
   });
+
+  it("hides artwork on mobile layout and displays it on desktop layout", () => {
+    const { container, rerender } = render(
+      <TooltipProvider>
+        <EpisodeRow
+          layout="mobile"
+          title="Artwork Test"
+          thumbnailUrl="/cover.png"
+          showArtwork
+          showDragHandle
+        />
+      </TooltipProvider>
+    );
+
+    const mobileArtwork = container.querySelector("img")?.parentElement;
+    expect(mobileArtwork).toHaveClass("hidden");
+    const mobileDragHandle = container.querySelector('[data-episode-drag-handle="true"]');
+    expect(mobileDragHandle).toHaveClass("absolute", "size-8", "left-0");
+
+    rerender(
+      <TooltipProvider>
+        <EpisodeRow
+          layout="desktop"
+          title="Artwork Test"
+          thumbnailUrl="/cover.png"
+          showArtwork
+          showDragHandle
+        />
+      </TooltipProvider>
+    );
+
+    const desktopArtwork = container.querySelector("img")?.parentElement;
+    expect(desktopArtwork).toHaveClass("size-10", "block");
+    const desktopDragHandle = container.querySelector('[data-episode-drag-handle="true"]');
+    expect(desktopDragHandle).toHaveClass("size-6");
+  });
 });

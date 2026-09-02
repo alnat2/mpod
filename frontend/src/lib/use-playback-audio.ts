@@ -126,6 +126,11 @@ export function usePlaybackAudio({
     itemKey: QueueItemKey;
     downloaded: boolean;
   } | null>(null);
+  const positionSecondsRef = useRef(positionSeconds);
+
+  useEffect(() => {
+    positionSecondsRef.current = positionSeconds;
+  }, [positionSeconds]);
 
   useEffect(() => {
     const audio = new Audio();
@@ -260,6 +265,7 @@ export function usePlaybackAudio({
     };
 
     const onTimeUpdate = () => {
+      positionSecondsRef.current = audio.currentTime;
       setPositionSeconds(audio.currentTime);
       const nextDuration = readAudioDuration(audio);
       const current = currentEpisodeRef.current;
@@ -619,7 +625,7 @@ export function usePlaybackAudio({
         const syncedEpisode = await refreshPlaybackState(currentEpisode);
         void commitActivePlayback(syncedEpisode);
         const nextPosition =
-          syncedEpisode.playback?.positionSeconds ?? positionSeconds ?? 0;
+          syncedEpisode.playback?.positionSeconds ?? positionSecondsRef.current ?? 0;
         sourceReadyRef.current = false;
         primeAudioSource(
           audio,
@@ -652,7 +658,6 @@ export function usePlaybackAudio({
     currentEpisode,
     playing,
     playingRef,
-    positionSeconds,
     refreshPlaybackState,
     setPlaybackError,
     setPlaying,

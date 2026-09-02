@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { useEffect, useState, type DragEventHandler, type ReactNode } from "react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,6 +21,9 @@ const updateQueueMock = vi.fn();
 const scheduleActionMock = vi.fn();
 const undoActionMock = vi.fn();
 let playbackDurationSeconds = 2400;
+let positionSeconds = 96;
+let episodeRowRenderCount = 0;
+const progressListeners = new Set<() => void>();
 
 const baseQueue = [
   {
@@ -67,26 +70,72 @@ let queue: PlaybackQueueEpisode[] = [...baseQueue];
 let currentEpisode: PlaybackQueueEpisode | (typeof baseQueue)[number] = queue[1]!;
 
 vi.mock("@/lib/playback-context", () => ({
-  usePlayback: () => ({
+  usePlaybackState: () => ({
     queue,
     currentEpisode,
-    updateQueue: updateQueueMock,
     loading: false,
     playbackError: null,
-    reloadQueue: reloadQueueMock,
     playing: false,
+    speedLabel: "Speed 1.3x",
+  }),
+  usePlaybackProgress: () => {
+    const [, setTick] = useState(0);
+    useEffect(() => {
+      const listener = () => setTick((t) => t + 1);
+      progressListeners.add(listener);
+      return () => {
+        progressListeners.delete(listener);
+      };
+    }, []);
+    return {
+      positionSeconds,
+      durationSeconds: playbackDurationSeconds,
+    };
+  },
+  usePlaybackDispatch: () => ({
+    updateQueue: updateQueueMock,
+    reloadQueue: reloadQueueMock,
     playToggle: playToggleMock,
     playEpisode: playEpisodeMock,
     playQueueItem: playQueueItemMock,
-    positionSeconds: 96,
-    durationSeconds: playbackDurationSeconds,
-    speedLabel: "Speed 1.3x",
+    playAudiobookTrack: vi.fn(),
     setSpeedLabel: setSpeedLabelMock,
     clearPlaybackError: clearPlaybackErrorMock,
     seekBackward: seekBackwardMock,
     seekForward: seekForwardMock,
     seekTo: seekToMock,
   }),
+  usePlayback: () => {
+    const [, setTick] = useState(0);
+    useEffect(() => {
+      const listener = () => setTick((t) => t + 1);
+      progressListeners.add(listener);
+      return () => {
+        progressListeners.delete(listener);
+      };
+    }, []);
+    return {
+      queue,
+      currentEpisode,
+      updateQueue: updateQueueMock,
+      loading: false,
+      playbackError: null,
+      reloadQueue: reloadQueueMock,
+      playing: false,
+      playToggle: playToggleMock,
+      playEpisode: playEpisodeMock,
+      playQueueItem: playQueueItemMock,
+      playAudiobookTrack: vi.fn(),
+      positionSeconds,
+      durationSeconds: playbackDurationSeconds,
+      speedLabel: "Speed 1.3x",
+      setSpeedLabel: setSpeedLabelMock,
+      clearPlaybackError: clearPlaybackErrorMock,
+      seekBackward: seekBackwardMock,
+      seekForward: seekForwardMock,
+      seekTo: seekToMock,
+    };
+  },
 }));
 
 vi.mock("./add-podcast-modal", () => ({
@@ -160,6 +209,8 @@ vi.mock("@/components/mpod", () => ({
     downloaded,
     inPlaylist,
     showDragHandle,
+    draggable,
+    onDragStart,
     actions = [],
   }: {
     title: string;
@@ -168,29 +219,36 @@ vi.mock("@/components/mpod", () => ({
     downloaded?: boolean;
     inPlaylist?: boolean;
     showDragHandle?: boolean;
+    draggable?: boolean;
+    onDragStart?: DragEventHandler<HTMLDivElement>;
     actions?: Array<{ label: string; onClick?: () => void }>;
-  }) => (
-    <div
-      data-testid={`episode-row-${title}`}
-      data-current={current ? "yes" : "no"}
-      data-current-status-label={currentStatusLabel}
-      data-downloaded={downloaded ? "yes" : "no"}
-      data-in-playlist={inPlaylist ? "yes" : "no"}
-    >
-      {showDragHandle ? <span data-testid={`drag-handle-${title}`} /> : null}
-      <span>{title}</span>
-      {actions.map((action) => (
-        <button
-          key={action.label}
-          type="button"
-          aria-label={action.label}
-          onClick={action.onClick}
-        >
-          {action.label}
-        </button>
-      ))}
-    </div>
-  ),
+  }) => {
+    episodeRowRenderCount += 1;
+    return (
+      <div
+        data-testid={`episode-row-${title}`}
+        data-current={current ? "yes" : "no"}
+        data-current-status-label={currentStatusLabel}
+        data-downloaded={downloaded ? "yes" : "no"}
+        data-in-playlist={inPlaylist ? "yes" : "no"}
+        draggable={draggable}
+        onDragStart={onDragStart}
+      >
+        {showDragHandle ? <span data-testid={`drag-handle-${title}`} /> : null}
+        <span>{title}</span>
+        {actions.map((action) => (
+          <button
+            key={action.label}
+            type="button"
+            aria-label={action.label}
+            onClick={action.onClick}
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
+    );
+  },
   ModalScreen: ({ children }: { children: ReactNode }) => (
     <div data-testid="modal">{children}</div>
   ),
@@ -226,6 +284,8 @@ describe("HomeScreen", () => {
     scheduleActionMock.mockReset();
     undoActionMock.mockReset();
     playbackDurationSeconds = 2400;
+    positionSeconds = 96;
+    episodeRowRenderCount = 0;
     queue = [...baseQueue];
     currentEpisode = queue[1]!;
   });
@@ -411,5 +471,46 @@ describe("HomeScreen", () => {
       expect(removeSpy).toHaveBeenCalledWith(1);
     });
     expect(scheduleActionMock).not.toHaveBeenCalled();
+  });
+
+  it("does not re-render queue episode rows when only playback position updates", async () => {
+    render(<HomeScreen />);
+
+    expect(await screen.findByTestId("elapsed-label")).toHaveTextContent("1:36");
+    const initialRenderCount = episodeRowRenderCount;
+    expect(initialRenderCount).toBeGreaterThan(0);
+
+    act(() => {
+      positionSeconds = 120;
+      progressListeners.forEach((listener) => listener());
+    });
+
+    expect(await screen.findByTestId("elapsed-label")).toHaveTextContent("2:00");
+    expect(episodeRowRenderCount).toBe(initialRenderCount);
+  });
+
+  it("does not start drag reorder when drag begins from an action button, but starts when drag begins from row", async () => {
+    render(<HomeScreen />);
+
+    const row = await screen.findByTestId("episode-row-First queued episode");
+    const playButtons = screen.getAllByRole("button", { name: "Play" });
+    const playButton = playButtons[0]!;
+
+    const mockDataTransfer = {
+      effectAllowed: "",
+      setData: vi.fn(),
+    };
+
+    // Drag starting from an action button inside the row
+    fireEvent.dragStart(playButton, {
+      dataTransfer: mockDataTransfer,
+    });
+    expect(mockDataTransfer.setData).not.toHaveBeenCalled();
+
+    // Drag starting from the row
+    fireEvent.dragStart(row, {
+      dataTransfer: mockDataTransfer,
+    });
+    expect(mockDataTransfer.setData).toHaveBeenCalledWith("text/plain", "episode:1");
   });
 });
