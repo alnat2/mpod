@@ -169,4 +169,150 @@ describe("EpisodeRow", () => {
       container.querySelector('[data-episode-drag-handle="true"]')
     ).toBeInTheDocument();
   });
+
+  it("shows 'Now playing · Chapter N / M' for active mobile multi-chapter audiobooks when currentStatusLabel is provided", () => {
+    render(
+      <TooltipProvider>
+        <EpisodeRow
+          compactMobile
+          current
+          currentStatusLabel="Now playing · Chapter 3 / 15"
+          layout="mobile"
+          title="The Running Grave"
+          podcastTitle="Robert Galbraith"
+          subtitle="Robert Galbraith · Chapter 3 / 15"
+          durationLabel="34h 12m"
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText("The Running Grave")).toBeInTheDocument();
+    expect(screen.getByText("Now playing · Chapter 3 / 15")).toBeInTheDocument();
+    expect(screen.getByText("34h 12m")).toBeInTheDocument();
+  });
+
+  it("shows full subtitle for inactive mobile multi-chapter audiobooks", () => {
+    render(
+      <TooltipProvider>
+        <EpisodeRow
+          compactMobile
+          current={false}
+          layout="mobile"
+          title="The Running Grave"
+          podcastTitle="Robert Galbraith"
+          subtitle="Robert Galbraith · Chapter 3 / 15"
+          durationLabel="34h 12m"
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText("The Running Grave")).toBeInTheDocument();
+    expect(screen.getByText("Robert Galbraith · Chapter 3 / 15")).toBeInTheDocument();
+    expect(screen.queryByText("Now playing · Chapter 3 / 15")).not.toBeInTheDocument();
+    expect(screen.queryByText("Now playing")).not.toBeInTheDocument();
+  });
+
+  it("shows 'Now playing' for an active podcast with podcastTitle 'Chapter 3' without altering the status label", () => {
+    const { rerender } = render(
+      <TooltipProvider>
+        <EpisodeRow
+          current
+          layout="mobile"
+          title="Episode 1"
+          podcastTitle="Chapter 3"
+          durationLabel="45m"
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText("Episode 1")).toBeInTheDocument();
+    expect(screen.getByText("Now playing")).toBeInTheDocument();
+    expect(screen.queryByText("Now playing · Chapter 3")).not.toBeInTheDocument();
+
+    rerender(
+      <TooltipProvider>
+        <EpisodeRow
+          current
+          layout="mobile"
+          title="Chapter 3: The Big Reveal"
+          podcastTitle="Audio Drama Podcast"
+          subtitle="Chapter 3: The Big Reveal"
+          durationLabel="45m"
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText("Chapter 3: The Big Reveal")).toBeInTheDocument();
+    expect(screen.getByText("Now playing")).toBeInTheDocument();
+    expect(screen.queryByText("Now playing · Chapter 3")).not.toBeInTheDocument();
+  });
+
+  it("shows 'Now playing' for active mobile podcast and single-track audiobook without currentStatusLabel", () => {
+    const { rerender } = render(
+      <TooltipProvider>
+        <EpisodeRow
+          current
+          layout="mobile"
+          title="Why store loyalty cards became a UX minefield"
+          podcastTitle="Decoder Ring"
+          durationLabel="54m"
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText("Why store loyalty cards became a UX minefield")).toBeInTheDocument();
+    expect(screen.getByText("Now playing")).toBeInTheDocument();
+
+    rerender(
+      <TooltipProvider>
+        <EpisodeRow
+          compactMobile
+          current
+          layout="mobile"
+          title="Single Track Audiobook"
+          podcastTitle="Audiobook Author"
+          subtitle="Audiobook Author"
+          durationLabel="8h 20m"
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText("Single Track Audiobook")).toBeInTheDocument();
+    expect(screen.getByText("Now playing")).toBeInTheDocument();
+  });
+
+  it("preserves desktop presentation for active and inactive rows", () => {
+    const { rerender } = render(
+      <TooltipProvider>
+        <EpisodeRow
+          current={false}
+          layout="desktop"
+          title="The Running Grave"
+          podcastTitle="Robert Galbraith"
+          subtitle="Robert Galbraith · Chapter 3 / 15"
+          durationLabel="34h 12m"
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText("Robert Galbraith · Chapter 3 / 15")).toBeInTheDocument();
+    expect(screen.queryByText(/now playing/i)).not.toBeInTheDocument();
+
+    rerender(
+      <TooltipProvider>
+        <EpisodeRow
+          current
+          layout="desktop"
+          title="The Running Grave"
+          podcastTitle="Robert Galbraith"
+          subtitle="Robert Galbraith · Chapter 3 / 15"
+          durationLabel="34h 12m"
+        />
+      </TooltipProvider>
+    );
+
+    expect(
+      screen.getByText("Robert Galbraith · Chapter 3 / 15 · now playing")
+    ).toBeInTheDocument();
+  });
 });

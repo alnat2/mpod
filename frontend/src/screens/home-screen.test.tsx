@@ -22,7 +22,7 @@ const scheduleActionMock = vi.fn();
 const undoActionMock = vi.fn();
 let playbackDurationSeconds = 2400;
 
-const queue = [
+const baseQueue = [
   {
     id: 1,
     podcastId: 11,
@@ -58,10 +58,13 @@ const queue = [
       completed: false,
       clientUpdatedAt: "2026-05-22T08:00:00Z",
       serverUpdatedAt: "2026-05-22T08:00:00Z",
+      lastUpdated: "2026-05-22T08:00:00Z",
     },
   },
 ];
-let currentEpisode: PlaybackQueueEpisode | (typeof queue)[number] = queue[1]!;
+
+let queue: PlaybackQueueEpisode[] = [...baseQueue];
+let currentEpisode: PlaybackQueueEpisode | (typeof baseQueue)[number] = queue[1]!;
 
 vi.mock("@/lib/playback-context", () => ({
   usePlayback: () => ({
@@ -153,6 +156,7 @@ vi.mock("@/components/mpod", () => ({
   EpisodeRow: ({
     title,
     current,
+    currentStatusLabel,
     downloaded,
     inPlaylist,
     showDragHandle,
@@ -160,6 +164,7 @@ vi.mock("@/components/mpod", () => ({
   }: {
     title: string;
     current?: boolean;
+    currentStatusLabel?: string;
     downloaded?: boolean;
     inPlaylist?: boolean;
     showDragHandle?: boolean;
@@ -168,6 +173,7 @@ vi.mock("@/components/mpod", () => ({
     <div
       data-testid={`episode-row-${title}`}
       data-current={current ? "yes" : "no"}
+      data-current-status-label={currentStatusLabel}
       data-downloaded={downloaded ? "yes" : "no"}
       data-in-playlist={inPlaylist ? "yes" : "no"}
     >
@@ -220,6 +226,7 @@ describe("HomeScreen", () => {
     scheduleActionMock.mockReset();
     undoActionMock.mockReset();
     playbackDurationSeconds = 2400;
+    queue = [...baseQueue];
     currentEpisode = queue[1]!;
   });
 
@@ -267,6 +274,39 @@ describe("HomeScreen", () => {
     expect(await screen.findByTestId("player")).toHaveAttribute(
       "data-has-chapters",
       "yes"
+    );
+  });
+
+  it("passes 'Now playing · Chapter N / M' as currentStatusLabel for active multi-chapter audiobooks", async () => {
+    const multiChapterBook: PlaybackQueueEpisode = {
+      id: 8,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 8,
+      trackId: 83,
+      trackNumber: 3,
+      trackCount: 12,
+      hasChapters: true,
+      title: "Oathbringer",
+      author: "Brandon Sanderson",
+      podcastTitle: "Brandon Sanderson",
+      audioUrl: "/api/audiobooks/8/tracks/83/audio",
+      duration: 3600,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: null,
+    };
+    queue = [multiChapterBook];
+    currentEpisode = multiChapterBook;
+
+    render(<HomeScreen />);
+
+    const row = await screen.findByTestId("episode-row-Oathbringer");
+    expect(row).toHaveAttribute("data-current", "yes");
+    expect(row).toHaveAttribute(
+      "data-current-status-label",
+      "Now playing · Chapter 3 / 12"
     );
   });
 

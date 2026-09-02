@@ -38,6 +38,7 @@ type EpisodeRowProps = {
   className?: string;
   compactMobile?: boolean;
   current?: boolean;
+  currentStatusLabel?: string;
   downloaded?: boolean;
   inPlaylist?: boolean;
   layout?: "auto" | "desktop" | "mobile";
@@ -135,6 +136,7 @@ export function EpisodeRow({
   className,
   compactMobile = false,
   current,
+  currentStatusLabel,
   downloaded = false,
   layout = "auto",
   title,
@@ -173,7 +175,9 @@ export function EpisodeRow({
       { label: "Show notes", icon: ViewIcon },
     ];
   const resolvedSubtitle = subtitle ?? podcastTitle;
-  const mobileInfoLabel = current ? "Now playing" : resolvedSubtitle;
+  const mobileInfoLabel = current
+    ? (currentStatusLabel ?? "Now playing")
+    : resolvedSubtitle;
   const desktopActions = children ?? resolvedActions.map((action) => (
     <EpisodeIconButton action={action} key={action.label} />
   ));

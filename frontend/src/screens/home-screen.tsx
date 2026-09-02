@@ -385,10 +385,16 @@ export function HomeScreen() {
                       ? `/api/audiobooks/${episode.audiobookId ?? episode.id}/cover`
                       : "/audiobook-fallback.png"
                     : (episode.podcastImageUrl ?? undefined);
+                  const isMultiChapterAudiobook = Boolean(
+                    isAudiobook && episode.trackCount && episode.trackCount > 1
+                  );
                   const subtitle = isAudiobook
-                    ? episode.trackCount && episode.trackCount > 1
+                    ? isMultiChapterAudiobook
                       ? `${episode.author || "Audiobook"} · Chapter ${episode.trackNumber ?? 1} / ${episode.trackCount}`
                       : episode.author || "Audiobook"
+                    : undefined;
+                  const currentStatusLabel = isMultiChapterAudiobook
+                    ? `Now playing · Chapter ${episode.trackNumber ?? 1} / ${episode.trackCount}`
                     : undefined;
 
                   return (
@@ -397,6 +403,7 @@ export function HomeScreen() {
                       compactMobile={isMobile && isAudiobook}
                       showDragHandle
                       current={isCurrentEpisode}
+                      currentStatusLabel={currentStatusLabel}
                       downloaded={episode.downloaded}
                       title={episode.title}
                       podcastTitle={isAudiobook ? (episode.author || "Audiobook") : episode.podcastTitle}
