@@ -10,14 +10,14 @@ func TestScanDirectory(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// 1. Root single file: 1984.m4b
-	mustWriteFile(t, filepath.Join(tempDir, "1984.m4b"), "fake-audio")
+	mustCopyFixture(t, "valid.m4b", filepath.Join(tempDir, "1984.m4b"))
 
 	// 2. Root multi-track book: Мартин Иден
 	martinDir := filepath.Join(tempDir, "Мартин Иден")
 	mustMkdir(t, martinDir)
-	mustWriteFile(t, filepath.Join(martinDir, "01_Глава 1.mp3"), "fake-audio")
-	mustWriteFile(t, filepath.Join(martinDir, "10_Глава 10.mp3"), "fake-audio")
-	mustWriteFile(t, filepath.Join(martinDir, "02_Глава 2.mp3"), "fake-audio")
+	mustCopyFixture(t, "valid.mp3", filepath.Join(martinDir, "01_Глава 1.mp3"))
+	mustCopyFixture(t, "valid.mp3", filepath.Join(martinDir, "10_Глава 10.mp3"))
+	mustCopyFixture(t, "valid.mp3", filepath.Join(martinDir, "02_Глава 2.mp3"))
 	mustWriteFile(t, filepath.Join(martinDir, "cover.jpg"), "fake-cover")
 	mustWriteFile(t, filepath.Join(martinDir, "notes.txt"), "fake-notes") // should be ignored
 
@@ -26,13 +26,13 @@ func TestScanDirectory(t *testing.T) {
 	mustMkdir(t, pelevinDir)
 
 	// 3a. Standalone single file inside author folder
-	mustWriteFile(t, filepath.Join(pelevinDir, "Generation_P.m4a"), "fake-audio")
+	mustCopyFixture(t, "valid.m4a", filepath.Join(pelevinDir, "Generation_P.m4a"))
 
 	// 3b. Multi-track book inside author folder
 	ananasDir := filepath.Join(pelevinDir, "Ананасная вода для прекрасной дамы")
 	mustMkdir(t, ananasDir)
-	mustWriteFile(t, filepath.Join(ananasDir, "01.mp3"), "fake-audio")
-	mustWriteFile(t, filepath.Join(ananasDir, "02.mp3"), "fake-audio")
+	mustCopyFixture(t, "valid.mp3", filepath.Join(ananasDir, "01.mp3"))
+	mustCopyFixture(t, "valid.mp3", filepath.Join(ananasDir, "02.mp3"))
 	mustWriteFile(t, filepath.Join(ananasDir, "folder.png"), "fake-cover")
 
 	books, err := ScanDirectory(tempDir)
@@ -120,9 +120,9 @@ func TestScanDirectory_MultipleRootAudioFiles(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// Multiple separate audio files in the root directory
-	mustWriteFile(t, filepath.Join(tempDir, "Story A.mp3"), "fake-audio-a")
-	mustWriteFile(t, filepath.Join(tempDir, "Story B.m4b"), "fake-audio-b")
-	mustWriteFile(t, filepath.Join(tempDir, "Story C.m4a"), "fake-audio-c")
+	mustCopyFixture(t, "valid.mp3", filepath.Join(tempDir, "Story A.mp3"))
+	mustCopyFixture(t, "valid.m4b", filepath.Join(tempDir, "Story B.m4b"))
+	mustCopyFixture(t, "valid.m4a", filepath.Join(tempDir, "Story C.m4a"))
 
 	books, err := ScanDirectory(tempDir)
 	if err != nil {
@@ -153,6 +153,51 @@ func TestScanDirectory_MultipleRootAudioFiles(t *testing.T) {
 	}
 }
 
+func TestScanDirectory_CorruptedFileTolerance(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Valid book
+	mustCopyFixture(t, "valid.mp3", filepath.Join(tempDir, "Valid Story.mp3"))
+	// Corrupted book alongside
+	mustWriteFile(t, filepath.Join(tempDir, "Corrupted Story.mp3"), "this is not an mp3")
+
+	books, err := ScanDirectory(tempDir)
+	if err != nil {
+		t.Fatalf("ScanDirectory failed with corrupted file: %v", err)
+	}
+
+	if len(books) != 2 {
+		t.Fatalf("expected 2 books, got %d", len(books))
+	}
+
+	titles := make(map[string]ScannedBook)
+	for _, b := range books {
+		titles[b.Title] = b
+	}
+
+	b1, ok := titles["Valid Story"]
+	if !ok {
+		t.Errorf("valid story not found")
+	} else {
+		if len(b1.Tracks) != 1 {
+			t.Errorf("expected 1 track for valid story, got %d", len(b1.Tracks))
+		} else if b1.Tracks[0].Duration <= 0 {
+			t.Errorf("valid story duration <= 0")
+		}
+	}
+
+	b2, ok := titles["Corrupted Story"]
+	if !ok {
+		t.Errorf("corrupted story not found, it should still be listed")
+	} else {
+		if len(b2.Tracks) != 1 {
+			t.Errorf("expected 1 track for corrupted story, got %d", len(b2.Tracks))
+		} else if b2.Tracks[0].Duration != 0 {
+			t.Errorf("corrupted story duration should be 0, got %d", b2.Tracks[0].Duration)
+		}
+	}
+}
+
 func mustMkdir(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(path, 0o755); err != nil {
@@ -164,5 +209,16 @@ func mustWriteFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write file failed: %v", err)
+	}
+}
+
+func mustCopyFixture(t *testing.T, fixtureName, destPath string) {
+	t.Helper()
+	content, err := os.ReadFile(filepath.Join("testdata", fixtureName))
+	if err != nil {
+		t.Fatalf("read fixture failed: %v", err)
+	}
+	if err := os.WriteFile(destPath, content, 0o644); err != nil {
+		t.Fatalf("write fixture copy failed: %v", err)
 	}
 }
