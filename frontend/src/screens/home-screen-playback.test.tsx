@@ -1,8 +1,8 @@
 import { MemoryRouter } from "react-router-dom";
 import type { ComponentProps, ReactNode } from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { api, type PlaybackQueueResponse, type PlaybackState } from "@/lib/api";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { api, type PlaybackQueueResponse } from "@/lib/api";
 import { PlaybackProvider } from "@/lib/playback-context";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { HomeScreen } from "./home-screen";
@@ -11,6 +11,9 @@ vi.unmock("@/lib/playback-context");
 vi.unmock("@/components/mpod");
 
 let episodeRowRenderCount = 0;
+let playlistQueueRenderCount = 0;
+let playerRenderCount = 0;
+let homeScreenRenderCount = 0;
 
 vi.mock("@/components/mpod/episode-row", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/components/mpod/episode-row")>();
@@ -20,6 +23,41 @@ vi.mock("@/components/mpod/episode-row", async (importOriginal) => {
     EpisodeRow: (props: ComponentProps<typeof ActualEpisodeRow>) => {
       episodeRowRenderCount += 1;
       return <ActualEpisodeRow {...props} />;
+    },
+  };
+});
+
+vi.mock("@/components/mpod/playlist-queue", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/mpod/playlist-queue")>();
+  const ActualPlaylistQueue = actual.PlaylistQueue;
+  return {
+    ...actual,
+    PlaylistQueue: (props: ComponentProps<typeof ActualPlaylistQueue>) => {
+      playlistQueueRenderCount += 1;
+      return <ActualPlaylistQueue {...props} />;
+    },
+  };
+});
+
+vi.mock("@/components/mpod/player", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/mpod/player")>();
+  const ActualPlayer = actual.Player;
+  return {
+    ...actual,
+    Player: (props: ComponentProps<typeof ActualPlayer>) => {
+      playerRenderCount += 1;
+      return <ActualPlayer {...props} />;
+    },
+  };
+});
+
+vi.mock("./home-screen", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./home-screen")>();
+  return {
+    ...actual,
+    HomeScreen: () => {
+      homeScreenRenderCount += 1;
+      return actual.HomeScreen();
     },
   };
 });
@@ -197,6 +235,41 @@ const initialQueueResponse: PlaybackQueueResponse = {
   },
 };
 
+const originalMatchMedia = window.matchMedia;
+let isMobileViewport = false;
+const mediaQueryListeners = new Set<(event: MediaQueryListEvent) => void>();
+
+function setViewportMatch(matches: boolean) {
+  isMobileViewport = matches;
+  window.innerWidth = matches ? 375 : 1024;
+  const event = {
+    matches,
+    media: "(max-width: 767px)",
+  } as MediaQueryListEvent;
+  mediaQueryListeners.forEach((listener) => listener(event));
+}
+
+function setupMatchMedia() {
+  window.matchMedia = vi.fn((query: string) => ({
+    matches: query === "(max-width: 767px)" ? isMobileViewport : false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: (_type: string, listener: EventListenerOrEventListenerObject) => {
+      if (typeof listener === "function") {
+        mediaQueryListeners.add(listener as (event: MediaQueryListEvent) => void);
+      }
+    },
+    removeEventListener: (_type: string, listener: EventListenerOrEventListenerObject) => {
+      if (typeof listener === "function") {
+        mediaQueryListeners.delete(listener as (event: MediaQueryListEvent) => void);
+      }
+    },
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
+
 describe("HomeScreen Playback Integration", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -214,7 +287,14 @@ describe("HomeScreen Playback Integration", () => {
       value: mediaSession,
     });
 
+    isMobileViewport = false;
+    mediaQueryListeners.clear();
+    setupMatchMedia();
+
     episodeRowRenderCount = 0;
+    playlistQueueRenderCount = 0;
+    playerRenderCount = 0;
+    homeScreenRenderCount = 0;
 
     vi.spyOn(api.playback, "queue").mockResolvedValue(initialQueueResponse);
     vi.spyOn(api.settings, "get").mockResolvedValue({
@@ -239,7 +319,16 @@ describe("HomeScreen Playback Integration", () => {
     });
   });
 
+  afterEach(() => {
+    isMobileViewport = false;
+    mediaQueryListeners.clear();
+    window.matchMedia = originalMatchMedia;
+    window.innerWidth = 1024;
+  });
+
   it("does not re-render HomeScreen or queue rows during timeupdate position changes on desktop", async () => {
+    setViewportMatch(false);
+
     render(
       <MemoryRouter>
         <TooltipProvider>
@@ -257,15 +346,38 @@ describe("HomeScreen Playback Integration", () => {
     expect(screen.getByText("Second queued episode")).toBeInTheDocument();
     expect(screen.getByText("0:15")).toBeInTheDocument();
 
+    const firstRow = document.querySelector<HTMLElement>('[data-episode-row-id="1"]')!;
+    expect(firstRow).toBeInTheDocument();
+    expect(firstRow.className).toContain("flex");
+    expect(firstRow.className).not.toContain("grid");
+    const rowButtons = within(firstRow).getAllByRole("button");
+    expect(rowButtons.map((btn) => btn.getAttribute("aria-label"))).toEqual([
+      "Play",
+      "Remove from playlist",
+    ]);
+
     const audio = FakeAudio.first;
     expect(audio).toBeDefined();
 
-    // Flush any pending React microtasks/effects after initial load
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
+    const desktopControls = document.querySelector<HTMLElement>('[data-player-controls="desktop"]')!;
+    const playButton = within(desktopControls).getByRole("button", { name: "Play" });
+    fireEvent.click(playButton);
+
+    await waitFor(() => {
+      expect(audio.paused).toBe(false);
+      expect(within(desktopControls).getByRole("button", { name: "Pause" })).toBeInTheDocument();
     });
-    const rendersAfterLoad = episodeRowRenderCount;
-    expect(rendersAfterLoad).toBeGreaterThan(0);
+
+    const rendersAfterReady = {
+      episodeRow: episodeRowRenderCount,
+      playlistQueue: playlistQueueRenderCount,
+      homeScreen: homeScreenRenderCount,
+      player: playerRenderCount,
+    };
+    expect(rendersAfterReady.episodeRow).toBeGreaterThan(0);
+    expect(rendersAfterReady.playlistQueue).toBeGreaterThan(0);
+    expect(rendersAfterReady.homeScreen).toBeGreaterThan(0);
+    expect(rendersAfterReady.player).toBeGreaterThan(0);
 
     // Send multiple timeupdate events with changed position inside await act
     await act(async () => {
@@ -286,14 +398,17 @@ describe("HomeScreen Playback Integration", () => {
     });
     expect(await screen.findByText("1:00")).toBeInTheDocument();
 
-    // Queue rows must NOT have re-rendered at all during position timeupdates
-    expect(episodeRowRenderCount).toBe(rendersAfterLoad);
+    // Player must have re-rendered with new positions
+    expect(playerRenderCount).toBeGreaterThan(rendersAfterReady.player);
+
+    // Queue rows, queue container, and HomeScreen must NOT have re-rendered at all during position timeupdates
+    expect(episodeRowRenderCount).toBe(rendersAfterReady.episodeRow);
+    expect(playlistQueueRenderCount).toBe(rendersAfterReady.playlistQueue);
+    expect(homeScreenRenderCount).toBe(rendersAfterReady.homeScreen);
   });
 
   it("does not re-render HomeScreen or queue rows during timeupdate position changes on mobile", async () => {
-    // Simulate mobile layout by setting innerWidth
-    window.innerWidth = 375;
-    window.dispatchEvent(new Event("resize"));
+    setViewportMatch(true);
 
     render(
       <MemoryRouter>
@@ -312,14 +427,38 @@ describe("HomeScreen Playback Integration", () => {
     expect(screen.getByText("Second queued episode")).toBeInTheDocument();
     expect(screen.getByText("0:15")).toBeInTheDocument();
 
+    const firstRow = document.querySelector<HTMLElement>('[data-episode-row-id="1"]')!;
+    expect(firstRow).toBeInTheDocument();
+    expect(firstRow.className).toContain("grid");
+    expect(firstRow.className).not.toContain("flex h-[70px]");
+    const rowButtons = within(firstRow).getAllByRole("button");
+    expect(rowButtons.map((btn) => btn.getAttribute("aria-label"))).toEqual([
+      "Remove from playlist",
+      "Play",
+    ]);
+
     const audio = FakeAudio.first;
     expect(audio).toBeDefined();
 
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
+    const mobileControls = document.querySelector<HTMLElement>('[data-player-controls="mobile"]')!;
+    const playButton = within(mobileControls).getByRole("button", { name: "Play" });
+    fireEvent.click(playButton);
+
+    await waitFor(() => {
+      expect(audio.paused).toBe(false);
+      expect(within(mobileControls).getByRole("button", { name: "Pause" })).toBeInTheDocument();
     });
-    const rendersAfterLoad = episodeRowRenderCount;
-    expect(rendersAfterLoad).toBeGreaterThan(0);
+
+    const rendersAfterReady = {
+      episodeRow: episodeRowRenderCount,
+      playlistQueue: playlistQueueRenderCount,
+      homeScreen: homeScreenRenderCount,
+      player: playerRenderCount,
+    };
+    expect(rendersAfterReady.episodeRow).toBeGreaterThan(0);
+    expect(rendersAfterReady.playlistQueue).toBeGreaterThan(0);
+    expect(rendersAfterReady.homeScreen).toBeGreaterThan(0);
+    expect(rendersAfterReady.player).toBeGreaterThan(0);
 
     await act(async () => {
       audio.currentTime = 75;
@@ -333,11 +472,10 @@ describe("HomeScreen Playback Integration", () => {
     });
     expect(await screen.findByText("1:30")).toBeInTheDocument();
 
-    expect(episodeRowRenderCount).toBe(rendersAfterLoad);
-
-    // Reset window width
-    window.innerWidth = 1024;
-    window.dispatchEvent(new Event("resize"));
+    expect(playerRenderCount).toBeGreaterThan(rendersAfterReady.player);
+    expect(episodeRowRenderCount).toBe(rendersAfterReady.episodeRow);
+    expect(playlistQueueRenderCount).toBe(rendersAfterReady.playlistQueue);
+    expect(homeScreenRenderCount).toBe(rendersAfterReady.homeScreen);
   });
 
   it("uses playback duration fallback when library duration is unknown without re-rendering queue rows on progress", async () => {
@@ -469,5 +607,196 @@ describe("HomeScreen Playback Integration", () => {
 
     // Queue rows must not re-render due to timeupdate ticks
     expect(episodeRowRenderCount).toBe(rendersBeforeTimeUpdate);
+  });
+
+  describe("positionSecondsRef resume protection", () => {
+    const queueWithoutSavedPlayback: PlaybackQueueResponse = {
+      queue: [
+        {
+          id: 1,
+          podcastId: 11,
+          title: "Fresh queued episode",
+          description: "Fresh notes",
+          showNotes: "Fresh notes",
+          audioUrl: "https://example.com/fresh.mp3",
+          duration: 1800,
+          downloaded: true,
+          isListened: false,
+          publishedAt: "2026-05-10T10:00:00Z",
+          podcastTitle: "Queue Podcast",
+          podcastImageUrl: null,
+          playback: null,
+        },
+      ],
+      activePlayback: null,
+    };
+
+    it("resumes playback at current timeupdate position when server has no saved playback position", async () => {
+      vi.spyOn(api.playback, "queue").mockResolvedValue(queueWithoutSavedPlayback);
+      vi.spyOn(api.playback, "get").mockResolvedValue({ playback: null });
+      vi.spyOn(api.playback, "setActive").mockResolvedValue({
+        activePlayback: {
+          episodeId: 1,
+          lastUpdated: new Date().toISOString(),
+        },
+      });
+
+      render(
+        <MemoryRouter>
+          <TooltipProvider>
+            <PlaybackProvider>
+              <HomeScreen />
+            </PlaybackProvider>
+          </TooltipProvider>
+        </MemoryRouter>
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByText("Loading playlist")).not.toBeInTheDocument();
+      });
+      expect(screen.getAllByText("Fresh queued episode")).toHaveLength(2);
+      expect(screen.getByText("0:00")).toBeInTheDocument();
+
+      const audio = FakeAudio.first;
+      expect(audio).toBeDefined();
+
+      const desktopControls = document.querySelector<HTMLElement>('[data-player-controls="desktop"]')!;
+      const playButton = within(desktopControls).getByRole("button", { name: "Play" });
+      fireEvent.click(playButton);
+
+      await waitFor(() => {
+        expect(audio.paused).toBe(false);
+        expect(within(desktopControls).getByRole("button", { name: "Pause" })).toBeInTheDocument();
+      });
+      expect(audio.currentTime).toBe(0);
+
+      // Advance track via timeupdate events
+      await act(async () => {
+        audio.currentTime = 42;
+        audio.emit("timeupdate");
+      });
+      expect(await screen.findByText("0:42")).toBeInTheDocument();
+
+      // Pause playback
+      const pauseButton = within(desktopControls).getByRole("button", { name: "Pause" });
+      fireEvent.click(pauseButton);
+      await waitFor(() => {
+        expect(audio.paused).toBe(true);
+        expect(within(desktopControls).getByRole("button", { name: "Play" })).toBeInTheDocument();
+      });
+
+      // Server still has no saved position
+      vi.spyOn(api.playback, "get").mockResolvedValue({ playback: null });
+
+      // Resume playback
+      const resumeButton = within(desktopControls).getByRole("button", { name: "Play" });
+      fireEvent.click(resumeButton);
+
+      await waitFor(() => {
+        expect(audio.paused).toBe(false);
+        expect(within(desktopControls).getByRole("button", { name: "Pause" })).toBeInTheDocument();
+      });
+
+      // Playback must resume from the current advanced position (42s), not 0
+      expect(audio.currentTime).toBe(42);
+      expect(screen.getByText("0:42")).toBeInTheDocument();
+    });
+
+    it("resumes playback at seeked position when server has no saved playback position", async () => {
+      vi.spyOn(api.playback, "queue").mockResolvedValue(queueWithoutSavedPlayback);
+      vi.spyOn(api.playback, "get").mockResolvedValue({ playback: null });
+      vi.spyOn(api.playback, "setActive").mockResolvedValue({
+        activePlayback: {
+          episodeId: 1,
+          lastUpdated: new Date().toISOString(),
+        },
+      });
+
+      render(
+        <MemoryRouter>
+          <TooltipProvider>
+            <PlaybackProvider>
+              <HomeScreen />
+            </PlaybackProvider>
+          </TooltipProvider>
+        </MemoryRouter>
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByText("Loading playlist")).not.toBeInTheDocument();
+      });
+      expect(screen.getAllByText("Fresh queued episode")).toHaveLength(2);
+      expect(screen.getByText("0:00")).toBeInTheDocument();
+
+      const audio = FakeAudio.first;
+      expect(audio).toBeDefined();
+
+      const desktopControls = document.querySelector<HTMLElement>('[data-player-controls="desktop"]')!;
+
+      // Seek forward while paused using the seek forward button
+      const forwardButton = within(desktopControls).getByRole("button", { name: "Go forward 30 seconds" });
+      fireEvent.click(forwardButton);
+
+      expect(await screen.findByText("0:30")).toBeInTheDocument();
+      expect(audio.currentTime).toBe(30);
+
+      // Seek forward again to 60s
+      fireEvent.click(forwardButton);
+      expect(await screen.findByText("1:00")).toBeInTheDocument();
+      expect(audio.currentTime).toBe(60);
+
+      // Now resume with empty server playback record
+      vi.spyOn(api.playback, "get").mockResolvedValue({ playback: null });
+
+      const playButton = within(desktopControls).getByRole("button", { name: "Play" });
+      fireEvent.click(playButton);
+
+      await waitFor(() => {
+        expect(audio.paused).toBe(false);
+        expect(within(desktopControls).getByRole("button", { name: "Pause" })).toBeInTheDocument();
+      });
+
+      // Must resume from the seeked position (60s), not initial 0
+      expect(audio.currentTime).toBe(60);
+      expect(screen.getByText("1:00")).toBeInTheDocument();
+    });
+
+    it("respects server playback position priority when available", async () => {
+      vi.spyOn(api.playback, "queue").mockResolvedValue(queueWithoutSavedPlayback);
+      vi.spyOn(api.playback, "get").mockResolvedValue({
+        playback: {
+          episodeId: 1,
+          positionSeconds: 120,
+          lastUpdated: new Date().toISOString(),
+        },
+      });
+
+      render(
+        <MemoryRouter>
+          <TooltipProvider>
+            <PlaybackProvider>
+              <HomeScreen />
+            </PlaybackProvider>
+          </TooltipProvider>
+        </MemoryRouter>
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByText("Loading playlist")).not.toBeInTheDocument();
+      });
+
+      const audio = FakeAudio.first;
+      const desktopControls = document.querySelector<HTMLElement>('[data-player-controls="desktop"]')!;
+      const playButton = within(desktopControls).getByRole("button", { name: "Play" });
+      fireEvent.click(playButton);
+
+      await waitFor(() => {
+        expect(audio.paused).toBe(false);
+      });
+
+      // Server position (120s) must take priority
+      expect(audio.currentTime).toBe(120);
+      expect(await screen.findByText("2:00")).toBeInTheDocument();
+    });
   });
 });
