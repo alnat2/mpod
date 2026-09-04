@@ -1589,12 +1589,131 @@ func TestPlaybackCompletionReturnsFallbackEpisodeForLastPlaylistItem(t *testing.
 			EpisodeID int64 `json:"episodeId"`
 		} `json:"playback"`
 		NextEpisodeID *int64 `json:"nextEpisodeId"`
+		NextTarget    *struct {
+			Type      string `json:"type"`
+			EpisodeID int64  `json:"episodeId"`
+		} `json:"nextTarget"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("unmarshal playback response: %v", err)
 	}
 	if payload.NextEpisodeID == nil || *payload.NextEpisodeID != 1 {
 		t.Fatalf("expected fallback episode 1, got %+v", payload.NextEpisodeID)
+	}
+	if payload.NextTarget == nil || payload.NextTarget.Type != "episode" || payload.NextTarget.EpisodeID != 1 {
+		t.Fatalf("expected typed fallback episode 1, got %+v", payload.NextTarget)
+	}
+}
+
+func TestAudiobookCompletionReturnsTypedAudiobookFallback(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+
+	mustExecHTTP(t, db, `INSERT INTO audiobooks (id, title, author, rel_path) VALUES (1, 'First', 'Author', 'First'), (2, 'Last', 'Author', 'Last')`)
+	mustExecHTTP(t, db, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'First chapter', 'First/1.mp3', '/books/first.mp3', 60), (20, 2, 1, 'Last chapter', 'Last/1.mp3', '/books/last.mp3', 60)`)
+	mustExecHTTP(t, db, `INSERT INTO playlist (audiobook_id, position) VALUES (1, 1), (2, 2)`)
+	mustExecHTTP(t, db, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10), (2, 20)`)
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/playback", bytes.NewReader([]byte(`{"audiobookId":2,"trackId":20,"positionSeconds":60,"durationSeconds":60,"completed":true}`)))
+	req.AddCookie(cookie)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from playback completion, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		NextTarget *struct {
+			Type        string `json:"type"`
+			AudiobookID int64  `json:"audiobookId"`
+			TrackID     int64  `json:"trackId"`
+		} `json:"nextTarget"`
+		NextEpisodeID *int64 `json:"nextEpisodeId"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal playback response: %v", err)
+	}
+	if payload.NextTarget == nil || payload.NextTarget.Type != "audiobook" || payload.NextTarget.AudiobookID != 1 || payload.NextTarget.TrackID != 10 {
+		t.Fatalf("unexpected typed audiobook fallback: %+v", payload.NextTarget)
+	}
+	if payload.NextEpisodeID != nil {
+		t.Fatalf("legacy nextEpisodeId must stay null for audiobook fallback, got %d", *payload.NextEpisodeID)
+	}
+}
+
+func TestPlaybackCompletionReturnsCrossMediaFallbacks(t *testing.T) {
+	tests := []struct {
+		name            string
+		playlistSetup   string
+		requestBody     string
+		wantType        string
+		wantEpisodeID   int64
+		wantAudiobookID int64
+		wantTrackID     int64
+	}{
+		{
+			name:            "podcast to audiobook",
+			playlistSetup:   `INSERT INTO playlist (audiobook_id, position) VALUES (1, 1); INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10); INSERT INTO playlist (episode_id, position) VALUES (2, 2);`,
+			requestBody:     `{"episodeId":2,"positionSeconds":60,"durationSeconds":60,"completed":true}`,
+			wantType:        "audiobook",
+			wantAudiobookID: 1,
+			wantTrackID:     10,
+		},
+		{
+			name:          "audiobook to podcast",
+			playlistSetup: `INSERT INTO playlist (episode_id, position) VALUES (1, 1); INSERT INTO playlist (audiobook_id, position) VALUES (1, 2); INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10);`,
+			requestBody:   `{"audiobookId":1,"trackId":10,"positionSeconds":60,"durationSeconds":60,"completed":true}`,
+			wantType:      "episode",
+			wantEpisodeID: 1,
+		},
+		{
+			name:          "no eligible fallback",
+			playlistSetup: `UPDATE episodes SET is_listened = 1 WHERE id = 1; INSERT INTO playlist (episode_id, position) VALUES (1, 1); INSERT INTO playlist (audiobook_id, position) VALUES (1, 2); INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10);`,
+			requestBody:   `{"audiobookId":1,"trackId":10,"positionSeconds":60,"durationSeconds":60,"completed":true}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, db := newTestRouter(t)
+			cookie := register(t, handler, "admin", "secret")
+			mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+			mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3', 60), (2, 1, 'ep-2', 'Episode 2', 'https://example.com/2.mp3', 60)`)
+			mustExecHTTP(t, db, `INSERT INTO audiobooks (id, title, author, rel_path) VALUES (1, 'Book', 'Author', 'Book')`)
+			mustExecHTTP(t, db, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'Chapter', 'Book/1.mp3', '/books/1.mp3', 60)`)
+			mustExecHTTP(t, db, tt.playlistSetup)
+
+			req := httptest.NewRequest(nethttp.MethodPost, "/api/playback", bytes.NewReader([]byte(tt.requestBody)))
+			req.AddCookie(cookie)
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != nethttp.StatusOK {
+				t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+			}
+
+			var payload struct {
+				NextTarget *struct {
+					Type        string `json:"type"`
+					EpisodeID   int64  `json:"episodeId"`
+					AudiobookID int64  `json:"audiobookId"`
+					TrackID     int64  `json:"trackId"`
+				} `json:"nextTarget"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+				t.Fatalf("unmarshal response: %v", err)
+			}
+			if tt.wantType == "" {
+				if payload.NextTarget != nil {
+					t.Fatalf("expected no nextTarget, got %+v", payload.NextTarget)
+				}
+				return
+			}
+			if payload.NextTarget == nil || payload.NextTarget.Type != tt.wantType || payload.NextTarget.EpisodeID != tt.wantEpisodeID || payload.NextTarget.AudiobookID != tt.wantAudiobookID || payload.NextTarget.TrackID != tt.wantTrackID {
+				t.Fatalf("unexpected nextTarget: %+v", payload.NextTarget)
+			}
+		})
 	}
 }
 

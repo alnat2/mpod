@@ -265,6 +265,7 @@ Responsible for:
 - advance to the next selected audiobook chapter
 - remove a book after its final selected chapter becomes listened
 - reset audiobook progress/listened state when the book leaves the playlist so a later add starts over
+- select a typed podcast episode or audiobook chapter fallback from pre-removal top-level playlist order when the last item completes
 - trigger listened/file lifecycle side effects required by completion rules
 
 Playback conflict resolution belongs entirely to the server.
@@ -420,10 +421,11 @@ sequenceDiagram
   B->>B: Store progress without completion side effects
   B-->>F: Return stored playback + nextEpisodeId=null
   F->>B: POST /api/playback completed=true after audio ended
-  B->>B: Apply completion and choose fallback if finished item was last
+  B->>B: Apply completion and choose typed mixed-media fallback if finished item was last
   B->>D: Update playback state
-  B-->>F: Return stored playback + nextEpisodeId
-  F->>F: Start fallback at stored position or 0:00 when playback is null
+  B-->>F: Return stored playback + nextTarget
+  F->>B: Refresh queue
+  F->>F: Resolve exact typed target and start audio at stored position or 0:00
 ```
 
 ## Session and Auth Flow

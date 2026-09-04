@@ -594,9 +594,9 @@ Rules:
 - Clients must set `completed = true` only after the audio engine reports actual completion.
 - Near-end or full-duration progress with `completed = false` only updates position and must not trigger listened, playlist, or file side effects.
 - If explicit playback completion marks the episode listened, that behavior must be applied here
-- `nextEpisodeId` is backend-owned playback guidance for what to play next after a completion update
-- For non-completion updates, `nextEpisodeId` is `null`
-- When `nextEpisodeId` identifies an episode with no playback record, clients start it from `0:00`.
+- `nextTarget` is backend-owned typed playback guidance for what to play next after a completion update.
+- For non-completion updates, `nextTarget` is absent and `nextEpisodeId` is `null`.
+- `nextEpisodeId` remains a compatibility alias for podcast targets; when the selected target has no playback record, clients start it from `0:00`.
 
 ### Settings Endpoints
 
@@ -800,14 +800,14 @@ Active playback request fields:
   - playback position is stored as full duration or final reported position
   - any file and playlist side effects follow file lifecycle rules
 - When an audiobook chapter is finished, the audiobook-specific selected-chapter, replay, auto-advance, and final-book-removal rules apply.
-- Before removing the finished episode from the playlist, the backend checks whether it was the last item in the pre-removal playlist order.
-- If the finished episode was the last playlist item, the backend looks at earlier playlist items and selects the topmost eligible fallback episode in playlist order.
-- An eligible fallback episode must:
-  - still be in the playlist after the finished episode cleanup
-  - be unlistened
-- The selected fallback episode may have no playback record yet; in that case clients should start it from `0:00`.
-- If no eligible earlier episode exists, the backend returns `nextEpisodeId = null`.
-- The selected fallback episode must not be marked listened, removed, reordered, or have its files changed as part of the finished episode cleanup.
+- Before removing a finished top-level podcast episode or a finished audiobook after its final selected chapter, the backend checks whether it was the last item in the pre-removal playlist order.
+- If the finished item was last, the backend scans the remaining earlier top-level items from the top and selects the first eligible playback target regardless of media type.
+- An eligible fallback podcast episode must remain in the playlist, be unlistened, and have an audio source.
+- An eligible fallback audiobook must remain in the playlist and have a selected uncompleted chapter. The backend selects its active selected chapter when eligible, otherwise its most recently updated selected chapter, otherwise its first selected chapter in natural order.
+- `nextTarget` is the authoritative typed playback guidance: `{ "type": "episode", "episodeId": 1 }` or `{ "type": "audiobook", "audiobookId": 2, "trackId": 20 }`.
+- A selected target may have no playback record yet; in that case clients start it from `0:00`. Existing playback state is resumed otherwise.
+- If no eligible earlier item exists, the backend returns no `nextTarget` and playback stops.
+- The selected fallback item must not be marked listened, removed, reordered, or otherwise changed as part of the finished item cleanup.
 
 ### Position Update Rules
 - If no playback record exists yet, create one.
@@ -830,15 +830,19 @@ After an accepted update, the API returns the stored playback state:
 - `episodeId` for a podcast, or `audiobookId` and `trackId` for an audiobook
 - `positionSeconds`
 - `lastUpdated`
+- `nextTarget` when completion selects an exact typed playback target
 - `nextEpisodeId`
 - `nextTrackId` when an audiobook chapter completion advances within the same selected book
 
 If an update is ignored because it is stale or invalid for sync purposes, the API should still return the current stored playback state instead of failing.
 
 `nextEpisodeId` rules:
+- `nextEpisodeId` remains as a compatibility alias when `nextTarget` identifies a podcast episode.
 - For ordinary progress updates and ignored stale updates, `nextEpisodeId` is `null`.
 - If playback completion finishes a non-last playlist item, `nextEpisodeId` is `null`; normal sequential playback remains a frontend concern.
 - If playback completion finishes the last playlist item and an eligible earlier unlistened playlist item exists, `nextEpisodeId` contains the topmost eligible episode ID in playlist order.
+
+`nextTrackId` remains as a compatibility alias for a chapter advance within the same audiobook. Clients should prefer `nextTarget` for all new completion handling because only it can address another audiobook unambiguously.
 
 ### Read Behavior
 `GET /api/playback` with a typed podcast or audiobook query target returns:
@@ -1414,7 +1418,7 @@ The scanner traverses `AUDIOBOOKS_DIR` using standard recursive directory walkin
 - Completed chapters remain part of the chapter list and can be replayed; ordinary completion does not manually remove their library records.
 - When the final selected chapter becomes listened:
   - The audiobook is removed from the playlist.
-  - Playback advances to the next item in the playlist (if one exists).
+  - If it was last in the pre-removal top-level order, playback wraps to the topmost eligible remaining podcast episode or audiobook; otherwise ordinary downward playback continues.
 - Removing an audiobook from the playlist, whether manually or after natural completion, resets its chapter playback positions and listened state.
 - Re-adding that audiobook therefore adds its chapters from a clean state and starts from `0:00`.
 

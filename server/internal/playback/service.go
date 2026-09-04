@@ -57,9 +57,17 @@ type QueueEpisode struct {
 }
 
 type UpdateResult struct {
-	Playback      State  `json:"playback"`
-	NextEpisodeID *int64 `json:"nextEpisodeId"`
-	NextTrackID   *int64 `json:"nextTrackId,omitempty"`
+	Playback      State           `json:"playback"`
+	NextTarget    *PlaybackTarget `json:"nextTarget,omitempty"`
+	NextEpisodeID *int64          `json:"nextEpisodeId"`
+	NextTrackID   *int64          `json:"nextTrackId,omitempty"`
+}
+
+type PlaybackTarget struct {
+	Type        string `json:"type"`
+	EpisodeID   *int64 `json:"episodeId,omitempty"`
+	AudiobookID *int64 `json:"audiobookId,omitempty"`
+	TrackID     *int64 `json:"trackId,omitempty"`
 }
 
 type UpdateInput struct {
@@ -373,8 +381,10 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 			         (
 			           SELECT active.audiobook_track_id
 			           FROM active_playback active
+			           JOIN audiobook_tracks active_track ON active_track.id = active.audiobook_track_id
 			           WHERE active.singleton_id = 1
 			             AND active.audiobook_id = p.audiobook_id
+			             AND active_track.is_listened = 0
 			             AND EXISTS(
 			               SELECT 1 FROM audiobook_playlist_tracks membership
 			               WHERE membership.audiobook_id = p.audiobook_id
@@ -385,7 +395,9 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 			           SELECT progress.track_id
 			           FROM audiobook_playback progress
 			           JOIN audiobook_playlist_tracks membership ON membership.track_id = progress.track_id
+			           JOIN audiobook_tracks progress_track ON progress_track.id = progress.track_id
 			           WHERE membership.audiobook_id = p.audiobook_id
+			             AND progress_track.is_listened = 0
 			           ORDER BY progress.last_updated DESC
 			           LIMIT 1
 			         ),
@@ -394,6 +406,7 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 			           FROM audiobook_playlist_tracks membership
 			           JOIN audiobook_tracks track ON track.id = membership.track_id
 			           WHERE membership.audiobook_id = p.audiobook_id
+			             AND track.is_listened = 0
 			           ORDER BY track.track_number, track.id
 			           LIMIT 1
 			         )
@@ -639,6 +652,11 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 						PositionSeconds: position,
 						LastUpdated:     now,
 					},
+					NextTarget: &PlaybackTarget{
+						Type:        "audiobook",
+						AudiobookID: &abID,
+						TrackID:     &nextTrackID,
+					},
 					NextTrackID: &nextTrackID,
 				}, nil
 			}
@@ -646,20 +664,29 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 				return UpdateResult{}, fmt.Errorf("find next audiobook track: %w", err)
 			}
 
+			fallback, err := findCompletionFallback(ctx, tx, nil, &abID)
+			if err != nil {
+				return UpdateResult{}, err
+			}
 			if err := resetCompletedAudiobookTx(ctx, tx, abID, now); err != nil {
 				return UpdateResult{}, err
 			}
 			if err := tx.Commit(); err != nil {
 				return UpdateResult{}, fmt.Errorf("commit completed audiobook reset: %w", err)
 			}
-			return UpdateResult{
+			result := UpdateResult{
 				Playback: State{
 					AudiobookID:     abID,
 					TrackID:         *input.TrackID,
 					PositionSeconds: position,
 					LastUpdated:     now,
 				},
-			}, nil
+				NextTarget: fallback,
+			}
+			if fallback != nil && fallback.EpisodeID != nil {
+				result.NextEpisodeID = fallback.EpisodeID
+			}
+			return result, nil
 		}
 
 		if _, err := tx.ExecContext(ctx, `UPDATE audiobook_tracks SET is_listened = 0 WHERE id = ? AND is_listened = 1`, *input.TrackID); err != nil {
@@ -712,7 +739,7 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 		if input.DurationSeconds > 0 {
 			position = input.DurationSeconds
 		}
-		nextEpisodeID, err := s.findCompletionFallback(ctx, input.EpisodeID)
+		nextTarget, err := findCompletionFallback(ctx, s.db, &input.EpisodeID, nil)
 		if err != nil {
 			return UpdateResult{}, err
 		}
@@ -723,10 +750,11 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 		if err := s.applyCompletionSideEffects(ctx, input.EpisodeID); err != nil {
 			return UpdateResult{}, err
 		}
-		return UpdateResult{
-			Playback:      state,
-			NextEpisodeID: nextEpisodeID,
-		}, nil
+		result := UpdateResult{Playback: state, NextTarget: nextTarget}
+		if nextTarget != nil && nextTarget.EpisodeID != nil {
+			result.NextEpisodeID = nextTarget.EpisodeID
+		}
+		return result, nil
 	}
 
 	if current != nil && input.ClientUpdatedAt != nil && input.ClientUpdatedAt.UTC().Before(current.LastUpdated) {
@@ -813,9 +841,50 @@ func (s *Service) applyCompletionSideEffects(ctx context.Context, episodeID int6
 	return nil
 }
 
-func (s *Service) findCompletionFallback(ctx context.Context, completedEpisodeID int64) (*int64, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT playlist.episode_id, COALESCE(episodes.is_listened, 0)
+type playlistQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func findCompletionFallback(ctx context.Context, queryer playlistQueryer, completedEpisodeID, completedAudiobookID *int64) (*PlaybackTarget, error) {
+	rows, err := queryer.QueryContext(ctx, `
+		SELECT playlist.episode_id,
+		       COALESCE(episodes.is_listened, 1),
+		       COALESCE(episodes.audio_url, ''),
+		       playlist.audiobook_id,
+		       COALESCE(
+		         (
+		           SELECT active.audiobook_track_id
+		           FROM active_playback active
+		           JOIN audiobook_tracks track ON track.id = active.audiobook_track_id
+		           WHERE active.singleton_id = 1
+		             AND active.audiobook_id = playlist.audiobook_id
+		             AND track.is_listened = 0
+		             AND EXISTS(
+		               SELECT 1 FROM audiobook_playlist_tracks selected
+		               WHERE selected.audiobook_id = playlist.audiobook_id
+		                 AND selected.track_id = active.audiobook_track_id
+		             )
+		         ),
+		         (
+		           SELECT progress.track_id
+		           FROM audiobook_playback progress
+		           JOIN audiobook_playlist_tracks selected ON selected.track_id = progress.track_id
+		           JOIN audiobook_tracks track ON track.id = progress.track_id
+		           WHERE selected.audiobook_id = playlist.audiobook_id
+		             AND track.is_listened = 0
+		           ORDER BY progress.last_updated DESC
+		           LIMIT 1
+		         ),
+		         (
+		           SELECT track.id
+		           FROM audiobook_playlist_tracks selected
+		           JOIN audiobook_tracks track ON track.id = selected.track_id
+		           WHERE selected.audiobook_id = playlist.audiobook_id
+		             AND track.is_listened = 0
+		           ORDER BY track.track_number, track.id
+		           LIMIT 1
+		         )
+		       ) AS audiobook_track_id
 		FROM playlist
 		LEFT JOIN episodes ON episodes.id = playlist.episode_id
 		ORDER BY playlist.position ASC, playlist.id ASC
@@ -826,24 +895,34 @@ func (s *Service) findCompletionFallback(ctx context.Context, completedEpisodeID
 	defer rows.Close()
 
 	type candidate struct {
-		episodeID *int64
-		listened  bool
+		target *PlaybackTarget
 	}
 
 	var items []candidate
 	currentIndex := -1
 	for rows.Next() {
-		var epID sql.NullInt64
+		var epID, abID, trackID sql.NullInt64
 		var listened bool
-		if err := rows.Scan(&epID, &listened); err != nil {
+		var audioURL string
+		if err := rows.Scan(&epID, &listened, &audioURL, &abID, &trackID); err != nil {
 			return nil, fmt.Errorf("scan completion fallback candidate: %w", err)
 		}
 		var item candidate
 		if epID.Valid {
 			id := epID.Int64
-			item.episodeID = &id
-			item.listened = listened
-			if id == completedEpisodeID {
+			if !listened && audioURL != "" {
+				item.target = &PlaybackTarget{Type: "episode", EpisodeID: &id}
+			}
+			if completedEpisodeID != nil && id == *completedEpisodeID {
+				currentIndex = len(items)
+			}
+		} else if abID.Valid {
+			id := abID.Int64
+			if trackID.Valid {
+				trID := trackID.Int64
+				item.target = &PlaybackTarget{Type: "audiobook", AudiobookID: &id, TrackID: &trID}
+			}
+			if completedAudiobookID != nil && id == *completedAudiobookID {
 				currentIndex = len(items)
 			}
 		}
@@ -858,10 +937,8 @@ func (s *Service) findCompletionFallback(ctx context.Context, completedEpisodeID
 	}
 
 	for i := 0; i < currentIndex; i++ {
-		item := items[i]
-		if item.episodeID != nil && !item.listened {
-			nextEpisodeID := *item.episodeID
-			return &nextEpisodeID, nil
+		if items[i].target != nil {
+			return items[i].target, nil
 		}
 	}
 

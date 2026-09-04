@@ -183,12 +183,20 @@ func TestAudiobookAPI(t *testing.T) {
 	}
 	var pbResp struct {
 		NextTrackID *int64 `json:"nextTrackId"`
+		NextTarget  *struct {
+			Type        string `json:"type"`
+			AudiobookID int64  `json:"audiobookId"`
+			TrackID     int64  `json:"trackId"`
+		} `json:"nextTarget"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &pbResp); err != nil {
 		t.Fatalf("unmarshal playback complete response: %v", err)
 	}
 	if pbResp.NextTrackID == nil || *pbResp.NextTrackID != 2 {
 		t.Fatalf("expected nextTrackId 2, got %v", pbResp.NextTrackID)
+	}
+	if pbResp.NextTarget == nil || pbResp.NextTarget.Type != "audiobook" || pbResp.NextTarget.AudiobookID != 1 || pbResp.NextTarget.TrackID != 2 {
+		t.Fatalf("expected typed audiobook target 1/2, got %+v", pbResp.NextTarget)
 	}
 
 	// 8. DELETE /api/audiobooks/:id/playlist (remove audiobook from playlist)

@@ -184,7 +184,23 @@ export function usePlaybackAudio({
 
       const refreshedQueue = await loadQueue();
       const availableQueue = refreshedQueue?.queue ?? queueRef.current;
+      const nextTarget = response?.nextTarget;
       const nextItem =
+        (nextTarget?.type === "episode"
+          ? availableQueue.find(
+              (episode) =>
+                !isAudiobookQueueItem(episode) &&
+                episode.id === nextTarget.episodeId
+            )
+          : nextTarget?.type === "audiobook"
+            ? availableQueue.find(
+                (episode) =>
+                  isAudiobookQueueItem(episode) &&
+                  (episode.audiobookId ?? episode.id) ===
+                    nextTarget.audiobookId &&
+                  episode.trackId === nextTarget.trackId
+              )
+            : undefined) ??
         (response?.nextTrackId != null
           ? availableQueue.find(
               (episode) =>

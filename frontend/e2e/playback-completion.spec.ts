@@ -166,6 +166,9 @@ test("starts the topmost fallback after the last episode really ends", async ({
           positionSeconds: payload.positionSeconds,
           lastUpdated: "2026-08-10T10:00:00Z",
         },
+        nextTarget: payload.completed
+          ? { type: "episode", episodeId: 1 }
+          : null,
         nextEpisodeId: payload.completed ? 1 : null,
       }),
     });

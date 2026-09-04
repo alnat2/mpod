@@ -100,6 +100,10 @@ export type PlaybackQueueResponse = {
 
 export type PlaybackUpdateResponse = {
   playback: PlaybackState;
+  nextTarget?:
+    | { type: "episode"; episodeId: number }
+    | { type: "audiobook"; audiobookId: number; trackId: number }
+    | null;
   nextEpisodeId: number | null;
   nextTrackId?: number | null;
 };

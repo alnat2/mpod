@@ -3,7 +3,13 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { api, type Episode, type Podcast, type PlaybackState } from "./api";
+import {
+  api,
+  type Episode,
+  type PlaybackQueueEpisode,
+  type Podcast,
+  type PlaybackState,
+} from "./api";
 import {
   PlaybackProvider,
   usePlayback,
@@ -1435,6 +1441,192 @@ describe("PlaybackProvider", () => {
         completed: true,
       })
     );
+  });
+
+  it.each([
+    ["podcast to podcast", "episode", "episode"],
+    ["podcast to audiobook", "episode", "audiobook"],
+    ["audiobook to podcast", "audiobook", "episode"],
+    ["audiobook to another audiobook", "audiobook", "audiobook"],
+  ] as const)(
+    "starts and plays typed mixed fallback: %s",
+    async (_name, sourceType, targetType) => {
+      const user = userEvent.setup();
+      const episodeItem = (
+        id: number,
+        title: string,
+        positionSeconds: number
+      ): PlaybackQueueEpisode => ({
+        ...episodes.get(id)!,
+        title,
+        podcastTitle: `${title} podcast`,
+        podcastImageUrl: null,
+        playback: {
+          episodeId: id,
+          positionSeconds,
+          lastUpdated: "2026-05-22T08:00:00Z",
+        },
+      });
+      const audiobookItem = (
+        audiobookId: number,
+        trackId: number,
+        title: string,
+        positionSeconds: number
+      ): PlaybackQueueEpisode => ({
+        id: audiobookId,
+        podcastId: 0,
+        type: "audiobook",
+        audiobookId,
+        trackId,
+        title,
+        audioUrl: `/api/audiobooks/${audiobookId}/tracks/${trackId}/audio`,
+        duration: 60,
+        downloaded: true,
+        isListened: false,
+        publishedAt: null,
+        podcastTitle: "Author",
+        playback: {
+          audiobookId,
+          trackId,
+          positionSeconds,
+          lastUpdated: "2026-05-22T08:00:00Z",
+        },
+      });
+
+      const target =
+        targetType === "episode"
+          ? episodeItem(1, "Fallback podcast", 17)
+          : audiobookItem(200, 201, "Fallback audiobook", 17);
+      const source =
+        sourceType === "episode"
+          ? episodeItem(2, "Finishing podcast", 0)
+          : audiobookItem(100, 101, "Finishing audiobook", 0);
+      vi.mocked(api.playback.queue)
+        .mockResolvedValueOnce({ queue: [target, source], activePlayback: null })
+        .mockResolvedValueOnce({ queue: [target], activePlayback: null });
+      vi.mocked(api.playback.update).mockImplementation(async (payload) => ({
+        playback:
+          sourceType === "episode"
+            ? {
+                episodeId: source.id,
+                positionSeconds: payload.positionSeconds,
+                lastUpdated: "2026-05-22T09:00:00Z",
+              }
+            : {
+                audiobookId: source.audiobookId,
+                trackId: source.trackId,
+                positionSeconds: payload.positionSeconds,
+                lastUpdated: "2026-05-22T09:00:00Z",
+              },
+        nextTarget:
+          targetType === "episode"
+            ? { type: "episode", episodeId: target.id }
+            : {
+                type: "audiobook",
+                audiobookId: target.audiobookId!,
+                trackId: target.trackId!,
+              },
+        nextEpisodeId: targetType === "episode" ? target.id : null,
+      }));
+
+      function MixedFallbackHarness() {
+        const { queue, currentEpisode, playing, playQueueItem } = usePlayback();
+        return (
+          <>
+            <div data-testid="mixed-current">{currentEpisode?.title}</div>
+            <div data-testid="mixed-playing">{playing ? "yes" : "no"}</div>
+            <button
+              type="button"
+              onClick={() => {
+                const item = queue[queue.length - 1];
+                if (item) playQueueItem(item);
+              }}
+            >
+              Play finishing item
+            </button>
+          </>
+        );
+      }
+
+      render(
+        <PlaybackProvider>
+          <MixedFallbackHarness />
+        </PlaybackProvider>
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("mixed-current")).toHaveTextContent(
+          target.title
+        )
+      );
+      await user.click(
+        screen.getByRole("button", { name: "Play finishing item" })
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("mixed-current")).toHaveTextContent(
+          source.title
+        )
+      );
+
+      const audio = FakeAudio.first;
+      audio.playImpl.mockClear();
+      audio.currentTime = 60;
+      audio.emit("ended");
+
+      await waitFor(() =>
+        expect(screen.getByTestId("mixed-current")).toHaveTextContent(
+          target.title
+        )
+      );
+      expect(audio.src).toContain(
+        targetType === "episode"
+          ? `/api/episodes/${target.id}/audio`
+          : target.audioUrl
+      );
+      expect(audio.currentTime).toBe(17);
+      await waitFor(() => {
+        expect(screen.getByTestId("mixed-playing")).toHaveTextContent("yes");
+        expect(audio.playImpl).toHaveBeenCalledTimes(1);
+      });
+    }
+  );
+
+  it("stops after final completion when backend returns no eligible target", async () => {
+    const user = userEvent.setup();
+    const finalEpisode = {
+      ...episodes.get(2)!,
+      podcastTitle: "Second Podcast",
+      podcastImageUrl: null,
+      playback: playback.get(2) ?? null,
+    };
+    const queueSpy = vi.mocked(api.playback.queue);
+    queueSpy
+      .mockResolvedValueOnce({ queue: [finalEpisode], activePlayback: null })
+      .mockResolvedValueOnce({ queue: [], activePlayback: null });
+    vi.mocked(api.playback.update).mockImplementation(async (payload) => ({
+      playback: {
+        episodeId: 2,
+        positionSeconds: payload.positionSeconds,
+        lastUpdated: "2026-05-22T09:00:00Z",
+      },
+      nextEpisodeId: null,
+    }));
+
+    renderPlaybackProvider();
+    await waitFor(() =>
+      expect(screen.getByTestId("current-title")).toHaveTextContent(
+        "Second queued episode"
+      )
+    );
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+
+    const audio = FakeAudio.first;
+    audio.playImpl.mockClear();
+    audio.currentTime = 2400;
+    audio.emit("ended");
+
+    await waitFor(() => expect(queueSpy).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("playing")).toHaveTextContent("no");
+    expect(audio.playImpl).not.toHaveBeenCalled();
   });
 
   it("does not replay a finished final episode while backend fallback is pending", async () => {

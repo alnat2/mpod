@@ -80,7 +80,7 @@ Needs:
 - Opening a folder-backed book from `Abooks` shows a library chapter-selection modal with chapter name, duration, and add/remove-from-playlist action; it does not expose playback controls
 - Clicking the audiobook playlist item or "Show Chapters" in the player opens a playback chapters modal with chapter progress and playback actions
 - Completed chapters remain visible in the playback chapters modal and can be replayed from `0:00`
-- Sequential playback automatically advances to the next selected chapter upon completion
+- Sequential playback automatically advances to the next selected chapter upon completion; when the final top-level item completes, playback wraps to the first eligible remaining podcast episode or audiobook
 - When the final selected chapter becomes listened, the book is removed from the playlist
 - Removing and later re-adding a book resets its chapter progress and listened state so playback starts over
 - Library rescans do not inject newly discovered tracks into an already configured playlist item

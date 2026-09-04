@@ -383,8 +383,9 @@ When playback reaches completion:
 - the episode is removed from playlist
 - downloaded file cleanup follows approved backend behavior
 - playback advances to the next playlist item if one exists
-- if completion finishes the last playlist item, the backend may return the topmost earlier unlistened playlist episode as `nextEpisodeId`
-- if that fallback has no playback state, playback starts from `0:00`
+- if completion finishes the last playlist item, the backend returns the topmost eligible earlier podcast episode or audiobook chapter as typed `nextTarget`
+- the refreshed queue starts that exact target, resuming its playback state or using `0:00`, and actually starts the audio engine
+- if no eligible remaining item exists, playback stops
 - for an audiobook, the completed chapter remains visible in the chapter list and playback advances to the next selected chapter
 - when the final selected audiobook chapter becomes listened, the book is removed from the playlist and the next top-level item may start
 - a later re-add starts the completed or manually removed book from a clean state at `0:00`
@@ -446,7 +447,7 @@ Mark unlistened behavior:
 Automatic completion behavior:
 1. User listens until playback reaches completion.
 2. Client sends `POST /api/playback` with `completed: true`.
-3. Backend marks the episode listened and returns any `nextEpisodeId`.
+3. Backend marks the episode listened and returns any typed `nextTarget` (plus the legacy podcast alias when applicable).
 4. Client starts that episode at its stored playback position, or at `0:00` when no playback state exists.
 5. Playlist and file side effects are reflected in the UI through refreshed backend state.
 

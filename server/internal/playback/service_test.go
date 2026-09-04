@@ -81,6 +81,9 @@ func TestUpdateProcessesCompletionAfterNewerServerTimestamp(t *testing.T) {
 	if result.NextEpisodeID == nil || *result.NextEpisodeID != 1 {
 		t.Fatalf("expected fallback episode 1, got %v", result.NextEpisodeID)
 	}
+	if result.NextTarget == nil || result.NextTarget.Type != "episode" || result.NextTarget.EpisodeID == nil || *result.NextTarget.EpisodeID != 1 {
+		t.Fatalf("expected typed fallback episode 1, got %+v", result.NextTarget)
+	}
 
 	var listened bool
 	if err := db.SQL.QueryRow(`SELECT is_listened FROM episodes WHERE id = 2`).Scan(&listened); err != nil {
@@ -615,6 +618,181 @@ func TestUpdateCompletionReturnsNoFallbackWhenNoEarlierEligibleEpisodeExists(t *
 
 	if result.NextEpisodeID != nil {
 		t.Fatalf("expected no fallback episode, got %d", *result.NextEpisodeID)
+	}
+	if result.NextTarget != nil {
+		t.Fatalf("expected no typed fallback, got %+v", result.NextTarget)
+	}
+}
+
+func TestUpdateCompletionSelectsTypedMixedMediaFallback(t *testing.T) {
+	tests := []struct {
+		name            string
+		playlistSetup   string
+		completeEpisode bool
+		wantType        string
+		wantEpisodeID   int64
+		wantAudiobookID int64
+		wantTrackID     int64
+	}{
+		{
+			name:            "last podcast to audiobook above",
+			playlistSetup:   `INSERT INTO playlist (audiobook_id, position) VALUES (1, 1); INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10); INSERT INTO playlist (episode_id, position) VALUES (2, 2);`,
+			completeEpisode: true,
+			wantType:        "audiobook",
+			wantAudiobookID: 1,
+			wantTrackID:     10,
+		},
+		{
+			name:          "final audiobook to podcast above",
+			playlistSetup: `INSERT INTO playlist (episode_id, position) VALUES (1, 1); INSERT INTO playlist (audiobook_id, position) VALUES (1, 2); INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10);`,
+			wantType:      "episode",
+			wantEpisodeID: 1,
+		},
+		{
+			name:            "final audiobook to different audiobook above",
+			playlistSetup:   `INSERT INTO playlist (audiobook_id, position) VALUES (2, 1), (1, 2); INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (2, 20), (1, 10);`,
+			wantType:        "audiobook",
+			wantAudiobookID: 2,
+			wantTrackID:     20,
+		},
+		{
+			name:          "skip listened podcast and audiobook without eligible track",
+			playlistSetup: `UPDATE episodes SET is_listened = 1 WHERE id = 1; INSERT INTO playlist (episode_id, position) VALUES (1, 1); INSERT INTO playlist (audiobook_id, position) VALUES (2, 2); INSERT INTO playlist (episode_id, position) VALUES (2, 3); INSERT INTO playlist (audiobook_id, position) VALUES (1, 4); INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10);`,
+			wantType:      "episode",
+			wantEpisodeID: 2,
+		},
+		{
+			name:          "final audiobook before another item leaves downward transition to frontend",
+			playlistSetup: `INSERT INTO playlist (audiobook_id, position) VALUES (1, 1); INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10); INSERT INTO playlist (episode_id, position) VALUES (1, 2);`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := newTestDB(t)
+			defer db.Close()
+
+			mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+			mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration) VALUES (1, 1, 'ep-1', 'Episode 1', 'https://example.com/1.mp3', 60), (2, 1, 'ep-2', 'Episode 2', 'https://example.com/2.mp3', 60)`)
+			mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path) VALUES (1, 'Book 1', 'Author', 'Book 1'), (2, 'Book 2', 'Author', 'Book 2')`)
+			mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'Chapter 1', 'Book 1/1.mp3', '/books/1.mp3', 60), (20, 2, 1, 'Chapter 1', 'Book 2/1.mp3', '/books/2.mp3', 60)`)
+			mustExec(t, db.SQL, tt.playlistSetup)
+
+			service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+			var result UpdateResult
+			var err error
+			if tt.completeEpisode {
+				result, err = service.Update(context.Background(), UpdateInput{EpisodeID: 2, PositionSeconds: 60, DurationSeconds: 60, Completed: true})
+			} else {
+				bookID, trackID := int64(1), int64(10)
+				result, err = service.Update(context.Background(), UpdateInput{AudiobookID: &bookID, TrackID: &trackID, PositionSeconds: 60, DurationSeconds: 60, Completed: true})
+			}
+			if err != nil {
+				t.Fatalf("Update returned error: %v", err)
+			}
+			if tt.wantType == "" {
+				if result.NextTarget != nil {
+					t.Fatalf("expected no wrap fallback for non-last item, got %+v", result.NextTarget)
+				}
+				return
+			}
+			if result.NextTarget == nil || result.NextTarget.Type != tt.wantType {
+				t.Fatalf("expected %s fallback, got %+v", tt.wantType, result.NextTarget)
+			}
+			if tt.wantEpisodeID != 0 && (result.NextTarget.EpisodeID == nil || *result.NextTarget.EpisodeID != tt.wantEpisodeID) {
+				t.Fatalf("expected episode %d, got %+v", tt.wantEpisodeID, result.NextTarget)
+			}
+			if tt.wantAudiobookID != 0 && (result.NextTarget.AudiobookID == nil || *result.NextTarget.AudiobookID != tt.wantAudiobookID || result.NextTarget.TrackID == nil || *result.NextTarget.TrackID != tt.wantTrackID) {
+				t.Fatalf("expected audiobook %d track %d, got %+v", tt.wantAudiobookID, tt.wantTrackID, result.NextTarget)
+			}
+		})
+	}
+}
+
+func TestUpdateCompletionFallbackUsesTopmostEligibleItemWithoutMediaPreference(t *testing.T) {
+	tests := []struct {
+		name             string
+		playlistSetup    string
+		wantType         string
+		wantEpisodeID    int64
+		wantAudiobookID  int64
+		wantTrackID      int64
+	}{
+		{
+			name:            "audiobook before podcast",
+			playlistSetup:   `INSERT INTO playlist (audiobook_id, position) VALUES (1, 1); INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10); INSERT INTO playlist (episode_id, position) VALUES (1, 2), (2, 3);`,
+			wantType:        "audiobook",
+			wantAudiobookID: 1,
+			wantTrackID:     10,
+		},
+		{
+			name:            "podcast before audiobook",
+			playlistSetup:   `INSERT INTO playlist (episode_id, position) VALUES (1, 1); INSERT INTO playlist (audiobook_id, position) VALUES (1, 2); INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10); INSERT INTO playlist (episode_id, position) VALUES (2, 3);`,
+			wantType:        "episode",
+			wantEpisodeID:   1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := newTestDB(t)
+			defer db.Close()
+
+			mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+			mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration) VALUES (1, 1, 'ep-1', 'Earlier episode', 'https://example.com/1.mp3', 60), (2, 1, 'ep-2', 'Last episode', 'https://example.com/2.mp3', 60)`)
+			mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path) VALUES (1, 'Earlier book', 'Author', 'Earlier book')`)
+			mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'Chapter', 'Earlier book/1.mp3', '/books/1.mp3', 60)`)
+			mustExec(t, db.SQL, tt.playlistSetup)
+
+			service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+			result, err := service.Update(context.Background(), UpdateInput{EpisodeID: 2, PositionSeconds: 60, DurationSeconds: 60, Completed: true})
+			if err != nil {
+				t.Fatalf("Update returned error: %v", err)
+			}
+			if result.NextTarget == nil || result.NextTarget.Type != tt.wantType {
+				t.Fatalf("expected topmost %s target, got %+v", tt.wantType, result.NextTarget)
+			}
+			if tt.wantEpisodeID != 0 && (result.NextTarget.EpisodeID == nil || *result.NextTarget.EpisodeID != tt.wantEpisodeID) {
+				t.Fatalf("expected topmost episode %d, got %+v", tt.wantEpisodeID, result.NextTarget)
+			}
+			if tt.wantAudiobookID != 0 && (result.NextTarget.AudiobookID == nil || *result.NextTarget.AudiobookID != tt.wantAudiobookID || result.NextTarget.TrackID == nil || *result.NextTarget.TrackID != tt.wantTrackID) {
+				t.Fatalf("expected topmost audiobook %d track %d, got %+v", tt.wantAudiobookID, tt.wantTrackID, result.NextTarget)
+			}
+		})
+	}
+}
+
+func TestUpdateCompletionAudiobookFallbackMatchesRefreshedQueueTrackAndResumePosition(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	older := time.Date(2026, 9, 4, 8, 0, 0, 0, time.UTC)
+	newer := older.Add(time.Hour)
+	mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Test', 'https://example.com/feed.xml')`)
+	mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration) VALUES (2, 1, 'ep-2', 'Last episode', 'https://example.com/2.mp3', 60)`)
+	mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path) VALUES (1, 'Earlier book', 'Author', 'Earlier book')`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'Chapter 1', 'Earlier book/1.mp3', '/books/1.mp3', 600), (11, 1, 2, 'Chapter 2', 'Earlier book/2.mp3', '/books/2.mp3', 600), (12, 1, 3, 'Chapter 3', 'Earlier book/3.mp3', '/books/3.mp3', 600)`)
+	mustExec(t, db.SQL, `INSERT INTO playlist (audiobook_id, position) VALUES (1, 1); INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10), (1, 11), (1, 12); INSERT INTO playlist (episode_id, position) VALUES (2, 2)`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_playback (track_id, audiobook_id, position_seconds, last_updated) VALUES (10, 1, 100, ?), (11, 1, 275, ?)`, older, newer)
+
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+	result, err := service.Update(context.Background(), UpdateInput{EpisodeID: 2, PositionSeconds: 60, DurationSeconds: 60, Completed: true})
+	if err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+	if result.NextTarget == nil || result.NextTarget.Type != "audiobook" || result.NextTarget.AudiobookID == nil || *result.NextTarget.AudiobookID != 1 || result.NextTarget.TrackID == nil || *result.NextTarget.TrackID != 11 {
+		t.Fatalf("expected audiobook 1 track 11, got %+v", result.NextTarget)
+	}
+
+	queue, err := service.ListQueue(context.Background())
+	if err != nil {
+		t.Fatalf("ListQueue returned error: %v", err)
+	}
+	if len(queue) != 1 || queue[0].AudiobookID == nil || *queue[0].AudiobookID != *result.NextTarget.AudiobookID || queue[0].TrackID == nil || *queue[0].TrackID != *result.NextTarget.TrackID {
+		t.Fatalf("refreshed queue target does not match completion response: result=%+v queue=%+v", result.NextTarget, queue)
+	}
+	if queue[0].Playback == nil || queue[0].Playback.TrackID != 11 || queue[0].Playback.PositionSeconds != 275 || !queue[0].Playback.LastUpdated.Equal(newer) {
+		t.Fatalf("expected refreshed queue track 11 at resume position 275, got %+v", queue[0].Playback)
 	}
 }
 
