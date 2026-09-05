@@ -13,6 +13,10 @@ import (
 	"github.com/cross/mpod/server/internal/scheduler"
 )
 
+const (
+	maxPodcastImageBytes = 5 * 1024 * 1024
+)
+
 func (r *Router) handlePodcastsList(w nethttp.ResponseWriter, req *nethttp.Request) {
 	if _, ok := r.requireUser(w, req); !ok {
 		return
@@ -134,13 +138,27 @@ func (r *Router) handlePodcastImage(w nethttp.ResponseWriter, req *nethttp.Reque
 		return
 	}
 
+	if resp.ContentLength > maxPodcastImageBytes {
+		r.writeAPIError(w, nethttp.StatusBadGateway, "PODCAST_IMAGE_LOAD_FAILED", "Failed to load podcast image")
+		return
+	}
+
+	payload, err := io.ReadAll(io.LimitReader(resp.Body, maxPodcastImageBytes+1))
+	if err != nil {
+		r.logger.Printf("read podcast image failed: %v", err)
+		r.writeAPIError(w, nethttp.StatusBadGateway, "PODCAST_IMAGE_LOAD_FAILED", "Failed to load podcast image")
+		return
+	}
+	if int64(len(payload)) > maxPodcastImageBytes {
+		r.writeAPIError(w, nethttp.StatusBadGateway, "PODCAST_IMAGE_LOAD_FAILED", "Failed to load podcast image")
+		return
+	}
+
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", "private, max-age=604800")
-	if resp.ContentLength > 0 {
-		w.Header().Set("Content-Length", strconv.FormatInt(resp.ContentLength, 10))
-	}
-	if _, err := io.Copy(w, io.LimitReader(resp.Body, 5*1024*1024)); err != nil {
-		r.logger.Printf("copy podcast image failed: %v", err)
+	w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+	if _, err := w.Write(payload); err != nil {
+		r.logger.Printf("write podcast image failed: %v", err)
 	}
 }
 

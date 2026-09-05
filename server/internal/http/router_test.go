@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"mime/multipart"
@@ -379,6 +380,248 @@ func TestPodcastImageProxiesArtwork(t *testing.T) {
 		t.Fatalf("unexpected image body: %q", rec.Body.String())
 	}
 }
+
+type podcastImageFailingReader struct {
+	data []byte
+	read int
+	err  error
+}
+
+func (r *podcastImageFailingReader) Read(p []byte) (int, error) {
+	if r.read < len(r.data) {
+		n := copy(p, r.data[r.read:])
+		r.read += n
+		return n, nil
+	}
+	return 0, r.err
+}
+
+func (r *podcastImageFailingReader) Close() error {
+	return nil
+}
+
+func setupPodcastImageHarness(t *testing.T, roundTrip func(req *nethttp.Request) (*nethttp.Response, error)) (nethttp.Handler, *nethttp.Cookie) {
+	t.Helper()
+	client := newRouterTestClient(roundTrip)
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, image_url, rss_url) VALUES (1, 'Podcast', 'https://cdn.example.com/artwork.png', 'https://example.com/feed.xml')`)
+	return handler, cookie
+}
+
+func executePodcastImageRequest(handler nethttp.Handler, cookie *nethttp.Cookie) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/1/image", nil)
+	req.SetPathValue("id", "1")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestPodcastImageKnownContentLengthBelowLimit(t *testing.T) {
+	body := []byte("valid-small-image-content")
+	handler, cookie := setupPodcastImageHarness(t, func(req *nethttp.Request) (*nethttp.Response, error) {
+		resp := &nethttp.Response{
+			StatusCode:    nethttp.StatusOK,
+			Status:        "200 OK",
+			Header:        make(nethttp.Header),
+			Body:          io.NopCloser(bytes.NewReader(body)),
+			ContentLength: int64(len(body)),
+		}
+		resp.Header.Set("Content-Type", "image/png")
+		return resp, nil
+	})
+
+	rec := executePodcastImageRequest(handler, cookie)
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("expected image/png content type, got %q", rec.Header().Get("Content-Type"))
+	}
+	if rec.Header().Get("Cache-Control") != "private, max-age=604800" {
+		t.Fatalf("expected Cache-Control header, got %q", rec.Header().Get("Cache-Control"))
+	}
+	if rec.Header().Get("Content-Length") != strconv.Itoa(len(body)) {
+		t.Fatalf("expected Content-Length %d, got %q", len(body), rec.Header().Get("Content-Length"))
+	}
+	if !bytes.Equal(rec.Body.Bytes(), body) {
+		t.Fatalf("body mismatch: got %q, want %q", rec.Body.String(), string(body))
+	}
+}
+
+func TestPodcastImageExactFiveMiBAllowed(t *testing.T) {
+	exactBody := bytes.Repeat([]byte{'i'}, 5*1024*1024)
+	handler, cookie := setupPodcastImageHarness(t, func(req *nethttp.Request) (*nethttp.Response, error) {
+		resp := &nethttp.Response{
+			StatusCode:    nethttp.StatusOK,
+			Status:        "200 OK",
+			Header:        make(nethttp.Header),
+			Body:          io.NopCloser(bytes.NewReader(exactBody)),
+			ContentLength: int64(len(exactBody)),
+		}
+		resp.Header.Set("Content-Type", "image/jpeg")
+		return resp, nil
+	})
+
+	rec := executePodcastImageRequest(handler, cookie)
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("expected image/jpeg content type, got %q", rec.Header().Get("Content-Type"))
+	}
+	if rec.Header().Get("Content-Length") != strconv.Itoa(len(exactBody)) {
+		t.Fatalf("expected Content-Length %d, got %q", len(exactBody), rec.Header().Get("Content-Length"))
+	}
+	if rec.Body.Len() != len(exactBody) {
+		t.Fatalf("expected %d bytes, got %d", len(exactBody), rec.Body.Len())
+	}
+}
+
+func TestPodcastImageDeclaredContentLengthExceedingLimit(t *testing.T) {
+	declaredSize := int64(5*1024*1024 + 1024)
+	largeBody := bytes.Repeat([]byte{'x'}, int(declaredSize))
+	handler, cookie := setupPodcastImageHarness(t, func(req *nethttp.Request) (*nethttp.Response, error) {
+		resp := &nethttp.Response{
+			StatusCode:    nethttp.StatusOK,
+			Status:        "200 OK",
+			Header:        make(nethttp.Header),
+			Body:          io.NopCloser(bytes.NewReader(largeBody)),
+			ContentLength: declaredSize,
+		}
+		resp.Header.Set("Content-Type", "image/jpeg")
+		return resp, nil
+	})
+
+	rec := executePodcastImageRequest(handler, cookie)
+	if rec.Code != nethttp.StatusBadGateway {
+		t.Fatalf("expected 502, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "PODCAST_IMAGE_LOAD_FAILED")
+	if strings.HasPrefix(rec.Header().Get("Content-Type"), "image/") {
+		t.Fatalf("expected non-image content type on failure, got %q", rec.Header().Get("Content-Type"))
+	}
+}
+
+func TestPodcastImageChunkedExceedingLimit(t *testing.T) {
+	oversizeBody := bytes.Repeat([]byte{'y'}, 5*1024*1024+1)
+	handler, cookie := setupPodcastImageHarness(t, func(req *nethttp.Request) (*nethttp.Response, error) {
+		resp := &nethttp.Response{
+			StatusCode:    nethttp.StatusOK,
+			Status:        "200 OK",
+			Header:        make(nethttp.Header),
+			Body:          io.NopCloser(bytes.NewReader(oversizeBody)),
+			ContentLength: -1,
+		}
+		resp.Header.Set("Content-Type", "image/png")
+		return resp, nil
+	})
+
+	rec := executePodcastImageRequest(handler, cookie)
+	if rec.Code != nethttp.StatusBadGateway {
+		t.Fatalf("expected 502 for chunked body exceeding limit, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "PODCAST_IMAGE_LOAD_FAILED")
+	if strings.HasPrefix(rec.Header().Get("Content-Type"), "image/") {
+		t.Fatalf("expected non-image content type on failure, got %q", rec.Header().Get("Content-Type"))
+	}
+}
+
+func TestPodcastImageUnderstatedContentLengthExceedingLimit(t *testing.T) {
+	oversizeBody := bytes.Repeat([]byte{'z'}, 5*1024*1024+10)
+	handler, cookie := setupPodcastImageHarness(t, func(req *nethttp.Request) (*nethttp.Response, error) {
+		resp := &nethttp.Response{
+			StatusCode:    nethttp.StatusOK,
+			Status:        "200 OK",
+			Header:        make(nethttp.Header),
+			Body:          io.NopCloser(bytes.NewReader(oversizeBody)),
+			ContentLength: 100,
+		}
+		resp.Header.Set("Content-Type", "image/png")
+		return resp, nil
+	})
+
+	rec := executePodcastImageRequest(handler, cookie)
+	if rec.Code != nethttp.StatusBadGateway {
+		t.Fatalf("expected 502 for understated Content-Length exceeding limit, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "PODCAST_IMAGE_LOAD_FAILED")
+	if strings.HasPrefix(rec.Header().Get("Content-Type"), "image/") {
+		t.Fatalf("expected non-image content type on failure, got %q", rec.Header().Get("Content-Type"))
+	}
+}
+
+func TestPodcastImageBodyReadErrorYieldsBadGateway(t *testing.T) {
+	partialData := []byte("some-partial-image-data")
+	handler, cookie := setupPodcastImageHarness(t, func(req *nethttp.Request) (*nethttp.Response, error) {
+		resp := &nethttp.Response{
+			StatusCode: nethttp.StatusOK,
+			Status:     "200 OK",
+			Header:     make(nethttp.Header),
+			Body: &podcastImageFailingReader{
+				data: partialData,
+				err:  errors.New("simulated network drop during image read"),
+			},
+			ContentLength: 1024,
+		}
+		resp.Header.Set("Content-Type", "image/png")
+		return resp, nil
+	})
+
+	rec := executePodcastImageRequest(handler, cookie)
+	if rec.Code != nethttp.StatusBadGateway {
+		t.Fatalf("expected 502 for read error before completion, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertErrorCode(t, rec.Body.Bytes(), "PODCAST_IMAGE_LOAD_FAILED")
+	if strings.HasPrefix(rec.Header().Get("Content-Type"), "image/") {
+		t.Fatalf("expected non-image content type on failure, got %q", rec.Header().Get("Content-Type"))
+	}
+}
+
+func TestPodcastImageInvalidContentTypeAndUpstreamError(t *testing.T) {
+	t.Run("non-image content type returns 502", func(t *testing.T) {
+		handler, cookie := setupPodcastImageHarness(t, func(req *nethttp.Request) (*nethttp.Response, error) {
+			resp := &nethttp.Response{
+				StatusCode:    nethttp.StatusOK,
+				Status:        "200 OK",
+				Header:        make(nethttp.Header),
+				Body:          io.NopCloser(strings.NewReader("<!DOCTYPE html><html></html>")),
+				ContentLength: 28,
+			}
+			resp.Header.Set("Content-Type", "text/html; charset=utf-8")
+			return resp, nil
+		})
+
+		rec := executePodcastImageRequest(handler, cookie)
+		if rec.Code != nethttp.StatusBadGateway {
+			t.Fatalf("expected 502 for text/html content-type, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		assertErrorCode(t, rec.Body.Bytes(), "PODCAST_IMAGE_LOAD_FAILED")
+	})
+
+	t.Run("upstream non-2xx returns 502", func(t *testing.T) {
+		handler, cookie := setupPodcastImageHarness(t, func(req *nethttp.Request) (*nethttp.Response, error) {
+			resp := &nethttp.Response{
+				StatusCode: nethttp.StatusNotFound,
+				Status:     "404 Not Found",
+				Header:     make(nethttp.Header),
+				Body:       io.NopCloser(strings.NewReader("not found")),
+			}
+			return resp, nil
+		})
+
+		rec := executePodcastImageRequest(handler, cookie)
+		if rec.Code != nethttp.StatusBadGateway {
+			t.Fatalf("expected 502 for upstream 404, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		assertErrorCode(t, rec.Body.Bytes(), "PODCAST_IMAGE_LOAD_FAILED")
+	})
+}
+
 
 func TestSettingsPatchRejectsInvalidTime(t *testing.T) {
 	handler, cookie := newAuthedRouter(t)
