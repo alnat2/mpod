@@ -100,6 +100,30 @@ export type PlaybackQueueResponse = {
 
 export type PlaybackUpdateResponse = {
   playback: PlaybackState;
+  nextItem?: {
+    type: "episode" | "audiobook";
+    episodeId?: number;
+    audiobookId?: number;
+    trackId?: number;
+    podcastId: number;
+    title: string;
+    description?: string | null;
+    audioUrl: string;
+    duration: number | null;
+    downloaded: boolean;
+    isListened: boolean;
+    publishedAt: string | null;
+    podcastTitle: string;
+    podcastImageUrl?: string | null;
+    author?: string;
+    coverUrl?: string | null;
+    trackCount?: number;
+    trackNumber?: number;
+    hasChapters?: boolean;
+    hasCover?: boolean;
+    positionSeconds: number;
+    lastUpdated: string;
+  } | null;
   nextTarget?:
     | { type: "episode"; episodeId: number }
     | { type: "audiobook"; audiobookId: number; trackId: number }

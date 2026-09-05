@@ -57,10 +57,11 @@ type QueueEpisode struct {
 }
 
 type UpdateResult struct {
-	Playback      State           `json:"playback"`
-	NextTarget    *PlaybackTarget `json:"nextTarget,omitempty"`
-	NextEpisodeID *int64          `json:"nextEpisodeId"`
-	NextTrackID   *int64          `json:"nextTrackId,omitempty"`
+	Playback      State             `json:"playback"`
+	NextTarget    *PlaybackTarget   `json:"nextTarget,omitempty"`
+	NextItem      *NextPlaybackItem `json:"nextItem,omitempty"`
+	NextEpisodeID *int64            `json:"nextEpisodeId"`
+	NextTrackID   *int64            `json:"nextTrackId,omitempty"`
 }
 
 type PlaybackTarget struct {
@@ -68,6 +69,33 @@ type PlaybackTarget struct {
 	EpisodeID   *int64 `json:"episodeId,omitempty"`
 	AudiobookID *int64 `json:"audiobookId,omitempty"`
 	TrackID     *int64 `json:"trackId,omitempty"`
+}
+
+// NextPlaybackItem contains the source and resume state needed to start the
+// next item without waiting for a queue refresh.
+type NextPlaybackItem struct {
+	Type            string     `json:"type"`
+	EpisodeID       *int64     `json:"episodeId,omitempty"`
+	AudiobookID     *int64     `json:"audiobookId,omitempty"`
+	TrackID         *int64     `json:"trackId,omitempty"`
+	PodcastID       int64      `json:"podcastId"`
+	Title           string     `json:"title"`
+	Description     *string    `json:"description,omitempty"`
+	AudioURL        string     `json:"audioUrl"`
+	Duration        *int64     `json:"duration"`
+	Downloaded      bool       `json:"downloaded"`
+	IsListened      bool       `json:"isListened"`
+	PublishedAt     *time.Time `json:"publishedAt"`
+	PodcastTitle    string     `json:"podcastTitle"`
+	PodcastImageURL *string    `json:"podcastImageUrl"`
+	Author          string     `json:"author,omitempty"`
+	CoverURL        *string    `json:"coverUrl,omitempty"`
+	TrackCount      int        `json:"trackCount,omitempty"`
+	TrackNumber     int        `json:"trackNumber,omitempty"`
+	HasChapters     bool       `json:"hasChapters,omitempty"`
+	HasCover        bool       `json:"hasCover,omitempty"`
+	PositionSeconds int64      `json:"positionSeconds"`
+	LastUpdated     time.Time  `json:"lastUpdated"`
 }
 
 type UpdateInput struct {
@@ -631,6 +659,15 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 				LIMIT 1
 			`, abID, *input.TrackID).Scan(&nextTrackID)
 			if err == nil {
+				nextTarget := &PlaybackTarget{
+					Type:        "audiobook",
+					AudiobookID: &abID,
+					TrackID:     &nextTrackID,
+				}
+				nextItem, err := loadNextPlaybackItem(ctx, tx, nextTarget)
+				if err != nil {
+					return UpdateResult{}, err
+				}
 				if _, err := tx.ExecContext(ctx, `
 					INSERT INTO active_playback (singleton_id, episode_id, audiobook_id, audiobook_track_id, last_updated)
 					VALUES (1, NULL, ?, ?, ?)
@@ -652,11 +689,8 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 						PositionSeconds: position,
 						LastUpdated:     now,
 					},
-					NextTarget: &PlaybackTarget{
-						Type:        "audiobook",
-						AudiobookID: &abID,
-						TrackID:     &nextTrackID,
-					},
+					NextTarget:  nextTarget,
+					NextItem:    nextItem,
 					NextTrackID: &nextTrackID,
 				}, nil
 			}
@@ -665,6 +699,10 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 			}
 
 			fallback, err := findCompletionFallback(ctx, tx, nil, &abID)
+			if err != nil {
+				return UpdateResult{}, err
+			}
+			nextItem, err := loadNextPlaybackItem(ctx, tx, fallback)
 			if err != nil {
 				return UpdateResult{}, err
 			}
@@ -682,6 +720,7 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 					LastUpdated:     now,
 				},
 				NextTarget: fallback,
+				NextItem:   nextItem,
 			}
 			if fallback != nil && fallback.EpisodeID != nil {
 				result.NextEpisodeID = fallback.EpisodeID
@@ -743,6 +782,10 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 		if err != nil {
 			return UpdateResult{}, err
 		}
+		nextItem, err := loadNextPlaybackItem(ctx, s.db, nextTarget)
+		if err != nil {
+			return UpdateResult{}, err
+		}
 		state, err := s.saveState(ctx, input.EpisodeID, position)
 		if err != nil {
 			return UpdateResult{}, err
@@ -750,7 +793,7 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 		if err := s.applyCompletionSideEffects(ctx, input.EpisodeID); err != nil {
 			return UpdateResult{}, err
 		}
-		result := UpdateResult{Playback: state, NextTarget: nextTarget}
+		result := UpdateResult{Playback: state, NextTarget: nextTarget, NextItem: nextItem}
 		if nextTarget != nil && nextTarget.EpisodeID != nil {
 			result.NextEpisodeID = nextTarget.EpisodeID
 		}
@@ -940,6 +983,127 @@ func findCompletionFallback(ctx context.Context, queryer playlistQueryer, comple
 		if items[i].target != nil {
 			return items[i].target, nil
 		}
+	}
+
+	return nil, nil
+}
+
+type playbackItemQueryer interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func loadNextPlaybackItem(ctx context.Context, queryer playbackItemQueryer, target *PlaybackTarget) (*NextPlaybackItem, error) {
+	if target == nil {
+		return nil, nil
+	}
+
+	if target.Type == "episode" && target.EpisodeID != nil {
+		var id int64
+		var podcastID int64
+		var title, audioURL, podcastTitle string
+		var description, imageURL sql.NullString
+		var duration, position sql.NullInt64
+		var downloadedPath sql.NullString
+		var listened sql.NullBool
+		var publishedAt, lastUpdated sql.NullTime
+		if err := queryer.QueryRowContext(ctx, `
+			SELECT episodes.id, episodes.podcast_id, episodes.title, episodes.description,
+			       episodes.audio_url, episodes.duration, episodes.downloaded_path,
+			       episodes.is_listened, episodes.published_at, podcasts.title, podcasts.image_url,
+			       playback.position_seconds, playback.last_updated
+			FROM episodes
+			JOIN podcasts ON podcasts.id = episodes.podcast_id
+			LEFT JOIN playback ON playback.episode_id = episodes.id
+			WHERE episodes.id = ?
+		`, *target.EpisodeID).Scan(&id, &podcastID, &title, &description, &audioURL, &duration, &downloadedPath, &listened, &publishedAt, &podcastTitle, &imageURL, &position, &lastUpdated); err != nil {
+			return nil, fmt.Errorf("load next episode: %w", err)
+		}
+		item := &NextPlaybackItem{
+			Type:         "episode",
+			EpisodeID:    &id,
+			PodcastID:    podcastID,
+			Title:        title,
+			AudioURL:     audioURL,
+			Downloaded:   downloadedPath.Valid && downloadedPath.String != "",
+			IsListened:   listened.Bool,
+			PodcastTitle: podcastTitle,
+		}
+		if description.Valid {
+			value := description.String
+			item.Description = &value
+		}
+		if imageURL.Valid && imageURL.String != "" {
+			value := fmt.Sprintf("/api/podcasts/%d/image", podcastID)
+			item.PodcastImageURL = &value
+		}
+		if duration.Valid {
+			value := duration.Int64
+			item.Duration = &value
+		}
+		if publishedAt.Valid {
+			value := publishedAt.Time.UTC()
+			item.PublishedAt = &value
+		}
+		if position.Valid {
+			item.PositionSeconds = position.Int64
+		}
+		if lastUpdated.Valid {
+			item.LastUpdated = lastUpdated.Time.UTC()
+		}
+		return item, nil
+	}
+
+	if target.Type == "audiobook" && target.AudiobookID != nil && target.TrackID != nil {
+		var bookID, trackID int64
+		var title, bookTitle, author, coverPath sql.NullString
+		var trackNumber, duration, position, trackCount, libraryTrackCount sql.NullInt64
+		var lastUpdated sql.NullTime
+		if err := queryer.QueryRowContext(ctx, `
+			SELECT tracks.audiobook_id, tracks.id, tracks.title, tracks.track_number, tracks.duration,
+			       audiobooks.title, audiobooks.author, audiobooks.cover_path,
+			       (SELECT COUNT(*) FROM audiobook_playlist_tracks selected WHERE selected.audiobook_id = tracks.audiobook_id),
+			       (SELECT COUNT(*) FROM audiobook_tracks library WHERE library.audiobook_id = tracks.audiobook_id),
+			       audiobook_playback.position_seconds, audiobook_playback.last_updated
+			FROM audiobook_tracks tracks
+			JOIN audiobooks ON audiobooks.id = tracks.audiobook_id
+			LEFT JOIN audiobook_playback ON audiobook_playback.track_id = tracks.id
+			WHERE tracks.audiobook_id = ? AND tracks.id = ?
+		`, *target.AudiobookID, *target.TrackID).Scan(&bookID, &trackID, &title, &trackNumber, &duration, &bookTitle, &author, &coverPath, &trackCount, &libraryTrackCount, &position, &lastUpdated); err != nil {
+			return nil, fmt.Errorf("load next audiobook track: %w", err)
+		}
+		item := &NextPlaybackItem{
+			Type:         "audiobook",
+			AudiobookID:  &bookID,
+			TrackID:      &trackID,
+			PodcastID:    0,
+			Title:        bookTitle.String,
+			AudioURL:     fmt.Sprintf("/api/audiobooks/%d/tracks/%d/audio", bookID, trackID),
+			Downloaded:   true,
+			PodcastTitle: author.String,
+			Author:       author.String,
+			TrackCount:   int(trackCount.Int64),
+			HasChapters:  libraryTrackCount.Int64 > 1,
+		}
+		if coverPath.Valid && coverPath.String != "" {
+			value := fmt.Sprintf("/api/audiobooks/%d/cover", bookID)
+			item.CoverURL = &value
+			item.PodcastImageURL = &value
+			item.HasCover = true
+		}
+		if trackNumber.Valid {
+			item.TrackNumber = int(trackNumber.Int64)
+		}
+		if duration.Valid {
+			value := duration.Int64
+			item.Duration = &value
+		}
+		if position.Valid {
+			item.PositionSeconds = position.Int64
+		}
+		if lastUpdated.Valid {
+			item.LastUpdated = lastUpdated.Time.UTC()
+		}
+		return item, nil
 	}
 
 	return nil, nil
