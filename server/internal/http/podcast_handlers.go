@@ -143,6 +143,8 @@ func (r *Router) handlePodcastImage(w nethttp.ResponseWriter, req *nethttp.Reque
 		return
 	}
 
+	// LimitReader bounds the read to protect against chunked or unbounded streams exceeding the limit.
+	// For responses with positive Content-Length, net/http.Transport frames and bounds resp.Body to that size.
 	payload, err := io.ReadAll(io.LimitReader(resp.Body, maxPodcastImageBytes+1))
 	if err != nil {
 		r.logger.Printf("read podcast image failed: %v", err)

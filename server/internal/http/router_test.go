@@ -531,15 +531,62 @@ func TestPodcastImageChunkedExceedingLimit(t *testing.T) {
 	}
 }
 
-func TestPodcastImageUnderstatedContentLengthExceedingLimit(t *testing.T) {
-	oversizeBody := bytes.Repeat([]byte{'z'}, 5*1024*1024+10)
+// TestPodcastImageUnderstatedContentLengthProtocolLimitation documents a protocol limitation:
+// when an upstream response specifies a positive Content-Length=N (e.g. 100 bytes),
+// standard net/http.Transport frames the response body and bounds resp.Body to exactly N bytes.
+// Any excess bytes sent on the wire beyond N are not accessible to the application handler via resp.Body.
+// As a result, the handler receives exactly N bytes, sets Content-Length to N (len(payload)),
+// and responds with 200 OK. The handler does not and cannot claim to detect hidden transport-level
+// bytes without inspecting raw TCP or decoding the image format.
+func TestPodcastImageUnderstatedContentLengthProtocolLimitation(t *testing.T) {
+	const declaredLen = 100
+	wireBody := bytes.Repeat([]byte{'z'}, 5*1024*1024+10)
+	// As delivered by standard net/http.Transport for positive Content-Length,
+	// resp.Body is bounded to declaredLen bytes.
+	transportBody := io.LimitReader(bytes.NewReader(wireBody), declaredLen)
+
 	handler, cookie := setupPodcastImageHarness(t, func(req *nethttp.Request) (*nethttp.Response, error) {
 		resp := &nethttp.Response{
 			StatusCode:    nethttp.StatusOK,
 			Status:        "200 OK",
 			Header:        make(nethttp.Header),
-			Body:          io.NopCloser(bytes.NewReader(oversizeBody)),
-			ContentLength: 100,
+			Body:          io.NopCloser(transportBody),
+			ContentLength: declaredLen,
+		}
+		resp.Header.Set("Content-Type", "image/png")
+		return resp, nil
+	})
+
+	rec := executePodcastImageRequest(handler, cookie)
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 OK for transport-framed body, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("expected image/png content type, got %q", rec.Header().Get("Content-Type"))
+	}
+	if rec.Header().Get("Content-Length") != strconv.Itoa(declaredLen) {
+		t.Fatalf("expected Content-Length %d, got %q", declaredLen, rec.Header().Get("Content-Length"))
+	}
+	if rec.Body.Len() != declaredLen {
+		t.Fatalf("expected %d bytes, got %d", declaredLen, rec.Body.Len())
+	}
+	if !bytes.Equal(rec.Body.Bytes(), wireBody[:declaredLen]) {
+		t.Fatalf("body content mismatch")
+	}
+}
+
+func TestPodcastImageTruncatedBodyUnexpectedEOFYieldsBadGateway(t *testing.T) {
+	partialData := []byte("truncated-image-data")
+	handler, cookie := setupPodcastImageHarness(t, func(req *nethttp.Request) (*nethttp.Response, error) {
+		resp := &nethttp.Response{
+			StatusCode: nethttp.StatusOK,
+			Status:     "200 OK",
+			Header:     make(nethttp.Header),
+			Body: &podcastImageFailingReader{
+				data: partialData,
+				err:  io.ErrUnexpectedEOF,
+			},
+			ContentLength: 1024,
 		}
 		resp.Header.Set("Content-Type", "image/png")
 		return resp, nil
@@ -547,7 +594,7 @@ func TestPodcastImageUnderstatedContentLengthExceedingLimit(t *testing.T) {
 
 	rec := executePodcastImageRequest(handler, cookie)
 	if rec.Code != nethttp.StatusBadGateway {
-		t.Fatalf("expected 502 for understated Content-Length exceeding limit, got %d body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("expected 502 for truncated response with unexpected EOF, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	assertErrorCode(t, rec.Body.Bytes(), "PODCAST_IMAGE_LOAD_FAILED")
 	if strings.HasPrefix(rec.Header().Get("Content-Type"), "image/") {
