@@ -327,11 +327,14 @@ export function usePlaybackSync({
     }
   }, [setAudiobookSpeedLabel, setSpeedLabel, settingsRequests]);
 
-  const loadQueue = useCallback(async () => {
+  const loadQueue = useCallback(async (shouldApply?: () => boolean) => {
     const requestGeneration = queueRequests.beginRequest();
     try {
       const response = await api.playback.queue();
       if (!queueRequests.isLatestRequest(requestGeneration)) {
+        return null;
+      }
+      if (shouldApply && !shouldApply()) {
         return null;
       }
       setQueue(response.queue);

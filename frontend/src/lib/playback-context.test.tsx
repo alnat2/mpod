@@ -2235,6 +2235,177 @@ describe("PlaybackProvider", () => {
     expect(queueSpy).toHaveBeenCalledTimes(2);
   });
 
+  it("starts a complete backend next item before a failed queue refresh", async () => {
+    const user = userEvent.setup();
+    const firstItem: PlaybackQueueEpisode = {
+      id: 100,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 100,
+      trackId: 501,
+      trackNumber: 1,
+      title: "Direct Audiobook",
+      audioUrl: "/api/audiobooks/100/tracks/501/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Author",
+      playback: {
+        audiobookId: 100,
+        trackId: 501,
+        positionSeconds: 0,
+        lastUpdated: "2026-09-05T08:00:00Z",
+      },
+    };
+    let queueCalls = 0;
+    vi.mocked(api.playback.queue).mockImplementation(async () => {
+      queueCalls += 1;
+      if (queueCalls > 1) {
+        throw new Error("background queue refresh unavailable");
+      }
+      return {
+        queue: [firstItem],
+        activePlayback: { audiobookId: 100, trackId: 501, lastUpdated: "2026-09-05T08:00:00Z" },
+      };
+    });
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: {
+        audiobookId: 100,
+        trackId: 501,
+        positionSeconds: 100,
+        lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextTarget: { type: "audiobook", audiobookId: 100, trackId: 502 },
+      nextItem: {
+        type: "audiobook",
+        audiobookId: 100,
+        trackId: 502,
+        podcastId: 0,
+        title: "Direct Audiobook",
+        audioUrl: "/api/audiobooks/100/tracks/502/audio",
+        duration: 110,
+        downloaded: true,
+        isListened: false,
+        publishedAt: null,
+        podcastTitle: "Author",
+        trackNumber: 2,
+        positionSeconds: 31,
+        lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextEpisodeId: null,
+    });
+
+    function DirectNextHarness() {
+      const { currentEpisode, playing, playQueueItem } = usePlayback();
+      return (
+        <>
+          <div data-testid="direct-track-id">{currentEpisode?.trackId}</div>
+          <div data-testid="direct-playing">{playing ? "yes" : "no"}</div>
+          <button type="button" onClick={() => playQueueItem(firstItem)}>
+            Play direct audiobook
+          </button>
+        </>
+      );
+    }
+
+    render(<PlaybackProvider><DirectNextHarness /></PlaybackProvider>);
+    await waitFor(() => expect(screen.getByTestId("direct-track-id")).toHaveTextContent("501"));
+    await user.click(screen.getByRole("button", { name: "Play direct audiobook" }));
+    const audio = FakeAudio.first;
+    await waitFor(() => expect(screen.getByTestId("direct-playing")).toHaveTextContent("yes"));
+    const sameAudio = FakeAudio.first;
+    audio.currentTime = 100;
+    audio.emit("ended");
+
+    await waitFor(() => expect(screen.getByTestId("direct-track-id")).toHaveTextContent("502"));
+    await waitFor(() => expect(screen.getByTestId("direct-playing")).toHaveTextContent("yes"));
+    expect(FakeAudio.first).toBe(sameAudio);
+    expect(audio.src).toContain("/api/audiobooks/100/tracks/502/audio");
+    expect(audio.currentTime).toBe(31);
+    expect(audio.playImpl).toHaveBeenCalledTimes(2);
+    expect(queueCalls).toBe(2);
+  });
+
+  it("does not let a late completion refresh restart an old target after manual play", async () => {
+    const user = userEvent.setup();
+    const firstItem: PlaybackQueueEpisode = {
+      id: 100,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 100,
+      trackId: 501,
+      trackNumber: 1,
+      title: "Book A chapter 1",
+      audioUrl: "/api/audiobooks/100/tracks/501/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Book A",
+      playback: { audiobookId: 100, trackId: 501, positionSeconds: 0, lastUpdated: "2026-09-05T08:00:00Z" },
+    };
+    const manualItem: PlaybackQueueEpisode = {
+      id: 9,
+      podcastId: 22,
+      type: "episode",
+      title: "Manual B",
+      audioUrl: "/api/episodes/9/audio",
+      duration: 90,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Podcast B",
+      playback: { episodeId: 9, positionSeconds: 0, lastUpdated: "2026-09-05T08:00:00Z" },
+    };
+    const lateRefresh = deferred<{ queue: PlaybackQueueEpisode[]; activePlayback: null }>();
+    let queueCalls = 0;
+    vi.mocked(api.playback.queue).mockImplementation(async () => {
+      queueCalls += 1;
+      if (queueCalls === 1) return { queue: [firstItem, manualItem], activePlayback: null };
+      return lateRefresh.promise;
+    });
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: { audiobookId: 100, trackId: 501, positionSeconds: 100, lastUpdated: "2026-09-05T08:01:00Z" },
+      nextItem: {
+        type: "audiobook", audiobookId: 100, trackId: 502, title: "Book A chapter 2",
+        audioUrl: "/api/audiobooks/100/tracks/502/audio", duration: 110, downloaded: true,
+        isListened: false, publishedAt: null, podcastId: 0, podcastTitle: "Book A",
+        positionSeconds: 0, lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextEpisodeId: null,
+    });
+
+    function StaleRefreshHarness() {
+      const { queue, currentEpisode, playQueueItem } = usePlayback();
+      return <>
+        <div data-testid="stale-title">{currentEpisode?.title}</div>
+        <button type="button" onClick={() => { const item = queue[0]; if (item) playQueueItem(item); }}>Play A</button>
+        <button type="button" onClick={() => { const item = queue[1]; if (item) playQueueItem(item); }}>Play B</button>
+      </>;
+    }
+
+    render(<PlaybackProvider><StaleRefreshHarness /></PlaybackProvider>);
+    await waitFor(() => expect(screen.getByTestId("stale-title")).toHaveTextContent("Book A chapter 1"));
+    await user.click(screen.getByRole("button", { name: "Play A" }));
+    const audio = FakeAudio.first;
+    audio.currentTime = 100;
+    audio.emit("ended");
+    await waitFor(() => expect(screen.getByTestId("stale-title")).toHaveTextContent("Book A chapter 2"));
+
+    await user.click(screen.getByRole("button", { name: "Play B" }));
+    await waitFor(() => expect(screen.getByTestId("stale-title")).toHaveTextContent("Manual B"));
+    lateRefresh.resolve({ queue: [firstItem], activePlayback: null });
+    await act(async () => { await lateRefresh.promise; });
+    window.dispatchEvent(new Event("focus"));
+    document.dispatchEvent(new Event("visibilitychange"));
+    await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
+
+    expect(screen.getByTestId("stale-title")).toHaveTextContent("Manual B");
+    expect(audio.src).toContain("/api/episodes/9/audio");
+    expect(audio.playImpl).toHaveBeenCalledTimes(3);
+  });
+
   it("completes an audiobook from the media ended state before the ended event arrives", async () => {
     const user = userEvent.setup();
     const sendBeaconSpy = vi.fn(

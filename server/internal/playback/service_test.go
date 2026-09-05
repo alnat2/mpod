@@ -709,6 +709,60 @@ func TestUpdateCompletionSelectsTypedMixedMediaFallback(t *testing.T) {
 	}
 }
 
+func TestUpdateCompletionNextItemCarriesTypedMetadataAcrossMedia(t *testing.T) {
+	t.Run("audiobook to podcast", func(t *testing.T) {
+		db := newTestDB(t)
+		defer db.Close()
+		publishedAt := time.Date(2026, 8, 12, 9, 30, 0, 0, time.UTC)
+		mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url, image_url) VALUES (1, 'Metadata Podcast', 'https://example.com/feed.xml', 'https://example.com/image.png')`)
+		mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, description, audio_url, duration, published_at, downloaded_path) VALUES (1, 1, 'ep-1', 'Metadata Episode', 'Episode description', 'https://example.com/episode.mp3', 321, ?, '/data/downloads/episode.mp3')`, publishedAt)
+		mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path) VALUES (1, 'Completed Book', 'Book Author', 'Completed Book')`)
+		mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'Last Chapter', 'Completed Book/1.mp3', '/books/1.mp3', 60)`)
+		mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+		mustExec(t, db.SQL, `INSERT INTO playlist (audiobook_id, position) VALUES (1, 2)`)
+		mustExec(t, db.SQL, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10)`)
+
+		service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+		bookID, trackID := int64(1), int64(10)
+		result, err := service.Update(context.Background(), UpdateInput{AudiobookID: &bookID, TrackID: &trackID, PositionSeconds: 60, DurationSeconds: 60, Completed: true})
+		if err != nil {
+			t.Fatalf("Update returned error: %v", err)
+		}
+		item := result.NextItem
+		if item == nil || item.Type != "episode" || item.EpisodeID == nil || *item.EpisodeID != 1 {
+			t.Fatalf("expected typed podcast next item, got %+v", item)
+		}
+		if item.Title != "Metadata Episode" || item.Description == nil || *item.Description != "Episode description" || item.AudioURL != "https://example.com/episode.mp3" || item.Duration == nil || *item.Duration != 321 || !item.Downloaded || item.PodcastTitle != "Metadata Podcast" || item.PodcastImageURL == nil || item.PublishedAt == nil || !item.PublishedAt.Equal(publishedAt) {
+			t.Fatalf("next podcast metadata incomplete: %+v", item)
+		}
+	})
+
+	t.Run("podcast to audiobook", func(t *testing.T) {
+		db := newTestDB(t)
+		defer db.Close()
+		mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Completed Podcast', 'https://example.com/feed.xml')`)
+		mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration) VALUES (2, 1, 'ep-2', 'Last Episode', 'https://example.com/last.mp3', 60)`)
+		mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path, cover_path) VALUES (1, 'Next Book', 'Next Author', 'Next Book', '/books/cover.jpg')`)
+		mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 3, 'Next Chapter', 'Next Book/3.mp3', '/books/3.mp3', 432), (11, 1, 4, 'Following Chapter', 'Next Book/4.mp3', '/books/4.mp3', 500)`)
+		mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (2, 2)`)
+		mustExec(t, db.SQL, `INSERT INTO playlist (audiobook_id, position) VALUES (1, 1)`)
+		mustExec(t, db.SQL, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10)`)
+
+		service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+		result, err := service.Update(context.Background(), UpdateInput{EpisodeID: 2, PositionSeconds: 60, DurationSeconds: 60, Completed: true})
+		if err != nil {
+			t.Fatalf("Update returned error: %v", err)
+		}
+		item := result.NextItem
+		if item == nil || item.Type != "audiobook" || item.AudiobookID == nil || *item.AudiobookID != 1 || item.TrackID == nil || *item.TrackID != 10 {
+			t.Fatalf("expected typed audiobook next item, got %+v", item)
+		}
+		if item.Title != "Next Book" || item.PodcastTitle != "Next Author" || item.Author != "Next Author" || item.CoverURL == nil || item.PodcastImageURL == nil || item.TrackNumber != 3 || item.Duration == nil || *item.Duration != 432 || !item.Downloaded || !item.HasCover || !item.HasChapters || item.TrackCount != 1 {
+			t.Fatalf("next audiobook metadata incomplete: %+v", item)
+		}
+	})
+}
+
 func TestUpdateCompletionFallbackUsesTopmostEligibleItemWithoutMediaPreference(t *testing.T) {
 	tests := []struct {
 		name             string
