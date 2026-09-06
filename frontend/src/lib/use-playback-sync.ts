@@ -23,6 +23,7 @@ import type { QueueEpisode } from "./playback-context-types";
 import {
   activePlaybackKey,
   isAudiobookQueueItem,
+  playbackMediaSourceKey,
   queueItemKey,
   type QueueItemKey,
 } from "./playback-queue";
@@ -33,7 +34,10 @@ type UsePlaybackSyncOptions = {
   sourcePrimedRef: RefObject<boolean>;
   sourceReadyRef: RefObject<boolean>;
   currentEpisodeRef: RefObject<QueueEpisode | null>;
-  currentEpisodeDurationRef: RefObject<number>;
+  activeMediaDurationRef: RefObject<{
+    sourceKey: string;
+    durationSeconds: number;
+  } | null>;
   playingRef: RefObject<boolean>;
   playing: boolean;
   currentItemKey: QueueItemKey | undefined;
@@ -64,9 +68,20 @@ function isNewerPlaybackState(
 
 function playbackDurationSeconds(
   episode: QueueEpisode,
-  fallbackDurationSeconds: number
+  activeMediaDurationRef: RefObject<{
+    sourceKey: string;
+    durationSeconds: number;
+  } | null>
 ) {
-  return getPositiveDuration(episode.duration, fallbackDurationSeconds);
+  const sourceKey = playbackMediaSourceKey(episode);
+  if (
+    activeMediaDurationRef.current &&
+    activeMediaDurationRef.current.sourceKey === sourceKey &&
+    activeMediaDurationRef.current.durationSeconds > 0
+  ) {
+    return activeMediaDurationRef.current.durationSeconds;
+  }
+  return getPositiveDuration(episode.duration);
 }
 
 export function usePlaybackSync({
@@ -74,7 +89,7 @@ export function usePlaybackSync({
   sourcePrimedRef,
   sourceReadyRef,
   currentEpisodeRef,
-  currentEpisodeDurationRef,
+  activeMediaDurationRef,
   playingRef,
   playing,
   currentItemKey,
@@ -89,10 +104,7 @@ export function usePlaybackSync({
   const settingsRequests = useLatestRequest();
   const completedPlaybackTargetsRef = useRef(new Set<string>());
   const playbackTargetKey = useCallback((episode: QueueEpisode) => {
-    if (isAudiobookQueueItem(episode)) {
-      return `audiobook:${episode.audiobookId ?? episode.id}:track:${episode.trackId ?? "unknown"}`;
-    }
-    return `episode:${episode.id}`;
+    return playbackMediaSourceKey(episode);
   }, []);
   const writePlaybackState = useCallback(
     (itemKey: QueueItemKey, playback: PlaybackState | null) => {
@@ -137,7 +149,7 @@ export function usePlaybackSync({
           options.durationSeconds ??
           playbackDurationSeconds(
             episode,
-            currentEpisodeDurationRef.current
+            activeMediaDurationRef
           );
         const response = await api.playback.update({
           ...(isAudiobook
@@ -157,7 +169,11 @@ export function usePlaybackSync({
         return null;
       }
     },
-    [currentEpisodeDurationRef, currentEpisodeRef, playbackTargetKey]
+    [
+      activeMediaDurationRef,
+      currentEpisodeRef,
+      playbackTargetKey,
+    ]
   );
 
   const commitPlaybackBeacon = useCallback(
@@ -179,7 +195,7 @@ export function usePlaybackSync({
       }
       const durationSeconds = playbackDurationSeconds(
         episode,
-        currentEpisodeDurationRef.current
+        activeMediaDurationRef
       );
       const body = JSON.stringify({
         ...(isAudiobook
@@ -202,7 +218,7 @@ export function usePlaybackSync({
         new Blob([body], { type: "application/json" })
       );
     },
-    [currentEpisodeDurationRef, currentEpisodeRef, playbackTargetKey]
+    [activeMediaDurationRef, currentEpisodeRef, playbackTargetKey]
   );
 
   const allowPlaybackProgress = useCallback(
@@ -278,7 +294,7 @@ export function usePlaybackSync({
         if (current && queueItemKey(current) === itemKey && nextPlayback) {
           const nextPosition = clampPosition(
             nextPlayback.positionSeconds,
-            currentEpisodeDurationRef.current
+            playbackDurationSeconds(current, activeMediaDurationRef)
           );
           const audio = audioRef.current;
           if (audio && sourcePrimedRef.current && sourceReadyRef.current) {
@@ -295,8 +311,8 @@ export function usePlaybackSync({
       }
     },
     [
+      activeMediaDurationRef,
       audioRef,
-      currentEpisodeDurationRef,
       currentEpisodeRef,
       setPositionSeconds,
       sourcePrimedRef,

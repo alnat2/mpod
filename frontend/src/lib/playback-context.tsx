@@ -19,6 +19,7 @@ import { api } from "./api";
 import { getPositiveDuration } from "./playback-audio";
 import {
   isAudiobookQueueItem,
+  playbackMediaSourceKey,
   queueItemKey,
   type QueueItemKey,
 } from "./playback-queue";
@@ -49,7 +50,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [positionSeconds, setPositionSeconds] = useState(0);
   const [audioDuration, setAudioDuration] = useState<{
-    itemKey: QueueItemKey;
+    sourceKey: string;
+    durationSeconds: number;
+  } | null>(null);
+  const activeMediaDurationRef = useRef<{
+    sourceKey: string;
     durationSeconds: number;
   } | null>(null);
   const [podcastSpeed, setPodcastSpeed] =
@@ -76,13 +81,14 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const speedLabel = isAudiobook ? audiobookSpeed : podcastSpeed;
   const speedLabelRef = useRef<PlaybackSpeedLabel>(speedLabel);
   const currentItemKey = currentEpisode ? queueItemKey(currentEpisode) : undefined;
+  const currentMediaSourceKey = playbackMediaSourceKey(currentEpisode);
   const currentAudioDuration =
-    audioDuration && audioDuration.itemKey === currentItemKey
+    audioDuration && audioDuration.sourceKey === currentMediaSourceKey
       ? audioDuration.durationSeconds
       : 0;
   const currentEpisodeDuration = getPositiveDuration(
-    currentEpisode?.duration,
-    currentAudioDuration
+    currentAudioDuration,
+    currentEpisode?.duration
   );
 
   useEffect(() => {
@@ -118,7 +124,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     sourcePrimedRef,
     sourceReadyRef,
     currentEpisodeRef,
-    currentEpisodeDurationRef,
+    activeMediaDurationRef,
     playingRef,
     playing,
     currentItemKey,
@@ -170,6 +176,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       queue,
       currentEpisode,
       currentEpisodeDuration,
+      activeMediaDurationRef,
       playing,
       positionSeconds,
       speedLabel,

@@ -306,6 +306,19 @@ Rules:
 - resume the selected target from stored playback state, or start from `0:00` when it has none
 - ordinary progress responses must not be treated as completion and must not trigger playlist or file-side reconciliation
 
+### Active Audio Duration Resolution
+
+Decision:
+- prioritize database/API duration until browser metadata loads; once valid `audio.duration` is received, use browser duration for playback progress, remaining time, slider, seek clamping, pause sync, periodic sync, and pagehide beacon
+- bind audio duration strictly to the active media source key (`episode:${id}` for podcasts, `audiobook:${audiobookId}:track:${trackId}` for audiobooks) so chapter durations do not bleed across tracks
+
+Rules:
+- before `loadedmetadata` (or before valid browser `audio.duration` is available for the current media source key), fall back to DB/API duration
+- after a valid `audio.duration` is read for the active media source key, that browser duration takes precedence over DB/API duration whether it is greater or smaller than the DB value
+- seeking (via slider or transport buttons) and clamp positions must use the resolved effective duration rather than being restricted by a smaller DB duration
+- switching chapters within the same audiobook resets active browser duration and strictly scopes duration to the new `trackId`, preventing duration bleed from prior chapters
+- explicit completion signals (`completed: true`) are emitted only upon actual playback termination (`ended`), preserving existing completion contracts, auto-advance rules, and render optimizations (preventing queue/list re-renders on progress ticks)
+
 ## Guidance For Frontend Implementation
 
 - keep the frontend simple and maintainable

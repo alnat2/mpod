@@ -30,3 +30,16 @@ export function sameQueueItem(
 ) {
   return queueItemKey(left) === queueItemKey(right);
 }
+
+export function playbackMediaSourceKey(
+  item: PlaybackQueueEpisode | null | undefined
+): string {
+  if (!item) {
+    return "";
+  }
+  if (isAudiobookQueueItem(item)) {
+    const bookId = item.audiobookId ?? item.id;
+    return `audiobook:${bookId}:track:${item.trackId ?? "unknown"}`;
+  }
+  return `episode:${item.id}`;
+}

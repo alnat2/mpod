@@ -1,4 +1,4 @@
-import { Profiler } from "react";
+import { Profiler, useEffect } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +14,8 @@ import {
   PlaybackProvider,
   usePlayback,
   usePlaybackDispatch,
+  usePlaybackProgress,
+  usePlaybackState,
 } from "./playback-context";
 
 type FakeMediaError = {
@@ -32,7 +34,27 @@ class FakeAudio {
     return audio;
   }
 
-  src = "";
+  private srcValue = "";
+  private currentSrcValue = "";
+
+  get src() {
+    return this.srcValue;
+  }
+
+  set src(value: string) {
+    this.srcValue = value;
+    this.currentSrcValue = value;
+    this.duration = 0;
+  }
+
+  get currentSrc() {
+    return this.currentSrcValue || this.srcValue;
+  }
+
+  set currentSrc(value: string) {
+    this.currentSrcValue = value;
+  }
+
   private currentTimeValue = 0;
   onCurrentTimeSet: ((value: number) => void) | null = null;
   throwOnCurrentTimeSet = false;
@@ -2403,7 +2425,8 @@ describe("PlaybackProvider", () => {
         expect.objectContaining({
           audiobookId: 100,
           trackId: 501,
-          positionSeconds: 100,
+          positionSeconds: 102,
+          durationSeconds: 103,
           completed: false,
         })
       )
@@ -2730,5 +2753,1098 @@ describe("PlaybackProvider", () => {
       )
     );
     expect(sendBeaconSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows 1 second remaining and saves 102/103 with completed=false when DB duration is 100 and browser duration is 103 at position 102", async () => {
+    const user = userEvent.setup();
+    const episodeItem: PlaybackQueueEpisode = {
+      id: 1,
+      podcastId: 1,
+      title: "Episode with Duration Difference",
+      podcastTitle: "Podcast Title",
+      audioUrl: "/api/episodes/1/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: {
+        episodeId: 1,
+        positionSeconds: 0,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    };
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [episodeItem],
+      activePlayback: {
+        episodeId: 1,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    });
+    const updateSpy = vi.mocked(api.playback.update).mockResolvedValue({
+      playback: {
+        episodeId: 1,
+        positionSeconds: 102,
+        lastUpdated: "2026-05-22T08:01:00Z",
+      },
+      nextEpisodeId: null,
+    });
+
+    function DurationProgressHarness() {
+      const { positionSeconds, durationSeconds } = usePlaybackProgress();
+      const { playToggle } = usePlaybackDispatch();
+      const remainingSeconds = Math.max(0, durationSeconds - positionSeconds);
+      return (
+        <div>
+          <div data-testid="position">{positionSeconds}</div>
+          <div data-testid="duration">{durationSeconds}</div>
+          <div data-testid="remaining">{remainingSeconds}</div>
+          <button type="button" onClick={playToggle}>
+            Play
+          </button>
+        </div>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <DurationProgressHarness />
+      </PlaybackProvider>
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("100")
+    );
+    expect(screen.getByTestId("remaining")).toHaveTextContent("100");
+
+    await user.click(screen.getByRole("button", { name: "Play" }));
+
+    const audio = FakeAudio.first;
+    audio.duration = 103;
+    audio.emit("loadedmetadata");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("103")
+    );
+
+    audio.currentTime = 102;
+    audio.emit("timeupdate");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("position")).toHaveTextContent("102");
+      expect(screen.getByTestId("duration")).toHaveTextContent("103");
+      expect(screen.getByTestId("remaining")).toHaveTextContent("1");
+    });
+
+    audio.paused = true;
+    audio.emit("pause");
+
+    await waitFor(() =>
+      expect(updateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          episodeId: 1,
+          positionSeconds: 102,
+          durationSeconds: 103,
+          completed: false,
+        })
+      )
+    );
+  });
+
+  it("uses browser duration whether it is greater or smaller than DB value, falling back to DB duration before loadedmetadata", async () => {
+    const user = userEvent.setup();
+    const episodeItem: PlaybackQueueEpisode = {
+      id: 2,
+      podcastId: 1,
+      title: "Episode Greater",
+      podcastTitle: "Podcast Title",
+      audioUrl: "/api/episodes/2/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: null,
+    };
+    const episodeSmaller: PlaybackQueueEpisode = {
+      id: 3,
+      podcastId: 1,
+      title: "Episode Smaller",
+      podcastTitle: "Podcast Title",
+      audioUrl: "/api/episodes/3/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: null,
+    };
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [episodeItem, episodeSmaller],
+      activePlayback: null,
+    });
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: {
+        episodeId: 2,
+        positionSeconds: 0,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+      nextEpisodeId: null,
+    });
+
+    function GreaterSmallerHarness() {
+      const { durationSeconds } = usePlaybackProgress();
+      const { playEpisode } = usePlaybackDispatch();
+      return (
+        <div>
+          <div data-testid="duration">{durationSeconds}</div>
+          <button type="button" onClick={() => playEpisode(2)}>
+            Play Greater
+          </button>
+          <button type="button" onClick={() => playEpisode(3)}>
+            Play Smaller
+          </button>
+        </div>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <GreaterSmallerHarness />
+      </PlaybackProvider>
+    );
+
+    // Initial load: uses DB duration (100) before play / metadata
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("100")
+    );
+
+    // Case 1: Browser duration is greater (103 > 100)
+    await user.click(screen.getByRole("button", { name: "Play Greater" }));
+    const audio = FakeAudio.first;
+    audio.duration = 103;
+    audio.emit("loadedmetadata");
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("103")
+    );
+
+    // Case 2: Switch to Episode 3 (DB duration 100).
+    // Immediately before loadedmetadata, it falls back to DB duration (100).
+    await user.click(screen.getByRole("button", { name: "Play Smaller" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("100")
+    );
+
+    // When loadedmetadata provides a smaller browser duration (90 < 100):
+    audio.duration = 90;
+    audio.emit("loadedmetadata");
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("90")
+    );
+  });
+
+  it("does not clamp seek to incorrect DB duration", async () => {
+    const user = userEvent.setup();
+    const episodeItem: PlaybackQueueEpisode = {
+      id: 4,
+      podcastId: 1,
+      title: "Seek Clamping Test",
+      podcastTitle: "Podcast Title",
+      audioUrl: "/api/episodes/4/audio",
+      duration: 100, // DB duration is 100
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: null,
+    };
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [episodeItem],
+      activePlayback: null,
+    });
+    const updateSpy = vi.mocked(api.playback.update).mockResolvedValue({
+      playback: {
+        episodeId: 4,
+        positionSeconds: 102,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+      nextEpisodeId: null,
+    });
+
+    function SeekHarness() {
+      const { positionSeconds, durationSeconds } = usePlaybackProgress();
+      const { playEpisode, seekTo } = usePlaybackDispatch();
+      return (
+        <div>
+          <div data-testid="position">{positionSeconds}</div>
+          <div data-testid="duration">{durationSeconds}</div>
+          <button type="button" onClick={() => playEpisode(4)}>
+            Play
+          </button>
+          <button type="button" onClick={() => seekTo(102)}>
+            Seek to 102
+          </button>
+        </div>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <SeekHarness />
+      </PlaybackProvider>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    const audio = FakeAudio.first;
+    audio.duration = 103; // Browser duration is 103
+    audio.emit("loadedmetadata");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("103")
+    );
+
+    // Seek to 102, which is > DB duration (100), but <= browser duration (103)
+    await user.click(screen.getByRole("button", { name: "Seek to 102" }));
+
+    expect(audio.currentTime).toBe(102);
+    await waitFor(() =>
+      expect(screen.getByTestId("position")).toHaveTextContent("102")
+    );
+    expect(updateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        episodeId: 4,
+        positionSeconds: 102,
+        durationSeconds: 103,
+        didSeek: true,
+      })
+    );
+  });
+
+  it("does not transfer duration between chapters of the same audiobook", async () => {
+    const user = userEvent.setup();
+    const chapter2 = {
+      id: 602,
+      audiobookId: 200,
+      trackNumber: 2,
+      title: "Chapter 2",
+      relPath: "02.mp3",
+      filePath: "/share/audio/abooks/Book/02.mp3",
+      duration: 107, // DB duration 107
+      isListened: false,
+      positionSeconds: 0,
+    };
+    const audiobookQueueItem: PlaybackQueueEpisode = {
+      id: 200,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 200,
+      trackId: 601,
+      trackNumber: 1,
+      trackCount: 2,
+      title: "Audiobook Two Chapters",
+      author: "Author",
+      podcastTitle: "Author",
+      audioUrl: "/api/audiobooks/200/tracks/601/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: {
+        audiobookId: 200,
+        trackId: 601,
+        positionSeconds: 0,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    };
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [audiobookQueueItem],
+      activePlayback: {
+        audiobookId: 200,
+        trackId: 601,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    });
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: {
+        audiobookId: 200,
+        trackId: 601,
+        positionSeconds: 0,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+      nextEpisodeId: null,
+    });
+
+    function AudiobookChaptersHarness() {
+      const { durationSeconds } = usePlaybackProgress();
+      const { playQueueItem, playAudiobookTrack } = usePlaybackDispatch();
+      const { queue } = usePlaybackState();
+      return (
+        <div>
+          <div data-testid="duration">{durationSeconds}</div>
+          <button
+            type="button"
+            onClick={() => {
+              if (queue[0]) playQueueItem(queue[0]);
+            }}
+          >
+            Play Chapter 1
+          </button>
+          <button
+            type="button"
+            onClick={() => playAudiobookTrack(200, chapter2)}
+          >
+            Play Chapter 2
+          </button>
+        </div>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <AudiobookChaptersHarness />
+      </PlaybackProvider>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Play Chapter 1" }));
+    const audio = FakeAudio.first;
+    // Chapter 1 browser duration is 103 (different from DB 100)
+    audio.duration = 103;
+    audio.emit("loadedmetadata");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("103")
+    );
+
+    // Switch to Chapter 2 of the same book
+    await user.click(screen.getByRole("button", { name: "Play Chapter 2" }));
+
+    // Before Chapter 2 loadedmetadata, duration MUST be Chapter 2's DB duration (107),
+    // NOT Chapter 1's duration (103 or 100)
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("107")
+    );
+
+    // Once Chapter 2 loadedmetadata fires with its own duration (115):
+    audio.duration = 115;
+    audio.emit("loadedmetadata");
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("115")
+    );
+  });
+
+  it("ignores delayed metadata from a previous chapter and uses DB duration when reopening the same track until new metadata arrives", async () => {
+    const user = userEvent.setup();
+    const chapter1 = {
+      id: 701,
+      audiobookId: 300,
+      trackNumber: 1,
+      title: "Chapter 1",
+      relPath: "01.mp3",
+      filePath: "/share/audio/abooks/Book/01.mp3",
+      duration: 100, // DB duration 100
+      isListened: false,
+      positionSeconds: 0,
+    };
+    const chapter2 = {
+      id: 702,
+      audiobookId: 300,
+      trackNumber: 2,
+      title: "Chapter 2",
+      relPath: "02.mp3",
+      filePath: "/share/audio/abooks/Book/02.mp3",
+      duration: 107, // DB duration 107
+      isListened: false,
+      positionSeconds: 0,
+    };
+    const audiobookQueueItem: PlaybackQueueEpisode = {
+      id: 300,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 300,
+      trackId: 701,
+      trackNumber: 1,
+      trackCount: 2,
+      title: "Book Reopen Delayed Test",
+      author: "Author",
+      podcastTitle: "Author",
+      audioUrl: "/api/audiobooks/300/tracks/701/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: {
+        audiobookId: 300,
+        trackId: 701,
+        positionSeconds: 0,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    };
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [audiobookQueueItem],
+      activePlayback: {
+        audiobookId: 300,
+        trackId: 701,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    });
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: {
+        audiobookId: 300,
+        trackId: 701,
+        positionSeconds: 0,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+      nextEpisodeId: null,
+    });
+
+    function ReopenHarness() {
+      const { durationSeconds } = usePlaybackProgress();
+      const { playAudiobookTrack } = usePlaybackDispatch();
+      return (
+        <div>
+          <div data-testid="duration">{durationSeconds}</div>
+          <button
+            type="button"
+            onClick={() => playAudiobookTrack(300, chapter1)}
+          >
+            Play Track 1
+          </button>
+          <button
+            type="button"
+            onClick={() => playAudiobookTrack(300, chapter2)}
+          >
+            Play Track 2
+          </button>
+        </div>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <ReopenHarness />
+      </PlaybackProvider>
+    );
+
+    // 1. Play Chapter 1 and load metadata
+    await user.click(screen.getByRole("button", { name: "Play Track 1" }));
+    const audio = FakeAudio.first;
+    audio.duration = 103;
+    audio.emit("loadedmetadata");
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("103")
+    );
+
+    // 2. Switch to Chapter 2
+    await user.click(screen.getByRole("button", { name: "Play Track 2" }));
+    // Before Chapter 2 metadata, displays Chapter 2's DB duration (107)
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("107")
+    );
+
+    // Simulate a delayed event from Chapter 1 arriving while Chapter 2 is loading:
+    // 1) Audio duration might still be 103 or a delayed timeupdate/durationchange fires
+    audio.emit("timeupdate");
+    audio.emit("durationchange");
+    // 2) A delayed loadedmetadata from Chapter 1 with Chapter 1 source URL fires
+    audio.currentSrc = "/api/audiobooks/300/tracks/701/audio";
+    audio.duration = 103;
+    audio.emit("loadedmetadata");
+    // Duration must stay 107 (not accept Chapter 1's duration 103)
+    expect(screen.getByTestId("duration")).toHaveTextContent("107");
+
+    // Chapter 2's own metadata now loads with 115
+    audio.currentSrc = "/api/audiobooks/300/tracks/702/audio";
+    audio.duration = 115;
+    audio.emit("loadedmetadata");
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("115")
+    );
+
+    // 3. Reopen the same Chapter 1 again before its new metadata arrives
+    await user.click(screen.getByRole("button", { name: "Play Track 1" }));
+
+    // Upon reopening, active duration must be reset; must display DB duration 100
+    // (NOT the previous browser duration 103 and NOT Chapter 2's 115)
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("100")
+    );
+
+    // When Chapter 1's new metadata arrives with 104
+    audio.duration = 104;
+    audio.emit("loadedmetadata");
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("104")
+    );
+  });
+
+  it("commits previous episode with effective browser duration and completed=false on intentional playEpisode switch, without duplicate or misdirected progress, using DB duration before metadata", async () => {
+    const user = userEvent.setup();
+    const episodeA: PlaybackQueueEpisode = {
+      id: 10,
+      podcastId: 1,
+      title: "Episode A",
+      podcastTitle: "Podcast 1",
+      audioUrl: "/api/episodes/10/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: null,
+    };
+    const episodeB: PlaybackQueueEpisode = {
+      id: 20,
+      podcastId: 1,
+      title: "Episode B",
+      podcastTitle: "Podcast 1",
+      audioUrl: "/api/episodes/20/audio",
+      duration: 200,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: null,
+    };
+
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [episodeA, episodeB],
+      activePlayback: {
+        episodeId: 10,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    });
+
+    const updateSpy = vi.mocked(api.playback.update).mockImplementation(async (payload) => ({
+      playback: {
+        episodeId: payload.episodeId ?? 10,
+        audiobookId: payload.audiobookId,
+        trackId: payload.trackId,
+        positionSeconds: payload.positionSeconds,
+        lastUpdated: new Date().toISOString(),
+      },
+      nextEpisodeId: null,
+    }));
+
+    function SwitchHarness() {
+      const { durationSeconds, positionSeconds } = usePlaybackProgress();
+      const { playEpisode } = usePlaybackDispatch();
+      return (
+        <div>
+          <div data-testid="duration">{durationSeconds}</div>
+          <div data-testid="position">{positionSeconds}</div>
+          <button type="button" onClick={() => playEpisode(10)}>
+            Play A
+          </button>
+          <button type="button" onClick={() => playEpisode(20)}>
+            Play B
+          </button>
+        </div>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <SwitchHarness />
+      </PlaybackProvider>
+    );
+
+    // 1. Start playing episode A
+    await user.click(screen.getByRole("button", { name: "Play A" }));
+    const audio = FakeAudio.first;
+    audio.duration = 103;
+    audio.emit("loadedmetadata");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("103")
+    );
+
+    // Advance position of A to 102
+    audio.currentTime = 102;
+    audio.emit("timeupdate");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("position")).toHaveTextContent("102")
+    );
+
+    updateSpy.mockClear();
+
+    // 2. User intentionally launches episode B via playEpisode
+    await user.click(screen.getByRole("button", { name: "Play B" }));
+
+    // For A: exactly one update must be sent with position 102, duration 103, completed=false
+    await waitFor(() => {
+      const callsForA = updateSpy.mock.calls.filter(([p]) => p.episodeId === 10);
+      expect(callsForA).toHaveLength(1);
+      expect(callsForA[0]![0]).toEqual(
+        expect.objectContaining({
+          episodeId: 10,
+          positionSeconds: 102,
+          durationSeconds: 103,
+          completed: false,
+        })
+      );
+    });
+
+    // Automatic pause from changing audio.src must NOT send a duplicate or misdirected update for B with position 102
+    const callsForBWithPos102 = updateSpy.mock.calls.filter(
+      ([p]) => p.episodeId === 20 && p.positionSeconds === 102
+    );
+    expect(callsForBWithPos102).toHaveLength(0);
+
+    // Before B's metadata arrives, B must use its own DB duration (200)
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("200")
+    );
+
+    // When B's own metadata arrives, it adopts its browser duration
+    audio.duration = 205;
+    audio.emit("loadedmetadata");
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("205")
+    );
+  });
+
+  it("commits previous item with effective browser duration and completed=false on intentional audiobook playQueueItem switch, without duplicate or misdirected progress, using DB duration before metadata", async () => {
+    const user = userEvent.setup();
+    const episodeA: PlaybackQueueEpisode = {
+      id: 10,
+      podcastId: 1,
+      title: "Episode A",
+      podcastTitle: "Podcast 1",
+      audioUrl: "/api/episodes/10/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: null,
+    };
+    const audiobookItemB: PlaybackQueueEpisode = {
+      id: 50,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 50,
+      trackId: 501,
+      trackNumber: 1,
+      trackCount: 1,
+      title: "Audiobook B",
+      author: "Author",
+      podcastTitle: "Author",
+      audioUrl: "/api/audiobooks/50/tracks/501/audio",
+      duration: 300,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: {
+        audiobookId: 50,
+        trackId: 501,
+        positionSeconds: 0,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    };
+
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [episodeA, audiobookItemB],
+      activePlayback: {
+        episodeId: 10,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    });
+
+    const updateSpy = vi.mocked(api.playback.update).mockImplementation(async (payload) => ({
+      playback: {
+        episodeId: payload.episodeId,
+        audiobookId: payload.audiobookId,
+        trackId: payload.trackId,
+        positionSeconds: payload.positionSeconds,
+        lastUpdated: new Date().toISOString(),
+      },
+      nextEpisodeId: null,
+    }));
+
+    function QueueSwitchHarness() {
+      const { durationSeconds, positionSeconds } = usePlaybackProgress();
+      const { playEpisode, playQueueItem } = usePlaybackDispatch();
+      return (
+        <div>
+          <div data-testid="duration">{durationSeconds}</div>
+          <div data-testid="position">{positionSeconds}</div>
+          <button type="button" onClick={() => playEpisode(10)}>
+            Play A
+          </button>
+          <button type="button" onClick={() => playQueueItem(audiobookItemB)}>
+            Play Audiobook B
+          </button>
+        </div>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <QueueSwitchHarness />
+      </PlaybackProvider>
+    );
+
+    // 1. Play episode A
+    await user.click(screen.getByRole("button", { name: "Play A" }));
+    const audio = FakeAudio.first;
+    audio.duration = 103;
+    audio.emit("loadedmetadata");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("103")
+    );
+
+    // Advance position to 102
+    audio.currentTime = 102;
+    audio.emit("timeupdate");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("position")).toHaveTextContent("102")
+    );
+
+    updateSpy.mockClear();
+
+    // 2. User intentionally launches audiobook B via playQueueItem
+    await user.click(screen.getByRole("button", { name: "Play Audiobook B" }));
+
+    // For A: exactly one update must be sent with position 102, duration 103, completed=false
+    await waitFor(() => {
+      const callsForA = updateSpy.mock.calls.filter(([p]) => p.episodeId === 10);
+      expect(callsForA).toHaveLength(1);
+      expect(callsForA[0]![0]).toEqual(
+        expect.objectContaining({
+          episodeId: 10,
+          positionSeconds: 102,
+          durationSeconds: 103,
+          completed: false,
+        })
+      );
+    });
+
+    // Automatic pause from changing audio.src must NOT send an update for B with position 102
+    const callsForBWithPos102 = updateSpy.mock.calls.filter(
+      ([p]) => p.audiobookId === 50 && p.positionSeconds === 102
+    );
+    expect(callsForBWithPos102).toHaveLength(0);
+
+    // Before B's metadata arrives, B must use its own DB duration (300)
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("300")
+    );
+
+    // When B's own metadata arrives, it adopts its browser duration
+    audio.duration = 310;
+    audio.emit("loadedmetadata");
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("310")
+    );
+  });
+
+  it("commits previous audiobook with effective browser duration and completed=false on intentional switch to podcast, without duplicate or misdirected progress, using podcast DB duration before metadata", async () => {
+    const user = userEvent.setup();
+    const audiobookItemA: PlaybackQueueEpisode = {
+      id: 50,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 50,
+      trackId: 501,
+      trackNumber: 1,
+      trackCount: 1,
+      title: "Audiobook A",
+      author: "Author",
+      podcastTitle: "Author",
+      audioUrl: "/api/audiobooks/50/tracks/501/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: {
+        audiobookId: 50,
+        trackId: 501,
+        positionSeconds: 0,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    };
+    const episodeB: PlaybackQueueEpisode = {
+      id: 20,
+      podcastId: 1,
+      title: "Episode B",
+      podcastTitle: "Podcast 1",
+      audioUrl: "/api/episodes/20/audio",
+      duration: 200,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: null,
+    };
+
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [audiobookItemA, episodeB],
+      activePlayback: {
+        audiobookId: 50,
+        trackId: 501,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    });
+
+    const updateSpy = vi.mocked(api.playback.update).mockImplementation(async (payload) => ({
+      playback: {
+        episodeId: payload.episodeId,
+        audiobookId: payload.audiobookId,
+        trackId: payload.trackId,
+        positionSeconds: payload.positionSeconds,
+        lastUpdated: new Date().toISOString(),
+      },
+      nextEpisodeId: null,
+    }));
+
+    function QueueSwitchHarness() {
+      const { durationSeconds, positionSeconds } = usePlaybackProgress();
+      const { playQueueItem } = usePlaybackDispatch();
+      return (
+        <div>
+          <div data-testid="duration">{durationSeconds}</div>
+          <div data-testid="position">{positionSeconds}</div>
+          <button type="button" onClick={() => playQueueItem(audiobookItemA)}>
+            Play Audiobook A
+          </button>
+          <button type="button" onClick={() => playQueueItem(episodeB)}>
+            Play Podcast B
+          </button>
+        </div>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <QueueSwitchHarness />
+      </PlaybackProvider>
+    );
+
+    // 1. Play audiobook A
+    await user.click(screen.getByRole("button", { name: "Play Audiobook A" }));
+    const audio = FakeAudio.first;
+    audio.duration = 103;
+    audio.emit("loadedmetadata");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("103")
+    );
+
+    // Advance position of A to 102
+    audio.currentTime = 102;
+    audio.emit("timeupdate");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("position")).toHaveTextContent("102")
+    );
+
+    updateSpy.mockClear();
+
+    // 2. User intentionally launches podcast B via playQueueItem
+    await user.click(screen.getByRole("button", { name: "Play Podcast B" }));
+
+    // For A: exactly one update must be sent with position 102, duration 103, completed=false
+    await waitFor(() => {
+      const callsForA = updateSpy.mock.calls.filter(
+        ([p]) => p.audiobookId === 50 && p.trackId === 501
+      );
+      expect(callsForA).toHaveLength(1);
+      expect(callsForA[0]![0]).toEqual(
+        expect.objectContaining({
+          audiobookId: 50,
+          trackId: 501,
+          positionSeconds: 102,
+          durationSeconds: 103,
+          completed: false,
+        })
+      );
+    });
+
+    // Automatic pause from changing audio.src must NOT send an update for B with position 102
+    const callsForBWithPos102 = updateSpy.mock.calls.filter(
+      ([p]) => p.episodeId === 20 && p.positionSeconds === 102
+    );
+    expect(callsForBWithPos102).toHaveLength(0);
+
+    // Before B's metadata arrives, B must use its own DB duration (200)
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("200")
+    );
+
+    // When B's own metadata arrives, it adopts its browser duration
+    audio.duration = 205;
+    audio.emit("loadedmetadata");
+    await waitFor(() =>
+      expect(screen.getByTestId("duration")).toHaveTextContent("205")
+    );
+  });
+
+  it("sends completion exactly once after actual end of playback", async () => {
+    const user = userEvent.setup();
+    const episodeItem: PlaybackQueueEpisode = {
+      id: 5,
+      podcastId: 1,
+      title: "Completion Once Test",
+      podcastTitle: "Podcast Title",
+      audioUrl: "/api/episodes/5/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: null,
+    };
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [episodeItem],
+      activePlayback: null,
+    });
+    const updateSpy = vi.mocked(api.playback.update).mockResolvedValue({
+      playback: {
+        episodeId: 5,
+        positionSeconds: 103,
+        lastUpdated: "2026-05-22T08:01:00Z",
+      },
+      nextEpisodeId: null,
+    });
+
+    function CompletionOnceHarness() {
+      const { playEpisode } = usePlaybackDispatch();
+      return (
+        <div>
+          <button type="button" onClick={() => playEpisode(5)}>
+            Play
+          </button>
+        </div>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <CompletionOnceHarness />
+      </PlaybackProvider>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    const audio = FakeAudio.first;
+    audio.duration = 103;
+    audio.emit("loadedmetadata");
+
+    // Playback actually finishes at position 103 with ended=true
+    audio.currentTime = 103;
+    audio.ended = true;
+    audio.emit("timeupdate");
+
+    await waitFor(() =>
+      expect(
+        updateSpy.mock.calls.filter(
+          ([payload]) => payload.completed && payload.episodeId === 5
+        )
+      ).toHaveLength(1)
+    );
+
+    // Emitting ended again or timeupdate does not send duplicate completion
+    audio.emit("ended");
+    audio.emit("timeupdate");
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(
+      updateSpy.mock.calls.filter(
+        ([payload]) => payload.completed && payload.episodeId === 5
+      )
+    ).toHaveLength(1);
+  });
+
+  it("preserves re-render optimization so dispatch/state consumers do not re-render on time updates", async () => {
+    const user = userEvent.setup();
+    const episodeItem: PlaybackQueueEpisode = {
+      id: 6,
+      podcastId: 1,
+      title: "Rerender Optimization Test",
+      podcastTitle: "Podcast Title",
+      audioUrl: "/api/episodes/6/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: null,
+    };
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [episodeItem],
+      activePlayback: null,
+    });
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: {
+        episodeId: 6,
+        positionSeconds: 0,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+      nextEpisodeId: null,
+    });
+
+    const onStateRender = vi.fn();
+    const onProgressRender = vi.fn();
+
+    function StateConsumer() {
+      const { playing } = usePlaybackState();
+      useEffect(() => {
+        onStateRender();
+      });
+      return <div data-testid="state-playing">{playing ? "yes" : "no"}</div>;
+    }
+
+    function ProgressConsumer() {
+      const { positionSeconds } = usePlaybackProgress();
+      useEffect(() => {
+        onProgressRender();
+      });
+      return <div data-testid="progress-pos">{positionSeconds}</div>;
+    }
+
+    function Harness() {
+      const { playEpisode } = usePlaybackDispatch();
+      return (
+        <div>
+          <StateConsumer />
+          <ProgressConsumer />
+          <button type="button" onClick={() => playEpisode(6)}>
+            Play
+          </button>
+        </div>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <Harness />
+      </PlaybackProvider>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    const audio = FakeAudio.first;
+    audio.duration = 103;
+    audio.emit("loadedmetadata");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("state-playing")).toHaveTextContent("yes")
+    );
+
+    const stateCountBeforeTicks = onStateRender.mock.calls.length;
+    const progressCountBeforeTicks = onProgressRender.mock.calls.length;
+
+    // Simulate regular playback ticks on timeupdate
+    audio.currentTime = 10;
+    audio.emit("timeupdate");
+    audio.currentTime = 20;
+    audio.emit("timeupdate");
+    audio.currentTime = 30;
+    audio.emit("timeupdate");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("progress-pos")).toHaveTextContent("30")
+    );
+
+    // Progress consumer must have re-rendered on the time updates
+    expect(onProgressRender.mock.calls.length).toBeGreaterThan(
+      progressCountBeforeTicks
+    );
+    // State consumer must NOT have re-rendered on the time updates
+    expect(onStateRender.mock.calls.length).toBe(stateCountBeforeTicks);
   });
 });
