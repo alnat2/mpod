@@ -71,7 +71,7 @@ Team Lead не должен:
 
 ## Текущее состояние Git и стенда
 
-- `origin/main`: `9b74489cfc76b71d8590adbef38baf0a300aa9f8`
+- последний интегрированный продуктовый кандидат в `origin/main`: `9b74489cfc76b71d8590adbef38baf0a300aa9f8`; поверх него допускаются только коммиты ведения этого backlog
 - `origin/test`: `9b74489cfc76b71d8590adbef38baf0a300aa9f8`
 - тестовый сервер: `APP_BUILD=9b74489`
 - image digest стенда: `sha256:f07eb455b3803016f3f1ab7451cfecc81814780acf973e8724c5bb0a5432070d`
