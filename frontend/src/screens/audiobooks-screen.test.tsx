@@ -408,4 +408,42 @@ describe("AudiobooksScreen", () => {
     // reloadQueue() was NOT called
     expect(reloadQueueMock).not.toHaveBeenCalled();
   });
+
+  it("keeps card in Remove from playlist state and removes pending when reloadQueue() rejects after successful POST", async () => {
+    const addSpy = vi.spyOn(api.audiobooks, "addToPlaylist").mockResolvedValue({ success: true });
+    const listSpy = vi.spyOn(api.audiobooks, "list").mockResolvedValue({ audiobooks: mockAudiobooks });
+    reloadQueueMock.mockRejectedValueOnce(new Error("Queue refresh network error"));
+
+    render(
+      <MemoryRouter>
+        <AudiobooksScreen />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Single Story")).toBeInTheDocument();
+    });
+
+    const storyRow = screen.getByText("Single Story").closest<HTMLElement>('[data-slot="fm-item"]')!;
+    const btn = within(storyRow).getByRole("button", { name: "Add to playlist" });
+
+    fireEvent.click(btn);
+
+    // Card transitions to Remove from playlist and pending is cleared despite reloadQueue failure
+    await waitFor(() => {
+      const updatedStoryRow = screen.getByText("Single Story").closest<HTMLElement>('[data-slot="fm-item"]')!;
+      const removeBtn = within(updatedStoryRow).getByRole("button", { name: "Remove from playlist" });
+      expect(removeBtn).toBeInTheDocument();
+      expect(removeBtn).not.toBeDisabled();
+    });
+
+    // Exactly one add POST was sent, and no repeated add POST occurred
+    expect(addSpy).toHaveBeenCalledTimes(1);
+    expect(reloadQueueMock).toHaveBeenCalledTimes(1);
+
+    // Background reconciliation via list() is triggered regardless of reloadQueue failure
+    await waitFor(() => {
+      expect(listSpy).toHaveBeenCalledTimes(2);
+    });
+  });
 });

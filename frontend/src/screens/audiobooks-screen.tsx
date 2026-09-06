@@ -120,17 +120,6 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
 
     try {
       await api.audiobooks.addToPlaylist(book.id);
-      setAudiobooks((prev) =>
-        prev.map((item) =>
-          item.id === book.id
-            ? { ...item, inPlaylist: true, isInPlaylist: true }
-            : item
-        )
-      );
-      pendingAddBookIdsRef.current.delete(book.id);
-      setPendingAddBookIds(new Set(pendingAddBookIdsRef.current));
-      await reloadQueue();
-      setReloadKey((prev) => prev + 1);
     } catch (caught) {
       setAudiobooks((prev) =>
         prev.map((item) =>
@@ -142,7 +131,26 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
       pendingAddBookIdsRef.current.delete(book.id);
       setPendingAddBookIds(new Set(pendingAddBookIdsRef.current));
       setError(getErrorMessage(caught));
+      return;
     }
+
+    setAudiobooks((prev) =>
+      prev.map((item) =>
+        item.id === book.id
+          ? { ...item, inPlaylist: true, isInPlaylist: true }
+          : item
+      )
+    );
+    pendingAddBookIdsRef.current.delete(book.id);
+    setPendingAddBookIds(new Set(pendingAddBookIdsRef.current));
+
+    try {
+      await reloadQueue();
+    } catch {
+      // Handled gracefully without unhandled rejection; queue sync failure does not revert successful playlist addition
+    }
+
+    setReloadKey((prev) => prev + 1);
   };
 
   // Group items by currentPath level: folders first (alphabetical), then files (alphabetical)
