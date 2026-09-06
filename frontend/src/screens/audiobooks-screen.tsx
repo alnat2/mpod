@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { RefreshDotIcon } from "@hugeicons/core-free-icons";
 
@@ -54,6 +54,8 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
   const [selectedBookForModal, setSelectedBookForModal] = useState<Audiobook | null>(null);
   const [addModalMode, setAddModalMode] = useState<AddPodcastModalMode>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const pendingAddBookIdsRef = useRef<Set<number>>(new Set());
+  const [pendingAddBookIds, setPendingAddBookIds] = useState<Set<number>>(() => new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -97,15 +99,48 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
   };
 
   const handleTogglePlaylist = async (book: Audiobook) => {
-    try {
-      const isIn = book.inPlaylist ?? book.isInPlaylist ?? false;
-      if (isIn) {
+    const isIn = book.inPlaylist ?? book.isInPlaylist ?? false;
+    if (isIn) {
+      try {
         await api.audiobooks.removeFromPlaylist(book.id);
-      } else {
-        await api.audiobooks.addToPlaylist(book.id);
+        setReloadKey((prev) => prev + 1);
+      } catch (caught) {
+        setError(getErrorMessage(caught));
       }
+      return;
+    }
+
+    if (pendingAddBookIdsRef.current.has(book.id)) {
+      return;
+    }
+
+    pendingAddBookIdsRef.current.add(book.id);
+    setPendingAddBookIds(new Set(pendingAddBookIdsRef.current));
+    setError(null);
+
+    try {
+      await api.audiobooks.addToPlaylist(book.id);
+      setAudiobooks((prev) =>
+        prev.map((item) =>
+          item.id === book.id
+            ? { ...item, inPlaylist: true, isInPlaylist: true }
+            : item
+        )
+      );
+      pendingAddBookIdsRef.current.delete(book.id);
+      setPendingAddBookIds(new Set(pendingAddBookIdsRef.current));
+      await reloadQueue();
       setReloadKey((prev) => prev + 1);
     } catch (caught) {
+      setAudiobooks((prev) =>
+        prev.map((item) =>
+          item.id === book.id
+            ? { ...item, inPlaylist: false, isInPlaylist: false }
+            : item
+        )
+      );
+      pendingAddBookIdsRef.current.delete(book.id);
+      setPendingAddBookIds(new Set(pendingAddBookIdsRef.current));
       setError(getErrorMessage(caught));
     }
   };
@@ -317,6 +352,7 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
                   title={item.book.title}
                   duration={item.book.totalDuration}
                   inPlaylist={item.book.inPlaylist ?? item.book.isInPlaylist ?? false}
+                  isPending={pendingAddBookIds.has(item.book.id)}
                   isMobile={isMobile}
                   onOpen={() => void handleOpenBookModal(item.book)}
                   onTogglePlaylist={() => void handleTogglePlaylist(item.book)}
@@ -332,6 +368,7 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
                 title={item.book.title}
                 duration={item.book.totalDuration}
                 inPlaylist={item.book.inPlaylist ?? item.book.isInPlaylist ?? false}
+                isPending={pendingAddBookIds.has(item.book.id)}
                 isMobile={isMobile}
                 onOpen={() => void handleOpenBookModal(item.book)}
                 onTogglePlaylist={() => void handleTogglePlaylist(item.book)}

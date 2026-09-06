@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { AudiobooksScreen } from "./audiobooks-screen";
-import { api, type Audiobook } from "@/lib/api";
+import { api, ApiError, type Audiobook } from "@/lib/api";
+
+const reloadQueueMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@/lib/playback-context", () => ({
   usePlayback: () => ({
@@ -13,7 +15,7 @@ vi.mock("@/lib/playback-context", () => ({
   usePlaybackDispatch: () => ({
     playEpisode: vi.fn(),
     playToggle: vi.fn(),
-    reloadQueue: vi.fn().mockResolvedValue(undefined),
+    reloadQueue: reloadQueueMock,
   }),
 }));
 
@@ -64,6 +66,7 @@ const mockAudiobooks: Audiobook[] = [
 describe("AudiobooksScreen", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    reloadQueueMock.mockClear();
     vi.spyOn(api.audiobooks, "list").mockResolvedValue({ audiobooks: mockAudiobooks });
     vi.spyOn(api.audiobooks, "rescan").mockResolvedValue({ success: true });
     vi.spyOn(api.audiobooks, "addToPlaylist").mockResolvedValue({ success: true });
@@ -243,5 +246,166 @@ describe("AudiobooksScreen", () => {
       "Apple Story.mp3",
       "Zebra Story.mp3",
     ]);
+  });
+
+  it("shows pending state specifically for selected book until request completes", async () => {
+    const baseBook = mockAudiobooks[1]!;
+    const twoBooks: Audiobook[] = [
+      { ...baseBook, id: 2, title: "Book A.mp3", relPath: "Book A.mp3" },
+      { ...baseBook, id: 3, title: "Book B.mp3", relPath: "Book B.mp3" },
+    ];
+    vi.spyOn(api.audiobooks, "list").mockResolvedValue({ audiobooks: twoBooks });
+
+    let resolveAdd!: (value: { success: boolean }) => void;
+    vi.spyOn(api.audiobooks, "addToPlaylist").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveAdd = resolve;
+        })
+    );
+
+    render(
+      <MemoryRouter>
+        <AudiobooksScreen />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Book A.mp3")).toBeInTheDocument();
+      expect(screen.getByText("Book B.mp3")).toBeInTheDocument();
+    });
+
+    const rowA = screen.getByText("Book A.mp3").closest<HTMLElement>('[data-slot="fm-item"]')!;
+    const rowB = screen.getByText("Book B.mp3").closest<HTMLElement>('[data-slot="fm-item"]')!;
+
+    const btnA = within(rowA).getByRole("button", { name: "Add to playlist" });
+    const btnB = within(rowB).getByRole("button", { name: "Add to playlist" });
+
+    fireEvent.click(btnA);
+
+    // Book A enters pending state: disabled with spinner
+    await waitFor(() => {
+      expect(btnA).toBeDisabled();
+      expect(btnA).toHaveAttribute("aria-busy", "true");
+    });
+    expect(rowA.querySelector('[data-icon-name="hugeicons/loading-02"]')).toBeInTheDocument();
+
+    // Book B is NOT affected and remains interactive
+    expect(btnB).not.toBeDisabled();
+    expect(within(rowB).getByRole("button", { name: "Add to playlist" })).toBeInTheDocument();
+
+    // Finish request
+    resolveAdd({ success: true });
+
+    await waitFor(() => {
+      const updatedRowA = screen.getByText("Book A.mp3").closest<HTMLElement>('[data-slot="fm-item"]')!;
+      expect(within(updatedRowA).getByRole("button", { name: "Remove from playlist" })).toBeInTheDocument();
+      expect(within(updatedRowA).getByRole("button", { name: "Remove from playlist" })).not.toBeDisabled();
+    });
+  });
+
+  it("blocks repeated clicks while adding and sends exactly one POST", async () => {
+    let resolveAdd!: (value: { success: boolean }) => void;
+    const addSpy = vi.spyOn(api.audiobooks, "addToPlaylist").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveAdd = resolve;
+        })
+    );
+
+    render(
+      <MemoryRouter>
+        <AudiobooksScreen />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Single Story")).toBeInTheDocument();
+    });
+
+    const storyRow = screen.getByText("Single Story").closest<HTMLElement>('[data-slot="fm-item"]')!;
+    const btn = within(storyRow).getByRole("button", { name: "Add to playlist" });
+
+    // Rapid repeated clicks
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+
+    expect(addSpy).toHaveBeenCalledTimes(1);
+    expect(addSpy).toHaveBeenCalledWith(2);
+
+    resolveAdd({ success: true });
+
+    await waitFor(() => {
+      const updatedStoryRow = screen.getByText("Single Story").closest<HTMLElement>('[data-slot="fm-item"]')!;
+      expect(within(updatedStoryRow).getByRole("button", { name: "Remove from playlist" })).toBeInTheDocument();
+    });
+
+    expect(addSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("immediately updates card to inPlaylist=true and calls reloadQueue() without waiting for library reload", async () => {
+    // Initial fetch succeeds, but subsequent background list reload is hung/unresolved
+    vi.spyOn(api.audiobooks, "list")
+      .mockResolvedValueOnce({ audiobooks: mockAudiobooks })
+      .mockReturnValue(new Promise(() => {}));
+
+    vi.spyOn(api.audiobooks, "addToPlaylist").mockResolvedValue({ success: true });
+
+    render(
+      <MemoryRouter>
+        <AudiobooksScreen />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Single Story")).toBeInTheDocument();
+    });
+
+    const storyRow = screen.getByText("Single Story").closest<HTMLElement>('[data-slot="fm-item"]')!;
+    const btn = within(storyRow).getByRole("button", { name: "Add to playlist" });
+
+    fireEvent.click(btn);
+
+    // Card is immediately updated and reloadQueue() is called
+    await waitFor(() => {
+      const updatedStoryRow = screen.getByText("Single Story").closest<HTMLElement>('[data-slot="fm-item"]')!;
+      expect(within(updatedStoryRow).getByRole("button", { name: "Remove from playlist" })).toBeInTheDocument();
+    });
+    expect(reloadQueueMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rolls back local state, shows ErrorBanner, and does not call reloadQueue() on error", async () => {
+    vi.spyOn(api.audiobooks, "addToPlaylist").mockRejectedValue(
+      new ApiError("Failed to add book to playlist", "INTERNAL_ERROR", 500)
+    );
+
+    render(
+      <MemoryRouter>
+        <AudiobooksScreen />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Single Story")).toBeInTheDocument();
+    });
+
+    const storyRow = screen.getByText("Single Story").closest<HTMLElement>('[data-slot="fm-item"]')!;
+    const btn = within(storyRow).getByRole("button", { name: "Add to playlist" });
+
+    fireEvent.click(btn);
+
+    // Error banner is displayed
+    await waitFor(() => {
+      expect(screen.getByText("Failed to add book to playlist")).toBeInTheDocument();
+    });
+
+    // Local state is rolled back: button is Add to playlist and enabled
+    const updatedStoryRow = screen.getByText("Single Story").closest<HTMLElement>('[data-slot="fm-item"]')!;
+    expect(within(updatedStoryRow).getByRole("button", { name: "Add to playlist" })).toBeInTheDocument();
+    expect(within(updatedStoryRow).getByRole("button", { name: "Add to playlist" })).not.toBeDisabled();
+
+    // reloadQueue() was NOT called
+    expect(reloadQueueMock).not.toHaveBeenCalled();
   });
 });

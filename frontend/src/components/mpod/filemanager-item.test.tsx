@@ -65,4 +65,26 @@ describe("FileManagerItem", () => {
       "size-11"
     );
   });
+
+  it("renders pending state with spinner and disabled button", () => {
+    const onToggle = vi.fn();
+    render(
+      <FileManagerItem
+        type="audiobook"
+        title="Pending Book"
+        duration="5h 00m"
+        inPlaylist={false}
+        isPending={true}
+        onTogglePlaylist={onToggle}
+      />
+    );
+    const btn = screen.getByRole("button", { name: "Adding to playlist..." });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("aria-busy", "true");
+    expect(btn).toHaveAttribute("data-pending", "true");
+    expect(document.querySelector('[data-icon-name="hugeicons/loading-02"]')).toBeInTheDocument();
+
+    fireEvent.click(btn);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
 });

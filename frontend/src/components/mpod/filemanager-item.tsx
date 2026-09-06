@@ -6,6 +6,7 @@ import {
   AudioBook01Icon,
   PlayListAddIcon,
   PlayListRemoveIcon,
+  Loading02Icon,
 } from "@hugeicons/core-free-icons";
 
 import { cn } from "@/lib/utils";
@@ -20,6 +21,7 @@ export interface FileManagerItemProps {
   title: string;
   duration?: number | string;
   inPlaylist?: boolean;
+  isPending?: boolean;
   onOpen?: () => void;
   onTogglePlaylist?: (e: React.MouseEvent) => void;
   isMobile?: boolean;
@@ -31,6 +33,7 @@ export function FileManagerItem({
   title,
   duration,
   inPlaylist = false,
+  isPending = false,
   onOpen,
   onTogglePlaylist,
   isMobile = false,
@@ -119,16 +122,37 @@ export function FileManagerItem({
             type="button"
             variant="outline"
             size="icon"
-            className="size-11 rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary"
-            aria-label={inPlaylist ? "Remove from playlist" : "Add to playlist"}
-            onClick={onTogglePlaylist}
+            disabled={isPending}
+            aria-busy={isPending ? true : undefined}
+            data-pending={isPending ? "true" : undefined}
+            className="size-11 rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary disabled:opacity-50"
+            aria-label={
+              isPending
+                ? "Adding to playlist..."
+                : inPlaylist
+                ? "Remove from playlist"
+                : "Add to playlist"
+            }
+            onClick={(event) => {
+              if (isPending) return;
+              onTogglePlaylist(event);
+            }}
           >
             <HugeiconsIcon
-              icon={inPlaylist ? PlayListRemoveIcon : PlayListAddIcon}
+              icon={
+                isPending
+                  ? Loading02Icon
+                  : inPlaylist
+                  ? PlayListRemoveIcon
+                  : PlayListAddIcon
+              }
               size={24}
               strokeWidth={1.5}
+              className={isPending ? "animate-spin" : undefined}
               data-icon-name={
-                inPlaylist
+                isPending
+                  ? "hugeicons/loading-02"
+                  : inPlaylist
                   ? "hugeicons/play-list-remove"
                   : "hugeicons/play-list-add"
               }
