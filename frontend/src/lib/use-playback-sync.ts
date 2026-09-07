@@ -343,36 +343,77 @@ export function usePlaybackSync({
     }
   }, [setAudiobookSpeedLabel, setSpeedLabel, settingsRequests]);
 
-  const loadQueue = useCallback(async (shouldApply?: () => boolean) => {
-    const requestGeneration = queueRequests.beginRequest();
-    try {
-      const response = await api.playback.queue();
-      if (!queueRequests.isLatestRequest(requestGeneration)) {
+  const loadQueue = useCallback(
+    async (
+      options?:
+        | (() => boolean)
+        | {
+            shouldApply?: () => boolean;
+            applyActive?: boolean;
+            preserveItem?: QueueEpisode | null;
+            removeItemKey?: QueueItemKey | null;
+          }
+    ) => {
+      const shouldApply =
+        typeof options === "function" ? options : options?.shouldApply;
+      const applyActive =
+        typeof options === "function" || options?.applyActive === undefined
+          ? true
+          : options.applyActive;
+      const preserveItem =
+        typeof options === "object" ? options?.preserveItem : null;
+      const removeItemKey =
+        typeof options === "object" ? options?.removeItemKey : null;
+      const requestGeneration = queueRequests.beginRequest();
+      try {
+        const response = await api.playback.queue();
+        if (!queueRequests.isLatestRequest(requestGeneration)) {
+          return null;
+        }
+        if (shouldApply && !shouldApply()) {
+          return null;
+        }
+        setQueue(() => {
+          let updated = response.queue;
+          if (removeItemKey) {
+            updated = updated.filter((item) => queueItemKey(item) !== removeItemKey);
+          }
+          if (preserveItem) {
+            const preserveKey = queueItemKey(preserveItem);
+            const hasPreserve = updated.some((item) => queueItemKey(item) === preserveKey);
+            if (hasPreserve) {
+              updated = updated.map((item) =>
+                queueItemKey(item) === preserveKey ? preserveItem : item
+              );
+            } else {
+              updated = [...updated, preserveItem];
+            }
+          }
+          return updated;
+        });
+        if (applyActive) {
+          const nextActiveItemKey = activePlaybackKey(response.activePlayback);
+          setActiveItemKey(
+            nextActiveItemKey !== null &&
+              response.queue.some(
+                (episode) => queueItemKey(episode) === nextActiveItemKey
+              )
+              ? nextActiveItemKey
+              : null
+          );
+        }
+        return response;
+      } catch (error) {
+        console.error("Failed to load playback queue", error);
         return null;
+      } finally {
+        if (queueRequests.isLatestRequest(requestGeneration)) {
+          setLoading(false);
+        }
       }
-      if (shouldApply && !shouldApply()) {
-        return null;
-      }
-      setQueue(response.queue);
-      const nextActiveItemKey = activePlaybackKey(response.activePlayback);
-      setActiveItemKey(
-        nextActiveItemKey !== null &&
-          response.queue.some(
-            (episode) => queueItemKey(episode) === nextActiveItemKey
-          )
-          ? nextActiveItemKey
-          : null
-      );
-      return response;
-    } catch (error) {
-      console.error("Failed to load playback queue", error);
-      return null;
-    } finally {
-      if (queueRequests.isLatestRequest(requestGeneration)) {
-        setLoading(false);
-      }
-    }
-  }, [queueRequests, setActiveItemKey, setLoading, setQueue]);
+    },
+    [queueRequests, setActiveItemKey, setLoading, setQueue]
+  );
 
   const reloadQueue = useCallback(async () => {
     await loadQueue();

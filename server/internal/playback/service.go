@@ -59,7 +59,7 @@ type QueueEpisode struct {
 type UpdateResult struct {
 	Playback      State             `json:"playback"`
 	NextTarget    *PlaybackTarget   `json:"nextTarget,omitempty"`
-	NextItem      *NextPlaybackItem `json:"nextItem,omitempty"`
+	NextItem      *NextPlaybackItem `json:"nextItem"`
 	NextEpisodeID *int64            `json:"nextEpisodeId"`
 	NextTrackID   *int64            `json:"nextTrackId,omitempty"`
 }

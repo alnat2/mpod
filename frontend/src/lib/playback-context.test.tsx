@@ -2926,6 +2926,1060 @@ describe("PlaybackProvider", () => {
     expect(sendBeaconSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("handles sequential downward transition from audiobook to podcast with immediate speed update", async () => {
+    const firstBook: PlaybackQueueEpisode = {
+      id: 100,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 100,
+      trackId: 501,
+      trackNumber: 1,
+      title: "Book One",
+      audioUrl: "/api/audiobooks/100/tracks/501/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Author One",
+      playback: {
+        audiobookId: 100,
+        trackId: 501,
+        positionSeconds: 0,
+        lastUpdated: "2026-09-05T08:00:00Z",
+      },
+    };
+    const secondPodcast: PlaybackQueueEpisode = {
+      id: 1,
+      podcastId: 10,
+      type: "episode",
+      title: "Podcast One",
+      audioUrl: "/api/episodes/1/audio",
+      duration: 150,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Pod Series",
+      playback: null,
+    };
+
+    let queueCalls = 0;
+    vi.mocked(api.playback.queue).mockImplementation(async () => {
+      queueCalls += 1;
+      if (queueCalls === 1) {
+        return { queue: [firstBook, secondPodcast], activePlayback: { audiobookId: 100, trackId: 501, lastUpdated: "2026-09-05T08:00:00Z" } };
+      }
+      return { queue: [secondPodcast], activePlayback: null };
+    });
+    vi.mocked(api.playback.update).mockImplementation(async () => ({
+      playback: {
+        audiobookId: 100,
+        trackId: 501,
+        positionSeconds: 100,
+        lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextEpisodeId: null,
+    }));
+
+    renderPlaybackProvider();
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent("Book One");
+      expect(screen.getByTestId("speed")).toHaveTextContent("Speed 1x");
+    });
+
+    const audio = FakeAudio.first;
+    audio.currentTime = 100;
+    audio.emit("ended");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent("Podcast One");
+    });
+    expect(screen.getByTestId("speed")).toHaveTextContent("Speed 1.3x");
+    expect(audio.src).toContain("/api/episodes/1/audio");
+  });
+
+  it("handles sequential downward transition from podcast to audiobook with immediate speed update", async () => {
+    const podcastItem: PlaybackQueueEpisode = {
+      id: 1,
+      podcastId: 10,
+      type: "episode",
+      title: "Podcast Ep 1",
+      audioUrl: "/api/episodes/1/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Pod Series",
+      playback: null,
+    };
+    const audiobookItem: PlaybackQueueEpisode = {
+      id: 200,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 200,
+      trackId: 601,
+      trackNumber: 1,
+      title: "Book Two",
+      audioUrl: "/api/audiobooks/200/tracks/601/audio",
+      duration: 150,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Author Two",
+      playback: null,
+    };
+
+    let queueCalls = 0;
+    vi.mocked(api.playback.queue).mockImplementation(async () => {
+      queueCalls += 1;
+      if (queueCalls === 1) {
+        return { queue: [podcastItem, audiobookItem], activePlayback: { episodeId: 1, lastUpdated: "2026-09-05T08:00:00Z" } };
+      }
+      return { queue: [audiobookItem], activePlayback: null };
+    });
+    vi.mocked(api.playback.update).mockImplementation(async () => ({
+      playback: {
+        episodeId: 1,
+        positionSeconds: 100,
+        lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextEpisodeId: null,
+    }));
+
+    renderPlaybackProvider();
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent("Podcast Ep 1");
+      expect(screen.getByTestId("speed")).toHaveTextContent("Speed 1.3x");
+    });
+
+    const audio = FakeAudio.first;
+    audio.currentTime = 100;
+    audio.emit("ended");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent("Book Two");
+    });
+    expect(screen.getByTestId("speed")).toHaveTextContent("Speed 1x");
+    expect(audio.src).toContain("/api/audiobooks/200/tracks/601/audio");
+  });
+
+ it("handles sequential downward transition from audiobook to another audiobook", async () => {
+    const firstBook: PlaybackQueueEpisode = {
+      id: 100,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 100,
+      trackId: 501,
+      trackNumber: 1,
+      title: "Book One",
+      audioUrl: "/api/audiobooks/100/tracks/501/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Author One",
+      playback: {
+        audiobookId: 100,
+        trackId: 501,
+        positionSeconds: 0,
+        lastUpdated: "2026-09-05T08:00:00Z",
+      },
+    };
+    const secondBook: PlaybackQueueEpisode = {
+      id: 200,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 200,
+      trackId: 601,
+      trackNumber: 1,
+      title: "Book Two",
+      audioUrl: "/api/audiobooks/200/tracks/601/audio",
+      duration: 150,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Author Two",
+      playback: null,
+    };
+
+    let queueCalls = 0;
+    vi.mocked(api.playback.queue).mockImplementation(async () => {
+      queueCalls += 1;
+      if (queueCalls === 1) {
+        return { queue: [firstBook, secondBook], activePlayback: { audiobookId: 100, trackId: 501, lastUpdated: "2026-09-05T08:00:00Z" } };
+      }
+      return { queue: [secondBook], activePlayback: null };
+    });
+    vi.mocked(api.playback.update).mockImplementation(async () => ({
+      playback: {
+        audiobookId: 100,
+        trackId: 501,
+        positionSeconds: 100,
+        lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextEpisodeId: null,
+    }));
+
+    renderPlaybackProvider();
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent("Book One");
+      expect(screen.getByTestId("speed")).toHaveTextContent("Speed 1x");
+    });
+
+    const audio = FakeAudio.first;
+    audio.currentTime = 100;
+    audio.emit("ended");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent("Book Two");
+    });
+    expect(screen.getByTestId("speed")).toHaveTextContent("Speed 1x");
+    expect(audio.src).toContain("/api/audiobooks/200/tracks/601/audio");
+  });
+
+  it("removes completed audiobook from local queue when starting fallback podcast even if queue refresh fails", async () => {
+    const user = userEvent.setup();
+    const fallbackPodcast: PlaybackQueueEpisode = {
+      id: 1,
+      podcastId: 10,
+      type: "episode",
+      title: "Topmost Podcast",
+      audioUrl: "/api/episodes/1/audio",
+      duration: 120,
+      downloaded: true,
+      isListened: false,
+      publishedAt: "2026-01-01T00:00:00Z",
+      podcastTitle: "Top Podcast",
+      playback: {
+        episodeId: 1,
+        positionSeconds: 15,
+        lastUpdated: "2026-09-05T08:00:00Z",
+      },
+    };
+    const finishingBook: PlaybackQueueEpisode = {
+      id: 100,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 100,
+      trackId: 501,
+      trackNumber: 1,
+      title: "Finishing Book",
+      audioUrl: "/api/audiobooks/100/tracks/501/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Author",
+      playback: {
+        audiobookId: 100,
+        trackId: 501,
+        positionSeconds: 0,
+        lastUpdated: "2026-09-05T08:00:00Z",
+      },
+    };
+
+    let queueCalls = 0;
+    vi.mocked(api.playback.queue).mockImplementation(async () => {
+      queueCalls += 1;
+      if (queueCalls === 1) {
+        return { queue: [fallbackPodcast, finishingBook], activePlayback: null };
+      }
+      throw new Error("background queue refresh unavailable");
+    });
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: {
+        audiobookId: 100,
+        trackId: 501,
+        positionSeconds: 100,
+        lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextTarget: { type: "episode", episodeId: 1 },
+      nextItem: {
+        type: "episode",
+        episodeId: 1,
+        podcastId: 10,
+        title: "Topmost Podcast",
+        audioUrl: "/api/episodes/1/audio",
+        duration: 120,
+        downloaded: true,
+        isListened: false,
+        publishedAt: "2026-01-01T00:00:00Z",
+        podcastTitle: "Top Podcast",
+        positionSeconds: 15,
+        lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextEpisodeId: 1,
+    });
+
+    function FallbackQueueHarness() {
+      const { queue, currentEpisode, playQueueItem } = usePlayback();
+      return (
+        <>
+          <div data-testid="active-title">{currentEpisode?.title}</div>
+          <div data-testid="queue-titles">{queue.map((item) => item.title).join(", ")}</div>
+          <button type="button" onClick={() => playQueueItem(finishingBook)}>
+            Play book
+          </button>
+        </>
+      );
+    }
+
+    render(<PlaybackProvider><FallbackQueueHarness /></PlaybackProvider>);
+    await waitFor(() => expect(screen.getByTestId("active-title")).toHaveTextContent("Topmost Podcast"));
+    await user.click(screen.getByRole("button", { name: "Play book" }));
+    await waitFor(() => expect(screen.getByTestId("active-title")).toHaveTextContent("Finishing Book"));
+
+    const audio = FakeAudio.first;
+    audio.currentTime = 100;
+    audio.emit("ended");
+
+    await waitFor(() => expect(screen.getByTestId("active-title")).toHaveTextContent("Topmost Podcast"));
+    expect(screen.getByTestId("queue-titles")).toHaveTextContent("Topmost Podcast");
+    expect(screen.getByTestId("queue-titles")).not.toHaveTextContent("Finishing Book");
+  });
+
+  it("recovers downward playback on focus when background autoplay is rejected", async () => {
+    const firstEpisode: PlaybackQueueEpisode = {
+      id: 1,
+      podcastId: 10,
+      type: "episode",
+      title: "First Ep",
+      audioUrl: "/api/episodes/1/audio",
+      duration: 100,
+      downloaded: false,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Pod",
+      playback: null,
+    };
+    const secondEpisode: PlaybackQueueEpisode = {
+      id: 2,
+      podcastId: 10,
+      type: "episode",
+      title: "Second Ep",
+      audioUrl: "/api/episodes/2/audio",
+      duration: 100,
+      downloaded: false,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Pod",
+      playback: null,
+    };
+
+    let queueCalls = 0;
+    vi.mocked(api.playback.queue).mockImplementation(async () => {
+      queueCalls += 1;
+      if (queueCalls === 1) {
+        return { queue: [firstEpisode, secondEpisode], activePlayback: null };
+      }
+      return { queue: [secondEpisode], activePlayback: null };
+    });
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: { episodeId: 1, positionSeconds: 100, lastUpdated: "2026-09-05T08:01:00Z" },
+      nextEpisodeId: null,
+    });
+
+    renderPlaybackProvider();
+    await waitFor(() => expect(screen.getByTestId("current-title")).toHaveTextContent("First Ep"));
+
+    const audio = FakeAudio.first;
+    audio.currentTime = 100;
+
+    // Simulate autoplay restriction when second item starts
+    let playAllowed = false;
+    const originalPlay = audio.playImpl;
+    audio.playImpl = vi.fn(async () => {
+      if (!playAllowed) {
+        const error = new DOMException("Autoplay blocked", "NotAllowedError");
+        throw error;
+      }
+      return originalPlay();
+    });
+
+    audio.emit("ended");
+    await waitFor(() => expect(screen.getByTestId("current-title")).toHaveTextContent("Second Ep"));
+    expect(screen.getByTestId("playing")).toHaveTextContent("no");
+
+    // When tab/screen gains focus, it retries and plays
+    playAllowed = true;
+    window.dispatchEvent(new Event("focus"));
+
+    await waitFor(() => expect(screen.getByTestId("playing")).toHaveTextContent("yes"));
+  });
+
+  it("starts the next chapter immediately when loadQueue is delayed", async () => {
+    const user = userEvent.setup();
+    const firstChapter: PlaybackQueueEpisode = {
+      id: 100,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 100,
+      trackId: 501,
+      trackNumber: 1,
+      title: "Delayed Book",
+      audioUrl: "/api/audiobooks/100/tracks/501/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Author",
+      playback: {
+        audiobookId: 100,
+        trackId: 501,
+        positionSeconds: 0,
+        lastUpdated: "2026-09-05T08:00:00Z",
+      },
+    };
+
+    let resolveQueuePromise: (() => void) | null = null;
+    let queueCalls = 0;
+    vi.mocked(api.playback.queue).mockImplementation(async () => {
+      queueCalls += 1;
+      if (queueCalls === 1) {
+        return {
+          queue: [firstChapter],
+          activePlayback: { audiobookId: 100, trackId: 501, lastUpdated: "2026-09-05T08:00:00Z" },
+        };
+      }
+      return new Promise((resolve) => {
+        resolveQueuePromise = () =>
+          resolve({
+            queue: [
+              {
+                ...firstChapter,
+                trackId: 502,
+                trackNumber: 2,
+                audioUrl: "/api/audiobooks/100/tracks/502/audio",
+              },
+            ],
+            activePlayback: { audiobookId: 100, trackId: 502, lastUpdated: "2026-09-05T08:01:00Z" },
+          });
+      });
+    });
+
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: {
+        audiobookId: 100,
+        trackId: 501,
+        positionSeconds: 100,
+        lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextTarget: { type: "audiobook", audiobookId: 100, trackId: 502 },
+      nextItem: {
+        type: "audiobook",
+        audiobookId: 100,
+        trackId: 502,
+        podcastId: 0,
+        title: "Delayed Book",
+        audioUrl: "/api/audiobooks/100/tracks/502/audio",
+        duration: 120,
+        downloaded: true,
+        isListened: false,
+        publishedAt: null,
+        podcastTitle: "Author",
+        trackNumber: 2,
+        positionSeconds: 0,
+        lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextEpisodeId: null,
+    });
+
+    function DelayedQueueHarness() {
+      const { currentEpisode, playing, playQueueItem } = usePlayback();
+      return (
+        <>
+          <div data-testid="track-id">{currentEpisode?.trackId}</div>
+          <div data-testid="playing">{playing ? "yes" : "no"}</div>
+          <button type="button" onClick={() => playQueueItem(firstChapter)}>
+            Play
+          </button>
+        </>
+      );
+    }
+
+    render(<PlaybackProvider><DelayedQueueHarness /></PlaybackProvider>);
+    await waitFor(() => expect(screen.getByTestId("track-id")).toHaveTextContent("501"));
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    await waitFor(() => expect(screen.getByTestId("playing")).toHaveTextContent("yes"));
+
+    const audio = FakeAudio.first;
+    audio.currentTime = 100;
+    audio.emit("ended");
+
+    // Immediately advances to 502 without waiting for loadQueue
+    await waitFor(() => expect(screen.getByTestId("track-id")).toHaveTextContent("502"));
+    expect(audio.src).toContain("/api/audiobooks/100/tracks/502/audio");
+    expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    expect(resolveQueuePromise).not.toBeNull();
+
+    // Now let delayed loadQueue resolve
+    resolveQueuePromise!();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Remains playing chapter 502
+    expect(screen.getByTestId("track-id")).toHaveTextContent("502");
+    expect(audio.src).toContain("/api/audiobooks/100/tracks/502/audio");
+  });
+
+  it("launches podcast from nextItem when book ends even if stale queue row has old chapter", async () => {
+    const user = userEvent.setup();
+    const staleAudiobook: PlaybackQueueEpisode = {
+      id: 100,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 100,
+      trackId: 3, // stale chapter 3 in queue
+      trackNumber: 3,
+      title: "Audiobook with Stale Chapter",
+      audioUrl: "/api/audiobooks/100/tracks/3/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Author",
+      playback: null,
+    };
+    const nextPodcast: PlaybackQueueEpisode = {
+      id: 5,
+      podcastId: 50,
+      type: "episode",
+      title: "Upcoming Podcast",
+      audioUrl: "/api/episodes/5/audio",
+      duration: 200,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Pod Title",
+      playback: null,
+    };
+
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [nextPodcast, staleAudiobook],
+      activePlayback: { audiobookId: 100, trackId: 27, lastUpdated: "2026-09-05T08:00:00Z" },
+    });
+
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: {
+        audiobookId: 100,
+        trackId: 27,
+        positionSeconds: 100,
+        lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextTarget: { type: "episode", episodeId: 5 },
+      nextItem: {
+        type: "episode",
+        episodeId: 5,
+        podcastId: 50,
+        title: "Upcoming Podcast",
+        audioUrl: "/api/episodes/5/audio",
+        duration: 200,
+        downloaded: true,
+        isListened: false,
+        publishedAt: null,
+        podcastTitle: "Pod Title",
+        positionSeconds: 0,
+        lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextEpisodeId: 5,
+    });
+
+    const currentChapter27: PlaybackQueueEpisode = {
+      ...staleAudiobook,
+      trackId: 27,
+      trackNumber: 27,
+      audioUrl: "/api/audiobooks/100/tracks/27/audio",
+    };
+
+    function StaleQueueHarness() {
+      const { queue, currentEpisode, playQueueItem } = usePlayback();
+      return (
+        <>
+          <div data-testid="current-title">{currentEpisode?.title}</div>
+          <div data-testid="queue-tracks">
+            {queue.map((item) => `${item.title}:${item.trackId ?? "none"}`).join(", ")}
+          </div>
+          <button type="button" onClick={() => playQueueItem(currentChapter27)}>
+            Play Ch27
+          </button>
+        </>
+      );
+    }
+
+    render(<PlaybackProvider><StaleQueueHarness /></PlaybackProvider>);
+    await user.click(screen.getByRole("button", { name: "Play Ch27" }));
+    await waitFor(() => expect(screen.getByTestId("current-title")).toHaveTextContent("Audiobook with Stale Chapter"));
+
+    const audio = FakeAudio.first;
+    audio.currentTime = 100;
+    audio.emit("ended");
+
+    await waitFor(() => expect(screen.getByTestId("current-title")).toHaveTextContent("Upcoming Podcast"));
+    expect(audio.src).toContain("/api/episodes/5/audio");
+    expect(screen.getByTestId("queue-tracks")).toHaveTextContent("Upcoming Podcast");
+    expect(screen.getByTestId("queue-tracks")).not.toHaveTextContent(":3");
+  });
+
+  it("creates exactly one completion update when ended, pause, and timeupdate fire in rapid succession", async () => {
+    const episode: PlaybackQueueEpisode = {
+      id: 1,
+      podcastId: 10,
+      type: "episode",
+      title: "Single Completion Ep",
+      audioUrl: "/api/episodes/1/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Pod",
+      playback: null,
+    };
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [episode],
+      activePlayback: { episodeId: 1, lastUpdated: "2026-09-05T08:00:00Z" },
+    });
+    const updateSpy = vi.mocked(api.playback.update).mockResolvedValue({
+      playback: { episodeId: 1, positionSeconds: 100, lastUpdated: "2026-09-05T08:01:00Z" },
+      nextItem: null,
+      nextEpisodeId: null,
+    });
+
+    renderPlaybackProvider();
+    await waitFor(() => expect(screen.getByTestId("current-title")).toHaveTextContent("Single Completion Ep"));
+
+    const audio = FakeAudio.first;
+    audio.duration = 100;
+    audio.currentTime = 100;
+    audio.ended = true;
+
+    audio.emit("timeupdate");
+    audio.emit("pause");
+    audio.emit("ended");
+
+    await waitFor(() =>
+      expect(
+        updateSpy.mock.calls.filter(([payload]) => payload.completed)
+      ).toHaveLength(1)
+    );
+  });
+
+  it("does not replay a completed chapter when trailing timeupdate or ended events fire", async () => {
+    const chapter1: PlaybackQueueEpisode = {
+      id: 100,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 100,
+      trackId: 501,
+      trackNumber: 1,
+      title: "Book",
+      audioUrl: "/api/audiobooks/100/tracks/501/audio",
+      duration: 60,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Author",
+      playback: null,
+    };
+
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [chapter1],
+      activePlayback: { audiobookId: 100, trackId: 501, lastUpdated: "2026-09-05T08:00:00Z" },
+    });
+
+    const updateSpy = vi.mocked(api.playback.update).mockResolvedValue({
+      playback: {
+        audiobookId: 100,
+        trackId: 501,
+        positionSeconds: 60,
+        lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextTarget: { type: "audiobook", audiobookId: 100, trackId: 502 },
+      nextItem: {
+        type: "audiobook",
+        audiobookId: 100,
+        trackId: 502,
+        podcastId: 0,
+        title: "Book",
+        audioUrl: "/api/audiobooks/100/tracks/502/audio",
+        duration: 80,
+        downloaded: true,
+        isListened: false,
+        publishedAt: null,
+        podcastTitle: "Author",
+        trackNumber: 2,
+        positionSeconds: 0,
+        lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextEpisodeId: null,
+    });
+
+    renderPlaybackProvider();
+    await waitFor(() => expect(screen.getByTestId("current-title")).toHaveTextContent("Book"));
+
+    const audio = FakeAudio.first;
+    audio.duration = 60;
+    audio.currentTime = 60;
+    audio.ended = true;
+    audio.emit("ended");
+
+    await waitFor(() => expect(audio.src).toContain("/api/audiobooks/100/tracks/502/audio"));
+
+    audio.emit("timeupdate");
+    audio.emit("ended");
+
+    expect(
+      updateSpy.mock.calls.filter(
+        ([payload]) => payload.completed && payload.trackId === 501
+      )
+    ).toHaveLength(1);
+    expect(audio.src).toContain("/api/audiobooks/100/tracks/502/audio");
+  });
+
+  it("handles sequential downward transition from podcast to another podcast", async () => {
+    const firstPodcast: PlaybackQueueEpisode = {
+      id: 1,
+      podcastId: 10,
+      type: "episode",
+      title: "Podcast Ep 1",
+      audioUrl: "/api/episodes/1/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Pod Series",
+      playback: null,
+    };
+    const secondPodcast: PlaybackQueueEpisode = {
+      id: 2,
+      podcastId: 10,
+      type: "episode",
+      title: "Podcast Ep 2",
+      audioUrl: "/api/episodes/2/audio",
+      duration: 150,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Pod Series",
+      playback: null,
+    };
+
+    let queueCalls = 0;
+    vi.mocked(api.playback.queue).mockImplementation(async () => {
+      queueCalls += 1;
+      if (queueCalls === 1) {
+        return { queue: [firstPodcast, secondPodcast], activePlayback: { episodeId: 1, lastUpdated: "2026-09-05T08:00:00Z" } };
+      }
+      return { queue: [secondPodcast], activePlayback: { episodeId: 2, lastUpdated: "2026-09-05T08:01:00Z" } };
+    });
+
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: { episodeId: 1, positionSeconds: 100, lastUpdated: "2026-09-05T08:01:00Z" },
+      nextTarget: { type: "episode", episodeId: 2 },
+      nextItem: {
+        type: "episode",
+        episodeId: 2,
+        podcastId: 10,
+        title: "Podcast Ep 2",
+        audioUrl: "/api/episodes/2/audio",
+        duration: 150,
+        downloaded: true,
+        isListened: false,
+        publishedAt: null,
+        podcastTitle: "Pod Series",
+        positionSeconds: 0,
+        lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextEpisodeId: 2,
+    });
+
+    renderPlaybackProvider();
+    await waitFor(() => expect(screen.getByTestId("current-title")).toHaveTextContent("Podcast Ep 1"));
+
+    const audio = FakeAudio.first;
+    audio.currentTime = 100;
+    audio.emit("ended");
+
+    await waitFor(() => expect(screen.getByTestId("current-title")).toHaveTextContent("Podcast Ep 2"));
+    expect(audio.src).toContain("/api/episodes/2/audio");
+  });
+
+  it("cleanly stops playback when backend completion returns nextItem: null", async () => {
+    const soleEpisode: PlaybackQueueEpisode = {
+      id: 1,
+      podcastId: 10,
+      type: "episode",
+      title: "Final Episode",
+      audioUrl: "/api/episodes/1/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Solo Pod",
+      playback: null,
+    };
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [soleEpisode],
+      activePlayback: { episodeId: 1, lastUpdated: "2026-09-05T08:00:00Z" },
+    });
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: { episodeId: 1, positionSeconds: 100, lastUpdated: "2026-09-05T08:01:00Z" },
+      nextItem: null,
+      nextEpisodeId: null,
+    });
+
+    renderPlaybackProvider();
+    await waitFor(() => expect(screen.getByTestId("current-title")).toHaveTextContent("Final Episode"));
+
+    const audio = FakeAudio.first;
+    audio.currentTime = 100;
+    audio.emit("ended");
+
+    await waitFor(() => expect(screen.getByTestId("playing")).toHaveTextContent("no"));
+    expect(audio.pauseImpl).toHaveBeenCalled();
+  });
+
+  it("preserves complete metadata, position, and type during mixed nextItem transitions", async () => {
+    const podcastEp: PlaybackQueueEpisode = {
+      id: 1,
+      podcastId: 10,
+      type: "episode",
+      title: "Rich Podcast",
+      audioUrl: "/api/episodes/1/audio",
+      duration: 300,
+      downloaded: true,
+      isListened: false,
+      publishedAt: "2026-01-01T12:00:00Z",
+      podcastTitle: "Pod Series",
+      podcastImageUrl: "/api/podcasts/10/image",
+      playback: null,
+    };
+
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [podcastEp],
+      activePlayback: { episodeId: 1, lastUpdated: "2026-09-05T08:00:00Z" },
+    });
+
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: { episodeId: 1, positionSeconds: 300, lastUpdated: "2026-09-05T08:01:00Z" },
+      nextTarget: { type: "audiobook", audiobookId: 99, trackId: 888 },
+      nextItem: {
+        type: "audiobook",
+        audiobookId: 99,
+        trackId: 888,
+        podcastId: 0,
+        title: "Rich Book Title",
+        audioUrl: "/api/audiobooks/99/tracks/888/audio",
+        duration: 450,
+        downloaded: true,
+        isListened: false,
+        publishedAt: null,
+        podcastTitle: "Author Name",
+        author: "Author Name",
+        coverUrl: "/api/audiobooks/99/cover",
+        podcastImageUrl: "/api/audiobooks/99/cover",
+        trackNumber: 3,
+        trackCount: 12,
+        hasChapters: true,
+        hasCover: true,
+        positionSeconds: 42,
+        lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextEpisodeId: null,
+    });
+
+    function MetadataHarness() {
+      const { currentEpisode, positionSeconds, speedLabel } = usePlayback();
+      return (
+        <>
+          <div data-testid="meta-title">{currentEpisode?.title}</div>
+          <div data-testid="meta-author">{currentEpisode?.podcastTitle}</div>
+          <div data-testid="meta-type">{currentEpisode?.type}</div>
+          <div data-testid="meta-pos">{positionSeconds}</div>
+          <div data-testid="meta-speed">{speedLabel}</div>
+        </>
+      );
+    }
+
+    render(<PlaybackProvider><MetadataHarness /></PlaybackProvider>);
+    await waitFor(() => expect(screen.getByTestId("meta-title")).toHaveTextContent("Rich Podcast"));
+    expect(screen.getByTestId("meta-speed")).toHaveTextContent("Speed 1.3x");
+
+    const audio = FakeAudio.first;
+    audio.currentTime = 300;
+    audio.emit("ended");
+
+    await waitFor(() => expect(screen.getByTestId("meta-title")).toHaveTextContent("Rich Book Title"));
+    expect(screen.getByTestId("meta-author")).toHaveTextContent("Author Name");
+    expect(screen.getByTestId("meta-type")).toHaveTextContent("audiobook");
+    expect(screen.getByTestId("meta-pos")).toHaveTextContent("42");
+    expect(screen.getByTestId("meta-speed")).toHaveTextContent("Speed 1x");
+    expect(audio.currentTime).toBe(42);
+  });
+
+  it("maintains backward compatibility with legacy completion response missing nextItem", async () => {
+    const ep1: PlaybackQueueEpisode = {
+      id: 1,
+      podcastId: 10,
+      type: "episode",
+      title: "Legacy Ep 1",
+      audioUrl: "/api/episodes/1/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Legacy Pod",
+      playback: null,
+    };
+    const ep2: PlaybackQueueEpisode = {
+      id: 2,
+      podcastId: 10,
+      type: "episode",
+      title: "Legacy Ep 2",
+      audioUrl: "/api/episodes/2/audio",
+      duration: 200,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Legacy Pod",
+      playback: null,
+    };
+
+    let queueCalls = 0;
+    vi.mocked(api.playback.queue).mockImplementation(async () => {
+      queueCalls += 1;
+      if (queueCalls === 1) {
+        return { queue: [ep1, ep2], activePlayback: { episodeId: 1, lastUpdated: "2026-09-05T08:00:00Z" } };
+      }
+      return { queue: [ep2], activePlayback: { episodeId: 2, lastUpdated: "2026-09-05T08:01:00Z" } };
+    });
+
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: { episodeId: 1, positionSeconds: 100, lastUpdated: "2026-09-05T08:01:00Z" },
+      nextTarget: { type: "episode", episodeId: 2 },
+      nextEpisodeId: 2,
+    });
+
+    renderPlaybackProvider();
+    await waitFor(() => expect(screen.getByTestId("current-title")).toHaveTextContent("Legacy Ep 1"));
+
+    const audio = FakeAudio.first;
+    audio.currentTime = 100;
+    audio.emit("ended");
+
+    await waitFor(() => expect(screen.getByTestId("current-title")).toHaveTextContent("Legacy Ep 2"));
+    expect(audio.src).toContain("/api/episodes/2/audio");
+  });
+
+  it("does not let late queue response override manual track selection", async () => {
+    const user = userEvent.setup();
+    const ep1: PlaybackQueueEpisode = {
+      id: 1,
+      podcastId: 10,
+      type: "episode",
+      title: "First Ep",
+      audioUrl: "/api/episodes/1/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Pod",
+      playback: null,
+    };
+    const ep2: PlaybackQueueEpisode = {
+      id: 2,
+      podcastId: 10,
+      type: "episode",
+      title: "Second Ep",
+      audioUrl: "/api/episodes/2/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Pod",
+      playback: null,
+    };
+    const manualEp: PlaybackQueueEpisode = {
+      id: 3,
+      podcastId: 10,
+      type: "episode",
+      title: "Manually Clicked Ep",
+      audioUrl: "/api/episodes/3/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Pod",
+      playback: null,
+    };
+
+    const queueDeferred: { resolve: (() => void) | null } = { resolve: null };
+    let queueCalls = 0;
+    vi.mocked(api.playback.queue).mockImplementation(async () => {
+      queueCalls += 1;
+      if (queueCalls === 1) {
+        return { queue: [ep1, ep2, manualEp], activePlayback: null };
+      }
+      return new Promise((resolve) => {
+        queueDeferred.resolve = () =>
+          resolve({
+            queue: [ep2, manualEp],
+            activePlayback: { episodeId: 2, lastUpdated: "2026-09-05T08:01:00Z" },
+          });
+      });
+    });
+
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: { episodeId: 1, positionSeconds: 100, lastUpdated: "2026-09-05T08:01:00Z" },
+      nextItem: {
+        type: "episode",
+        episodeId: 2,
+        podcastId: 10,
+        title: "Second Ep",
+        audioUrl: "/api/episodes/2/audio",
+        duration: 100,
+        downloaded: true,
+        isListened: false,
+        publishedAt: null,
+        podcastTitle: "Pod",
+        positionSeconds: 0,
+        lastUpdated: "2026-09-05T08:01:00Z",
+      },
+      nextEpisodeId: 2,
+    });
+
+    function ManualOverrideHarness() {
+      const { currentEpisode, playQueueItem } = usePlayback();
+      return (
+        <>
+          <div data-testid="active-title">{currentEpisode?.title}</div>
+          <button type="button" onClick={() => playQueueItem(manualEp)}>
+            Play Manual
+          </button>
+        </>
+      );
+    }
+
+    render(<PlaybackProvider><ManualOverrideHarness /></PlaybackProvider>);
+    await waitFor(() => expect(screen.getByTestId("active-title")).toHaveTextContent("First Ep"));
+
+    const audio = FakeAudio.first;
+    audio.currentTime = 100;
+    audio.emit("ended");
+
+    await waitFor(() => expect(screen.getByTestId("active-title")).toHaveTextContent("Second Ep"));
+
+    await user.click(screen.getByRole("button", { name: "Play Manual" }));
+    await waitFor(() => expect(screen.getByTestId("active-title")).toHaveTextContent("Manually Clicked Ep"));
+
+    queueDeferred.resolve?.();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId("active-title")).toHaveTextContent("Manually Clicked Ep");
+    expect(audio.src).toContain("/api/episodes/3/audio");
+  });
+
   it("shows 1 second remaining and saves 102/103 with completed=false when DB duration is 100 and browser duration is 103 at position 102", async () => {
     const user = userEvent.setup();
     const episodeItem: PlaybackQueueEpisode = {

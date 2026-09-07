@@ -107,6 +107,28 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     currentEpisodeRef.current = currentEpisode;
   }, [currentEpisode]);
 
+  const podcastSpeedRef = useRef<PlaybackSpeedLabel>(podcastSpeed);
+  const audiobookSpeedRef = useRef<PlaybackSpeedLabel>(audiobookSpeed);
+
+  useEffect(() => {
+    podcastSpeedRef.current = podcastSpeed;
+  }, [podcastSpeed]);
+
+  useEffect(() => {
+    audiobookSpeedRef.current = audiobookSpeed;
+  }, [audiobookSpeed]);
+
+  const getSpeedForEpisode = useCallback(
+    (episode: { id?: number; type?: string; audiobookId?: number } | null | undefined): PlaybackSpeedLabel => {
+      if (!episode) {
+        return speedLabelRef.current;
+      }
+      const isAb = episode.type === "audiobook" || Boolean(episode.audiobookId);
+      return isAb ? audiobookSpeedRef.current : podcastSpeedRef.current;
+    },
+    []
+  );
+
   useEffect(() => {
     currentEpisodeDurationRef.current = currentEpisodeDuration;
   }, [currentEpisodeDuration]);
@@ -192,6 +214,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       commitActivePlayback,
       refreshPlaybackState,
       loadQueue,
+      getSpeedForEpisode,
     });
 
   const updateSpeedLabel = useCallback((label: PlaybackSpeedLabel) => {

@@ -3,7 +3,9 @@ package playback
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"strings"
 	"os"
 	"path/filepath"
 	"testing"
@@ -759,6 +761,102 @@ func TestUpdateCompletionNextItemCarriesTypedMetadataAcrossMedia(t *testing.T) {
 		}
 		if item.Title != "Next Book" || item.PodcastTitle != "Next Author" || item.Author != "Next Author" || item.CoverURL == nil || item.PodcastImageURL == nil || item.TrackNumber != 3 || item.Duration == nil || *item.Duration != 432 || !item.Downloaded || !item.HasCover || !item.HasChapters || item.TrackCount != 1 {
 			t.Fatalf("next audiobook metadata incomplete: %+v", item)
+		}
+	})
+
+	t.Run("audiobook chapter to chapter", func(t *testing.T) {
+		db := newTestDB(t)
+		defer db.Close()
+		mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path, cover_path) VALUES (1, "Chapter Book", "Book Author", "Chapter Book", "/books/cover.jpg")`)
+		mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, "Chapter 1", "Chapter Book/1.mp3", "/books/1.mp3", 60), (11, 1, 2, "Chapter 2", "Chapter Book/2.mp3", "/books/2.mp3", 120)`)
+		mustExec(t, db.SQL, `INSERT INTO playlist (audiobook_id, position) VALUES (1, 1)`)
+		mustExec(t, db.SQL, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10), (1, 11)`)
+
+		service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+		bookID, trackID := int64(1), int64(10)
+		result, err := service.Update(context.Background(), UpdateInput{AudiobookID: &bookID, TrackID: &trackID, PositionSeconds: 60, DurationSeconds: 60, Completed: true})
+		if err != nil {
+			t.Fatalf("Update returned error: %v", err)
+		}
+		if result.NextTrackID == nil || *result.NextTrackID != 11 {
+			t.Fatalf("expected nextTrackId 11, got %v", result.NextTrackID)
+		}
+		item := result.NextItem
+		if item == nil || item.Type != "audiobook" || item.AudiobookID == nil || *item.AudiobookID != 1 || item.TrackID == nil || *item.TrackID != 11 {
+			t.Fatalf("expected typed chapter next item, got %+v", item)
+		}
+		if item.Title != "Chapter Book" || item.PodcastTitle != "Book Author" || item.Author != "Book Author" || item.CoverURL == nil || item.TrackNumber != 2 || item.Duration == nil || *item.Duration != 120 || !item.Downloaded || !item.HasCover || !item.HasChapters || item.TrackCount != 2 {
+			t.Fatalf("next chapter metadata incomplete: %+v", item)
+		}
+	})
+
+	t.Run("audiobook to audiobook", func(t *testing.T) {
+		db := newTestDB(t)
+		defer db.Close()
+		mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path, cover_path) VALUES (1, "First Book", "Author One", "First Book", "/books/1/cover.jpg"), (2, "Second Book", "Author Two", "Second Book", "/books/2/cover.jpg")`)
+		mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, "Book 1 Track", "First Book/1.mp3", "/books/1.mp3", 100), (20, 2, 1, "Book 2 Track", "Second Book/1.mp3", "/books/2.mp3", 200)`)
+		mustExec(t, db.SQL, `INSERT INTO playlist (audiobook_id, position) VALUES (1, 1), (2, 2)`)
+		mustExec(t, db.SQL, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10), (2, 20)`)
+
+		service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+		bookID, trackID := int64(2), int64(20)
+		result, err := service.Update(context.Background(), UpdateInput{AudiobookID: &bookID, TrackID: &trackID, PositionSeconds: 200, DurationSeconds: 200, Completed: true})
+		if err != nil {
+			t.Fatalf("Update returned error: %v", err)
+		}
+		item := result.NextItem
+		if item == nil || item.Type != "audiobook" || item.AudiobookID == nil || *item.AudiobookID != 1 || item.TrackID == nil || *item.TrackID != 10 {
+			t.Fatalf("expected typed fallback audiobook next item, got %+v", item)
+		}
+		if item.Title != "First Book" || item.PodcastTitle != "Author One" || item.Author != "Author One" || item.CoverURL == nil || item.TrackNumber != 1 || item.Duration == nil || *item.Duration != 100 || !item.Downloaded || !item.HasCover {
+			t.Fatalf("next fallback audiobook metadata incomplete: %+v", item)
+		}
+	})
+
+	t.Run("podcast to podcast", func(t *testing.T) {
+		db := newTestDB(t)
+		defer db.Close()
+		publishedAt := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
+		mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url, image_url) VALUES (1, "First Podcast", "https://example.com/1.xml", "https://example.com/1.png")`)
+		mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration, published_at, downloaded_path) VALUES (1, 1, "ep-1", "First Episode", "https://example.com/1.mp3", 150, ?, "/data/downloads/1.mp3")`, publishedAt)
+		mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration) VALUES (2, 1, "ep-2", "Second Episode", "https://example.com/2.mp3", 250)`)
+		mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1), (2, 2)`)
+
+		service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+		result, err := service.Update(context.Background(), UpdateInput{EpisodeID: 2, PositionSeconds: 250, DurationSeconds: 250, Completed: true})
+		if err != nil {
+			t.Fatalf("Update returned error: %v", err)
+		}
+		item := result.NextItem
+		if item == nil || item.Type != "episode" || item.EpisodeID == nil || *item.EpisodeID != 1 {
+			t.Fatalf("expected typed fallback episode next item, got %+v", item)
+		}
+		if item.Title != "First Episode" || item.AudioURL != "https://example.com/1.mp3" || item.Duration == nil || *item.Duration != 150 || !item.Downloaded || item.PodcastTitle != "First Podcast" || item.PodcastImageURL == nil || item.PublishedAt == nil || !item.PublishedAt.Equal(publishedAt) {
+			t.Fatalf("next fallback episode metadata incomplete: %+v", item)
+		}
+	})
+
+	t.Run("exhausted playlist returns nil next item", func(t *testing.T) {
+		db := newTestDB(t)
+		defer db.Close()
+		mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, "Single Podcast", "https://example.com/single.xml")`)
+		mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration) VALUES (1, 1, "single-ep", "Only Episode", "https://example.com/single.mp3", 100)`)
+		mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+
+		service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+		result, err := service.Update(context.Background(), UpdateInput{EpisodeID: 1, PositionSeconds: 100, DurationSeconds: 100, Completed: true})
+		if err != nil {
+			t.Fatalf("Update returned error: %v", err)
+		}
+		if result.NextItem != nil {
+			t.Fatalf("expected nil nextItem for exhausted playlist, got %+v", result.NextItem)
+		}
+		marshaled, err := json.Marshal(result)
+		if err != nil {
+			t.Fatalf("marshal result: %v", err)
+		}
+		if !strings.Contains(string(marshaled), `"nextItem":null`) {
+			t.Fatalf("expected marshaled result to contain explicit null nextItem, got: %s", string(marshaled))
 		}
 	})
 }
