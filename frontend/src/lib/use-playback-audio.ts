@@ -35,6 +35,7 @@ import {
   sameQueueItem,
   type QueueItemKey,
 } from "./playback-queue";
+import { updateMediaSessionMetadata } from "./use-playback-media-session";
 
 type CommitPlayback = (
   nextPositionSeconds: number,
@@ -351,6 +352,7 @@ export function usePlaybackAudio({
         ? { generation: playbackGenerationRef.current, item: episode }
         : null;
       currentEpisodeRef.current = episode;
+      updateMediaSessionMetadata(episode);
       setActiveItemKey(queueItemKey(episode));
       void commitActivePlayback(episode);
       sourceReadyRef.current = false;
@@ -415,6 +417,7 @@ export function usePlaybackAudio({
           sourceReadyRef.current = false;
           pendingNextItemRef.current = null;
           audio.pause();
+          updateMediaSessionMetadata(null);
           setQueue((current) =>
             current.filter((item) => !sameQueueItem(item, completedItem))
           );
@@ -512,6 +515,7 @@ export function usePlaybackAudio({
         sourceReadyRef.current = false;
         pendingNextItemRef.current = null;
         audio.pause();
+        updateMediaSessionMetadata(null);
         return;
       }
       if (!isCurrentCompletion()) {

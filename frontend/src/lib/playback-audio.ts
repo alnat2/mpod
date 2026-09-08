@@ -1,9 +1,10 @@
 import type { PlaybackSpeedLabel } from "@/components/mpod/playback";
+import {
+  updateMediaSessionMetadata,
+  type MediaSessionTrackItem,
+} from "./use-playback-media-session";
 
-type AudioSourceEpisode = {
-  id: number;
-  type?: "episode" | "audiobook";
-  audiobookId?: number;
+type AudioSourceEpisode = MediaSessionTrackItem & {
   trackId?: number;
   audioUrl?: string;
 };
@@ -232,9 +233,13 @@ export function primeAudioSource(
     onReady();
   };
 
+  updateMediaSessionMetadata(episode);
+
   if (sourceChanged) {
     audio.pause();
+    updateMediaSessionMetadata(episode);
     audio.src = targetSrc;
+    updateMediaSessionMetadata(episode);
     markPrimed();
     applyPlaybackRate(audio, speedLabel);
     audio.addEventListener("loadedmetadata", applyPosition);

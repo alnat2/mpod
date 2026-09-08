@@ -7,6 +7,7 @@ import {
   api,
   type Episode,
   type PlaybackQueueEpisode,
+  type PlaybackUpdateResponse,
   type Podcast,
   type PlaybackState,
 } from "./api";
@@ -138,8 +139,32 @@ class FakeAudio {
   }
 }
 
+class FakeMediaMetadata {
+  title: string;
+  artist: string;
+  album: string;
+  artwork: readonly MediaImage[];
+
+  constructor(init?: MediaMetadataInit) {
+    if (init?.artwork) {
+      for (const img of init.artwork) {
+        if (!img.src || typeof img.src !== "string") {
+          throw new TypeError(
+            "Failed to construct 'MediaMetadata': The string is not a valid URL."
+          );
+        }
+      }
+    }
+    this.title = init?.title ?? "";
+    this.artist = init?.artist ?? "";
+    this.album = init?.album ?? "";
+    this.artwork = init?.artwork ?? [];
+  }
+}
+
 class FakeMediaSession {
   playbackState: MediaSessionPlaybackState = "none";
+  metadata: MediaMetadata | null = null;
   handlers = new Map<
     MediaSessionAction,
     MediaSessionActionHandler | null
@@ -418,6 +443,7 @@ describe("PlaybackProvider", () => {
       MEDIA_ERR_DECODE: 3,
       MEDIA_ERR_SRC_NOT_SUPPORTED: 4,
     });
+    vi.stubGlobal("MediaMetadata", FakeMediaMetadata);
     mediaSession = new FakeMediaSession();
     Object.defineProperty(navigator, "mediaSession", {
       configurable: true,
@@ -1084,6 +1110,280 @@ describe("PlaybackProvider", () => {
       expect(mediaSession.playbackState).toBe("playing");
     });
     expect(audio.playImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("sets Media Session metadata when playing a podcast episode with cover", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.playback.queue).mockResolvedValueOnce({
+      queue: [
+        {
+          id: 1,
+          type: "episode",
+          podcastId: 11,
+          title: "First queued episode",
+          audioUrl: "https://example.com/1.mp3",
+          duration: 1800,
+          downloaded: false,
+          isListened: false,
+          publishedAt: null,
+          podcastTitle: "First Podcast",
+          podcastImageUrl: "/api/podcasts/11/image",
+          playback: null,
+        },
+      ],
+      activePlayback: null,
+    });
+
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+      expect(mediaSession.metadata).not.toBeNull();
+    });
+
+    expect(mediaSession.metadata?.title).toBe("First queued episode");
+    expect(mediaSession.metadata?.artist).toBe("First Podcast");
+    expect(mediaSession.metadata?.album).toBe("First Podcast");
+    expect(mediaSession.metadata?.artwork).toEqual([
+      { src: "/api/podcasts/11/image" },
+    ]);
+  });
+
+  it("sets Media Session metadata when playing an audiobook with cover", async () => {
+    const user = userEvent.setup();
+    const audiobookItem: PlaybackQueueEpisode = {
+      id: 10,
+      type: "audiobook",
+      audiobookId: 10,
+      trackId: 101,
+      trackNumber: 1,
+      podcastId: 0,
+      title: "Sample Audiobook",
+      author: "Jane Author",
+      podcastTitle: "Jane Author",
+      audioUrl: "/api/audiobooks/10/tracks/101/audio",
+      duration: 500,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      hasCover: true,
+      coverUrl: "/api/audiobooks/10/cover",
+      playback: null,
+    };
+
+    vi.mocked(api.playback.queue).mockResolvedValueOnce({
+      queue: [audiobookItem],
+      activePlayback: null,
+    });
+
+    function AudiobookHarness() {
+      const { playQueueItem, playing } = usePlayback();
+      return (
+        <>
+          <div data-testid="playing">{playing ? "yes" : "no"}</div>
+          <button type="button" onClick={() => playQueueItem(audiobookItem)}>
+            Play audiobook
+          </button>
+        </>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <AudiobookHarness />
+      </PlaybackProvider>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Play audiobook" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+      expect(mediaSession.metadata).not.toBeNull();
+    });
+
+    expect(mediaSession.metadata?.title).toBe("Sample Audiobook");
+    expect(mediaSession.metadata?.artist).toBe("Jane Author");
+    expect(mediaSession.metadata?.album).toBe("Sample Audiobook");
+    expect(mediaSession.metadata?.artwork).toEqual([
+      { src: "/api/audiobooks/10/cover" },
+    ]);
+  });
+
+  it("updates Media Session metadata immediately on automatic transition audiobook -> audiobook for short tracks without cover", async () => {
+    const user = userEvent.setup();
+    const shortTrackWithoutCover: PlaybackQueueEpisode = {
+      id: 20,
+      type: "audiobook",
+      audiobookId: 20,
+      trackId: 201,
+      trackNumber: 1,
+      podcastId: 0,
+      title: "Short Book",
+      author: "Short Author",
+      podcastTitle: "Short Author",
+      audioUrl: "/api/audiobooks/20/tracks/201/audio",
+      duration: 1,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      hasCover: false,
+      coverUrl: null,
+      playback: null,
+    };
+
+    const nextTrackWithoutCover: NonNullable<PlaybackUpdateResponse["nextItem"]> = {
+      type: "audiobook",
+      audiobookId: 20,
+      trackId: 202,
+      trackNumber: 2,
+      podcastId: 0,
+      title: "Short Book",
+      author: "Short Author",
+      podcastTitle: "Short Author",
+      audioUrl: "/api/audiobooks/20/tracks/202/audio",
+      duration: 1,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      hasCover: false,
+      coverUrl: null,
+      positionSeconds: 0,
+      lastUpdated: "2026-09-08T12:00:00Z",
+    };
+
+    vi.mocked(api.playback.queue).mockResolvedValueOnce({
+      queue: [shortTrackWithoutCover],
+      activePlayback: null,
+    });
+
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: {
+        audiobookId: 20,
+        trackId: 201,
+        positionSeconds: 1,
+        lastUpdated: "2026-09-08T12:00:00Z",
+      },
+      nextTarget: { type: "audiobook", audiobookId: 20, trackId: 202 },
+      nextItem: nextTrackWithoutCover,
+      nextEpisodeId: null,
+    });
+
+    function TransitionHarness() {
+      const { playQueueItem, currentEpisode, playing } = usePlayback();
+      return (
+        <>
+          <div data-testid="track-id">{currentEpisode?.trackId}</div>
+          <div data-testid="playing">{playing ? "yes" : "no"}</div>
+          <button
+            type="button"
+            onClick={() => playQueueItem(shortTrackWithoutCover)}
+          >
+            Play track
+          </button>
+        </>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <TransitionHarness />
+      </PlaybackProvider>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Play track" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+      expect(mediaSession.metadata).not.toBeNull();
+    });
+
+    expect(mediaSession.metadata?.title).toBe("Short Book");
+    expect(mediaSession.metadata?.artist).toBe("Short Author");
+    expect(mediaSession.metadata?.artwork).toEqual([]);
+
+    const audio = FakeAudio.first;
+    audio.currentTime = 1;
+    audio.emit("ended");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("track-id")).toHaveTextContent("202");
+    });
+    expect(audio.src).toContain("/api/audiobooks/20/tracks/202/audio");
+    expect(mediaSession.metadata?.title).toBe("Short Book");
+    expect(mediaSession.metadata?.artist).toBe("Short Author");
+    expect(mediaSession.metadata?.artwork).toEqual([]);
+  });
+
+  it("resets Media Session metadata to null when queue playback is finished", async () => {
+    const user = userEvent.setup();
+    const endingEpisode: PlaybackQueueEpisode = {
+      id: 30,
+      type: "episode",
+      podcastId: 11,
+      title: "Final episode",
+      audioUrl: "https://example.com/final.mp3",
+      duration: 10,
+      downloaded: false,
+      isListened: false,
+      publishedAt: null,
+      podcastTitle: "Podcast",
+      playback: null,
+    };
+
+    vi.mocked(api.playback.queue).mockResolvedValueOnce({
+      queue: [endingEpisode],
+      activePlayback: null,
+    });
+
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: {
+        episodeId: 30,
+        positionSeconds: 10,
+        lastUpdated: "2026-09-08T12:00:00Z",
+      },
+      nextTarget: null,
+      nextItem: null,
+      nextEpisodeId: null,
+    });
+
+    function EndingHarness() {
+      const { playQueueItem, playing } = usePlayback();
+      return (
+        <>
+          <div data-testid="playing">{playing ? "yes" : "no"}</div>
+          <button type="button" onClick={() => playQueueItem(endingEpisode)}>
+            Play
+          </button>
+        </>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <EndingHarness />
+      </PlaybackProvider>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+      expect(mediaSession.metadata).not.toBeNull();
+    });
+
+    const audio = FakeAudio.first;
+    audio.currentTime = 10;
+    audio.emit("ended");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("no");
+      expect(mediaSession.metadata).toBeNull();
+    });
   });
 
   it("refreshes stale backend playback before resuming a paused episode", async () => {

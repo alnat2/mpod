@@ -14,6 +14,87 @@ type UsePlaybackMediaSessionOptions = {
   playToggle: () => void;
 };
 
+export type MediaSessionTrackItem = {
+  id: number;
+  type?: "episode" | "audiobook" | string;
+  audiobookId?: number;
+  title?: string;
+  author?: string;
+  podcastTitle?: string;
+  podcastImageUrl?: string | null;
+  coverUrl?: string | null;
+  hasCover?: boolean;
+};
+
+export function updateMediaSessionMetadata(
+  item: MediaSessionTrackItem | QueueEpisode | null | undefined
+) {
+  if (
+    typeof navigator === "undefined" ||
+    !("mediaSession" in navigator) ||
+    !navigator.mediaSession
+  ) {
+    return;
+  }
+
+  if (!item) {
+    try {
+      navigator.mediaSession.metadata = null;
+    } catch {
+      // Ignore unsupported operations
+    }
+    return;
+  }
+
+  const isAudiobook =
+    item.type === "audiobook" || Boolean("audiobookId" in item && item.audiobookId);
+  const title = item.title || "";
+  const artist = isAudiobook
+    ? item.author || item.podcastTitle || "Audiobook"
+    : item.podcastTitle || item.author || "";
+  const album = isAudiobook
+    ? item.title || "Audiobook"
+    : item.podcastTitle || "";
+
+  let artworkUrl: string | null = null;
+  if (isAudiobook) {
+    if (item.hasCover) {
+      artworkUrl =
+        item.coverUrl ||
+        `/api/audiobooks/${("audiobookId" in item && item.audiobookId) ? item.audiobookId : item.id}/cover`;
+    } else if (item.coverUrl) {
+      artworkUrl = item.coverUrl;
+    }
+  } else if (item.podcastImageUrl) {
+    artworkUrl = item.podcastImageUrl;
+  }
+
+  const artwork: MediaImage[] =
+    artworkUrl && typeof artworkUrl === "string" && artworkUrl.trim().length > 0
+      ? [{ src: artworkUrl }]
+      : [];
+
+  try {
+    if (typeof MediaMetadata !== "undefined") {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title,
+        artist,
+        album,
+        artwork,
+      });
+    } else {
+      navigator.mediaSession.metadata = {
+        title,
+        artist,
+        album,
+        artwork,
+      } as unknown as MediaMetadata;
+    }
+  } catch {
+    // Gracefully handle environments with partial MediaSession support
+  }
+}
+
 export function usePlaybackMediaSession({
   audioRef,
   currentEpisodeRef,
@@ -126,4 +207,8 @@ export function usePlaybackMediaSession({
       // Playback still works when the browser exposes only partial Media Session support.
     }
   }, [currentEpisode, playing]);
+
+  useEffect(() => {
+    updateMediaSessionMetadata(currentEpisode);
+  }, [currentEpisode]);
 }

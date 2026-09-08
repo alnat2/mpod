@@ -169,8 +169,32 @@ class FakeAudio {
   }
 }
 
+class FakeMediaMetadata {
+  title: string;
+  artist: string;
+  album: string;
+  artwork: readonly MediaImage[];
+
+  constructor(init?: MediaMetadataInit) {
+    if (init?.artwork) {
+      for (const img of init.artwork) {
+        if (!img.src || typeof img.src !== "string") {
+          throw new TypeError(
+            "Failed to construct 'MediaMetadata': The string is not a valid URL."
+          );
+        }
+      }
+    }
+    this.title = init?.title ?? "";
+    this.artist = init?.artist ?? "";
+    this.album = init?.album ?? "";
+    this.artwork = init?.artwork ?? [];
+  }
+}
+
 class FakeMediaSession {
   playbackState: MediaSessionPlaybackState = "none";
+  metadata: MediaMetadata | null = null;
   handlers = new Map<
     MediaSessionAction,
     MediaSessionActionHandler | null
@@ -281,6 +305,7 @@ describe("HomeScreen Playback Integration", () => {
       MEDIA_ERR_DECODE: 3,
       MEDIA_ERR_SRC_NOT_SUPPORTED: 4,
     });
+    vi.stubGlobal("MediaMetadata", FakeMediaMetadata);
     mediaSession = new FakeMediaSession();
     Object.defineProperty(navigator, "mediaSession", {
       configurable: true,
