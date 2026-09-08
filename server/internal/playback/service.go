@@ -975,11 +975,14 @@ func findCompletionFallback(ctx context.Context, queryer playlistQueryer, comple
 		return nil, fmt.Errorf("iterate completion fallback candidates: %w", err)
 	}
 
-	if currentIndex == -1 || currentIndex != len(items)-1 {
+	if currentIndex == -1 {
 		return nil, nil
 	}
 
-	for i := 0; i < currentIndex; i++ {
+	for i := 0; i < len(items); i++ {
+		if i == currentIndex {
+			continue
+		}
 		if items[i].target != nil {
 			return items[i].target, nil
 		}
