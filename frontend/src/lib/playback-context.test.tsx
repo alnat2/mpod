@@ -3875,6 +3875,336 @@ describe("PlaybackProvider", () => {
     expect(audio.srcSetCount).toBe(srcSetsBeforeCompletion + 1);
   });
 
+  it("does not advance locally when the completion request fails", async () => {
+    const user = userEvent.setup();
+    const queueSpy = vi.mocked(api.playback.queue);
+    const updateSpy = vi
+      .mocked(api.playback.update)
+      .mockRejectedValue(new Error("completion unavailable"));
+
+    renderPlaybackProvider();
+    await waitFor(() =>
+      expect(screen.getByTestId("current-title")).toHaveTextContent(
+        "First queued episode"
+      )
+    );
+    await user.click(screen.getByRole("button", { name: "Play first" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes")
+    );
+
+    const audio = FakeAudio.first;
+    const playCallsBeforeCompletion = audio.playImpl.mock.calls.length;
+    const srcSetsBeforeCompletion = audio.srcSetCount;
+    audio.duration = 1800;
+    audio.currentTime = 1800;
+    audio.emit("ended");
+
+    await waitFor(() =>
+      expect(
+        updateSpy.mock.calls.filter(([payload]) => payload.completed)
+      ).toHaveLength(1)
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId("current-title")).toHaveTextContent(
+      "First queued episode"
+    );
+    expect(screen.getByTestId("playing")).toHaveTextContent("no");
+    expect(audio.src).toContain("/api/episodes/1/audio");
+    expect(audio.playImpl).toHaveBeenCalledTimes(playCallsBeforeCompletion);
+    expect(audio.srcSetCount).toBe(srcSetsBeforeCompletion);
+    expect(queueSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("serializes active playback writes so a late automatic write cannot override a manual selection", async () => {
+    const user = userEvent.setup();
+    const first = {
+      ...episodes.get(1)!,
+      podcastTitle: "First Podcast",
+      podcastImageUrl: null,
+      playback: playback.get(1) ?? null,
+    };
+    const second = {
+      ...episodes.get(2)!,
+      podcastTitle: "Second Podcast",
+      podcastImageUrl: null,
+      playback: playback.get(2) ?? null,
+    };
+    const third = {
+      ...episodes.get(3)!,
+      podcastTitle: "Second Podcast",
+      podcastImageUrl: null,
+      playback: null,
+    };
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [first, second, third],
+      activePlayback: {
+        episodeId: 1,
+        lastUpdated: "2026-05-22T09:05:00Z",
+      },
+    });
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: {
+        episodeId: 1,
+        positionSeconds: 1800,
+        lastUpdated: "2026-05-22T09:06:00Z",
+      },
+      nextTarget: { type: "episode", episodeId: 2 },
+      nextItem: {
+        type: "episode",
+        episodeId: 2,
+        podcastId: 22,
+        title: "Second queued episode",
+        description: "Second notes",
+        audioUrl: "https://example.com/2.mp3",
+        duration: 2400,
+        downloaded: false,
+        isListened: false,
+        publishedAt: "2026-05-11T10:00:00Z",
+        podcastTitle: "Second Podcast",
+        podcastImageUrl: null,
+        positionSeconds: 42,
+        lastUpdated: "2026-05-22T09:06:00Z",
+      },
+      nextEpisodeId: 2,
+    });
+    const delayedAutomaticWrite = deferred<{
+      activePlayback: {
+        episodeId: number;
+        lastUpdated: string;
+      };
+    }>();
+    const setActiveSpy = vi
+      .mocked(api.playback.setActive)
+      .mockImplementation(async (target) => {
+        const episodeId =
+          typeof target === "number" ? target : (target.episodeId ?? 0);
+        if (episodeId === 2) {
+          return delayedAutomaticWrite.promise;
+        }
+        return {
+          activePlayback: {
+            episodeId,
+            lastUpdated: "2026-05-22T09:07:00Z",
+          },
+        };
+      });
+
+    renderPlaybackProvider();
+    await user.click(screen.getByRole("button", { name: "Play first" }));
+    await waitFor(() => expect(setActiveSpy).toHaveBeenCalledWith(1));
+
+    const audio = FakeAudio.first;
+    audio.duration = 1800;
+    audio.currentTime = 1800;
+    audio.emit("ended");
+    await waitFor(() =>
+      expect(screen.getByTestId("current-title")).toHaveTextContent(
+        "Second queued episode"
+      )
+    );
+    await waitFor(() => expect(setActiveSpy).toHaveBeenCalledWith(2));
+
+    await user.click(screen.getByRole("button", { name: "Play third" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("current-title")).toHaveTextContent(
+        "Third queued episode"
+      )
+    );
+    expect(audio.src).toContain("/api/episodes/3/audio");
+    expect(
+      setActiveSpy.mock.calls.filter(([target]) => target === 3)
+    ).toHaveLength(0);
+
+    delayedAutomaticWrite.resolve({
+      activePlayback: {
+        episodeId: 2,
+        lastUpdated: "2026-05-22T09:06:30Z",
+      },
+    });
+    await waitFor(() => expect(setActiveSpy).toHaveBeenCalledWith(3));
+    expect(setActiveSpy.mock.calls.at(-1)?.[0]).toBe(3);
+  });
+
+  it("serializes an automatic active write before a manual audiobook chapter selection", async () => {
+    const user = userEvent.setup();
+    const firstEpisode = {
+      ...episodes.get(1)!,
+      podcastTitle: "First Podcast",
+      podcastImageUrl: null,
+      playback: playback.get(1) ?? null,
+    };
+    const secondEpisode = {
+      ...episodes.get(2)!,
+      podcastTitle: "Second Podcast",
+      podcastImageUrl: null,
+      playback: playback.get(2) ?? null,
+    };
+    const audiobook: PlaybackQueueEpisode = {
+      id: 300,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 300,
+      trackId: 701,
+      trackNumber: 1,
+      trackCount: 2,
+      title: "Manual Chapter Book",
+      author: "Book Author",
+      podcastTitle: "Book Author",
+      audioUrl: "/api/audiobooks/300/tracks/701/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: null,
+    };
+    const manualChapter = {
+      id: 702,
+      audiobookId: 300,
+      trackNumber: 2,
+      title: "Manual Chapter 2",
+      relPath: "02.mp3",
+      filePath: "/share/audio/abooks/Manual Chapter Book/02.mp3",
+      duration: 120,
+      isListened: false,
+      positionSeconds: 0,
+    };
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [firstEpisode, secondEpisode, audiobook],
+      activePlayback: {
+        episodeId: 1,
+        lastUpdated: "2026-05-22T09:05:00Z",
+      },
+    });
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: {
+        episodeId: 1,
+        positionSeconds: 1800,
+        lastUpdated: "2026-05-22T09:06:00Z",
+      },
+      nextTarget: { type: "episode", episodeId: 2 },
+      nextItem: {
+        type: "episode",
+        episodeId: 2,
+        podcastId: 22,
+        title: "Second queued episode",
+        description: "Second notes",
+        audioUrl: "https://example.com/2.mp3",
+        duration: 2400,
+        downloaded: false,
+        isListened: false,
+        publishedAt: "2026-05-11T10:00:00Z",
+        podcastTitle: "Second Podcast",
+        podcastImageUrl: null,
+        positionSeconds: 42,
+        lastUpdated: "2026-05-22T09:06:00Z",
+      },
+      nextEpisodeId: 2,
+    });
+    const delayedAutomaticWrite = deferred<{
+      activePlayback: {
+        episodeId: number;
+        lastUpdated: string;
+      };
+    }>();
+    const setActiveSpy = vi
+      .mocked(api.playback.setActive)
+      .mockImplementation(async (target) => {
+        if (target === 2) {
+          return delayedAutomaticWrite.promise;
+        }
+        if (typeof target === "number") {
+          return {
+            activePlayback: {
+              episodeId: target,
+              lastUpdated: "2026-05-22T09:07:00Z",
+            },
+          };
+        }
+        return {
+          activePlayback: {
+            audiobookId: target.audiobookId,
+            trackId: target.trackId,
+            lastUpdated: "2026-05-22T09:08:00Z",
+          },
+        };
+      });
+
+    function ManualChapterRaceHarness() {
+      const { currentEpisode } = usePlaybackState();
+      const { playQueueItem, playAudiobookTrack } = usePlaybackDispatch();
+      return (
+        <>
+          <div data-testid="race-title">{currentEpisode?.title}</div>
+          <div data-testid="race-track">{currentEpisode?.trackId ?? "none"}</div>
+          <button type="button" onClick={() => playQueueItem(firstEpisode)}>
+            Play first episode
+          </button>
+          <button
+            type="button"
+            onClick={() => void playAudiobookTrack(300, manualChapter)}
+          >
+            Play manual chapter
+          </button>
+        </>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <ManualChapterRaceHarness />
+      </PlaybackProvider>
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Play first episode" })
+    );
+    await waitFor(() => expect(setActiveSpy).toHaveBeenCalledWith(1));
+
+    const audio = FakeAudio.first;
+    audio.duration = 1800;
+    audio.currentTime = 1800;
+    audio.emit("ended");
+    await waitFor(() =>
+      expect(screen.getByTestId("race-title")).toHaveTextContent(
+        "Second queued episode"
+      )
+    );
+    await waitFor(() => expect(setActiveSpy).toHaveBeenCalledWith(2));
+
+    await user.click(
+      screen.getByRole("button", { name: "Play manual chapter" })
+    );
+    expect(
+      setActiveSpy.mock.calls.filter(
+        ([target]) => typeof target !== "number" && target.trackId === 702
+      )
+    ).toHaveLength(0);
+
+    delayedAutomaticWrite.resolve({
+      activePlayback: {
+        episodeId: 2,
+        lastUpdated: "2026-05-22T09:06:30Z",
+      },
+    });
+    await waitFor(() =>
+      expect(setActiveSpy).toHaveBeenCalledWith({
+        audiobookId: 300,
+        trackId: 702,
+      })
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("race-track")).toHaveTextContent("702")
+    );
+    expect(audio.src).toContain("/api/audiobooks/300/tracks/702/audio");
+    expect(setActiveSpy.mock.calls.at(-1)?.[0]).toEqual({
+      audiobookId: 300,
+      trackId: 702,
+    });
+  });
+
   it("launches podcast from nextItem when book ends even if stale queue row has old chapter", async () => {
     const user = userEvent.setup();
     const staleAudiobook: PlaybackQueueEpisode = {

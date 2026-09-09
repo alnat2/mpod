@@ -1032,8 +1032,7 @@ func loadNextPlaybackItem(ctx context.Context, queryer playbackItemQueryer, targ
 			PodcastTitle: podcastTitle,
 		}
 		if description.Valid {
-			value := description.String
-			item.Description = &value
+			item.Description = episodes.SanitizeShowNotes(description.String)
 		}
 		if imageURL.Valid && imageURL.String != "" {
 			value := fmt.Sprintf("/api/podcasts/%d/image", podcastID)

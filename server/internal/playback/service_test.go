@@ -841,7 +841,7 @@ func TestUpdateCompletionNextItemCarriesTypedMetadataAcrossMedia(t *testing.T) {
 		defer db.Close()
 		publishedAt := time.Date(2026, 8, 12, 9, 30, 0, 0, time.UTC)
 		mustExec(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url, image_url) VALUES (1, 'Metadata Podcast', 'https://example.com/feed.xml', 'https://example.com/image.png')`)
-		mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, description, audio_url, duration, published_at, downloaded_path) VALUES (1, 1, 'ep-1', 'Metadata Episode', 'Episode description', 'https://example.com/episode.mp3', 321, ?, '/data/downloads/episode.mp3')`, publishedAt)
+		mustExec(t, db.SQL, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, description, audio_url, duration, published_at, downloaded_path) VALUES (1, 1, 'ep-1', 'Metadata Episode', '<p>Episode &amp; description</p><p>Second line</p>', 'https://example.com/episode.mp3', 321, ?, '/data/downloads/episode.mp3')`, publishedAt)
 		mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path) VALUES (1, 'Completed Book', 'Book Author', 'Completed Book')`)
 		mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'Last Chapter', 'Completed Book/1.mp3', '/books/1.mp3', 60)`)
 		mustExec(t, db.SQL, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
@@ -858,7 +858,7 @@ func TestUpdateCompletionNextItemCarriesTypedMetadataAcrossMedia(t *testing.T) {
 		if item == nil || item.Type != "episode" || item.EpisodeID == nil || *item.EpisodeID != 1 {
 			t.Fatalf("expected typed podcast next item, got %+v", item)
 		}
-		if item.Title != "Metadata Episode" || item.Description == nil || *item.Description != "Episode description" || item.AudioURL != "https://example.com/episode.mp3" || item.Duration == nil || *item.Duration != 321 || !item.Downloaded || item.PodcastTitle != "Metadata Podcast" || item.PodcastImageURL == nil || item.PublishedAt == nil || !item.PublishedAt.Equal(publishedAt) {
+		if item.Title != "Metadata Episode" || item.Description == nil || *item.Description != "Episode & description\n\nSecond line" || item.AudioURL != "https://example.com/episode.mp3" || item.Duration == nil || *item.Duration != 321 || !item.Downloaded || item.PodcastTitle != "Metadata Podcast" || item.PodcastImageURL == nil || item.PublishedAt == nil || !item.PublishedAt.Equal(publishedAt) {
 			t.Fatalf("next podcast metadata incomplete: %+v", item)
 		}
 	})

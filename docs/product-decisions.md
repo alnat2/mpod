@@ -1416,7 +1416,7 @@ The scanner traverses `AUDIOBOOKS_DIR` using standard recursive directory walkin
 - Completed chapters remain part of the chapter list and can be replayed; ordinary completion does not manually remove their library records.
 - When the final selected chapter becomes listened:
   - The audiobook is removed from the playlist.
-  - If it was last in the pre-removal top-level order, playback wraps to the topmost eligible remaining podcast episode or audiobook; otherwise ordinary downward playback continues.
+  - Playback scans all other top-level playlist items from the top and starts the first eligible remaining podcast episode or audiobook, regardless of whether it was above or below the completed book.
 - Removing an audiobook from the playlist, whether manually or after natural completion, resets its chapter playback positions and listened state.
 - Re-adding that audiobook therefore adds its chapters from a clean state and starts from `0:00`.
 

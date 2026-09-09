@@ -83,7 +83,7 @@ type UsePlaybackAudioOptions = {
   commitPlayback: CommitPlayback;
   commitCurrentPlayback: (options?: { beacon?: boolean }) => void;
   allowPlaybackProgress: (episode: QueueEpisode) => void;
-  commitActivePlayback: (episode: QueueEpisode) => Promise<void>;
+  commitActivePlayback: (episode: QueueEpisode | number) => Promise<void>;
   refreshPlaybackState: (
     episode: QueueEpisode,
     options?: { applyEvenIfNotNewer?: boolean }
@@ -565,6 +565,9 @@ export function usePlaybackAudio({
         target: finishedEpisode,
       })
         .then(async (response) => {
+          if (!response) {
+            return;
+          }
           await startAfterCompletion(
             finishedItemKey,
             finishedEpisode,
@@ -1047,7 +1050,7 @@ export function usePlaybackAudio({
           currentEpisodeRef.current = activeItem;
           void commitActivePlayback(activeItem);
         } else {
-          void api.playback.setActive(episodeId);
+          void commitActivePlayback(episodeId);
         }
         const audio = audioRef.current;
         if (!audio) {
@@ -1205,25 +1208,6 @@ export function usePlaybackAudio({
       userInitiatedPlayRef.current = true;
 
       const initialPosition = track.isListened ? 0 : track.positionSeconds;
-      if (track.isListened) {
-        await api.playback.update({
-          audiobookId,
-          trackId: track.id,
-          positionSeconds: 0,
-          durationSeconds: track.duration,
-          completed: false,
-          didSeek: true,
-          clientUpdatedAt: new Date().toISOString(),
-        });
-      }
-      if (sourceGenerationRef.current !== currentGen) {
-        return;
-      }
-      await api.playback.setActive({ audiobookId, trackId: track.id });
-      if (sourceGenerationRef.current !== currentGen) {
-        return;
-      }
-
       const nextEpisode: QueueEpisode = {
         ...queuedBook,
         trackId: track.id,
@@ -1238,6 +1222,25 @@ export function usePlaybackAudio({
           lastUpdated: new Date().toISOString(),
         },
       };
+      if (track.isListened) {
+        await api.playback.update({
+          audiobookId,
+          trackId: track.id,
+          positionSeconds: 0,
+          durationSeconds: track.duration,
+          completed: false,
+          didSeek: true,
+          clientUpdatedAt: new Date().toISOString(),
+        });
+      }
+      if (sourceGenerationRef.current !== currentGen) {
+        return;
+      }
+      await commitActivePlayback(nextEpisode);
+      if (sourceGenerationRef.current !== currentGen) {
+        return;
+      }
+
       setQueue((current) =>
         current.map((episode) =>
           (episode.type === "audiobook" || episode.audiobookId !== undefined) &&
@@ -1285,6 +1288,7 @@ export function usePlaybackAudio({
     [
       allowPlaybackProgress,
       audioRef,
+      commitActivePlayback,
       prepareSourceSwitch,
       invalidatePlaybackGeneration,
       queue,

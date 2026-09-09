@@ -102,6 +102,7 @@ export function usePlaybackSync({
 }: UsePlaybackSyncOptions) {
   const queueRequests = useLatestRequest();
   const settingsRequests = useLatestRequest();
+  const activePlaybackWritesRef = useRef<Promise<void>>(Promise.resolve());
   const completedPlaybackTargetsRef = useRef(new Set<string>());
   const playbackTargetKey = useCallback((episode: QueueEpisode) => {
     return playbackMediaSourceKey(episode);
@@ -245,20 +246,37 @@ export function usePlaybackSync({
   );
 
   const commitActivePlayback = useCallback(
-    async (episode: QueueEpisode) => {
-      const isAudiobook = isAudiobookQueueItem(episode);
-      try {
-        if (isAudiobook) {
-          await api.playback.setActive({
-            audiobookId: episode.audiobookId ?? episode.id,
-            trackId: episode.trackId,
-          });
-        } else {
-          await api.playback.setActive(episode.id);
+    (episode: QueueEpisode | number) => {
+      const writeActivePlayback = async () => {
+        if (typeof episode === "number") {
+          try {
+            await api.playback.setActive(episode);
+          } catch (error) {
+            console.error("Failed to update active playback", error);
+          }
+          return;
         }
-      } catch (error) {
-        console.error("Failed to update active playback", error);
-      }
+        const isAudiobook = isAudiobookQueueItem(episode);
+        try {
+          if (isAudiobook) {
+            await api.playback.setActive({
+              audiobookId: episode.audiobookId ?? episode.id,
+              trackId: episode.trackId,
+            });
+          } else {
+            await api.playback.setActive(episode.id);
+          }
+        } catch (error) {
+          console.error("Failed to update active playback", error);
+        }
+      };
+
+      const pendingWrite = activePlaybackWritesRef.current.then(
+        writeActivePlayback,
+        writeActivePlayback
+      );
+      activePlaybackWritesRef.current = pendingWrite;
+      return pendingWrite;
     },
     []
   );
