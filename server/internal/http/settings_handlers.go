@@ -3,11 +3,19 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	nethttp "net/http"
 	"strings"
+	"time"
 
 	"github.com/cross/mpod/server/internal/settings"
+)
+
+var (
+	proxyLookupMaxAttempts = 3
+	proxyLookupRetryDelay  = 200 * time.Millisecond
 )
 
 func (r *Router) handleSettingsGet(w nethttp.ResponseWriter, req *nethttp.Request) {
@@ -85,40 +93,69 @@ func (r *Router) handleProxyStatus(w nethttp.ResponseWriter, req *nethttp.Reques
 }
 
 func fetchObservedProxyStatus(ctx context.Context, client *nethttp.Client) (settings.ProxyLookupResult, error) {
-	req, err := nethttp.NewRequestWithContext(ctx, nethttp.MethodGet, "https://ipwho.is/", nil)
-	if err != nil {
-		return settings.ProxyLookupResult{}, fmt.Errorf("build proxy status request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
+	var lastErr error
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return settings.ProxyLookupResult{}, fmt.Errorf("request proxy status: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != nethttp.StatusOK {
-		return settings.ProxyLookupResult{}, fmt.Errorf("request proxy status: unexpected status %d", resp.StatusCode)
-	}
-
-	var payload struct {
-		Success bool   `json:"success"`
-		IP      string `json:"ip"`
-		Country string `json:"country"`
-		Message string `json:"message"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return settings.ProxyLookupResult{}, fmt.Errorf("decode proxy status: %w", err)
-	}
-	if !payload.Success {
-		if strings.TrimSpace(payload.Message) != "" {
-			return settings.ProxyLookupResult{}, fmt.Errorf("request proxy status: %s", strings.TrimSpace(payload.Message))
+	for attempt := 1; attempt <= proxyLookupMaxAttempts; attempt++ {
+		if attempt > 1 {
+			select {
+			case <-ctx.Done():
+				return settings.ProxyLookupResult{}, ctx.Err()
+			case <-time.After(proxyLookupRetryDelay):
+			}
 		}
-		return settings.ProxyLookupResult{}, fmt.Errorf("request proxy status: external identity lookup failed")
+
+		req, err := nethttp.NewRequestWithContext(ctx, nethttp.MethodGet, "https://ipwho.is/", nil)
+		if err != nil {
+			return settings.ProxyLookupResult{}, fmt.Errorf("build proxy status request: %w", err)
+		}
+		req.Header.Set("Accept", "application/json")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		if resp.StatusCode >= 500 {
+			_ = resp.Body.Close()
+			lastErr = fmt.Errorf("remote server returned status %d", resp.StatusCode)
+			continue
+		}
+
+		if resp.StatusCode != nethttp.StatusOK {
+			_ = resp.Body.Close()
+			return settings.ProxyLookupResult{}, fmt.Errorf("request proxy status: unexpected status %d", resp.StatusCode)
+		}
+
+		var payload struct {
+			Success bool   `json:"success"`
+			IP      string `json:"ip"`
+			Country string `json:"country"`
+			Message string `json:"message"`
+		}
+		decodeErr := json.NewDecoder(resp.Body).Decode(&payload)
+		_ = resp.Body.Close()
+		if decodeErr != nil {
+			lastErr = fmt.Errorf("decode proxy status: %w", decodeErr)
+			continue
+		}
+
+		if !payload.Success {
+			msg := strings.TrimSpace(payload.Message)
+			if msg != "" {
+				return settings.ProxyLookupResult{}, fmt.Errorf("request proxy status: %s", msg)
+			}
+			return settings.ProxyLookupResult{}, fmt.Errorf("request proxy status: external identity lookup failed")
+		}
+
+		return settings.ProxyLookupResult{
+			ExternalIP: payload.IP,
+			Country:    payload.Country,
+		}, nil
 	}
 
-	return settings.ProxyLookupResult{
-		ExternalIP: payload.IP,
-		Country:    payload.Country,
-	}, nil
+	if errors.Is(lastErr, io.EOF) || strings.Contains(lastErr.Error(), "EOF") {
+		return settings.ProxyLookupResult{}, fmt.Errorf("request proxy status: connection closed unexpectedly (EOF)")
+	}
+	return settings.ProxyLookupResult{}, fmt.Errorf("request proxy status: %w", lastErr)
 }

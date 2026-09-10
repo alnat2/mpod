@@ -3151,8 +3151,66 @@ func TestProxyStatusEndpointReturnsObservedIdentityWhenEnabled(t *testing.T) {
 	}
 }
 
-func TestProxyStatusEndpointReturnsErrorStateWhenLookupFails(t *testing.T) {
+func TestProxyStatusEndpointRetriesOnTransientErrorAndSucceeds(t *testing.T) {
+	origDelay := proxyLookupRetryDelay
+	proxyLookupRetryDelay = time.Millisecond
+	t.Cleanup(func() {
+		proxyLookupRetryDelay = origDelay
+	})
+
+	attempts := 0
 	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		attempts++
+		if attempts == 1 {
+			return nil, io.EOF
+		}
+		return routerJSONResponse(`{"success":true,"ip":"198.51.100.10","country":"Germany"}`), nil
+	})
+	handler, _ := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+		SOCKS5Host:   "127.0.0.1",
+		SOCKS5Port:   "1080",
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	patchReq := httptest.NewRequest(nethttp.MethodPatch, "/api/settings", bytes.NewReader([]byte(`{"proxyEnabled":true}`)))
+	patchReq.AddCookie(cookie)
+	patchRec := httptest.NewRecorder()
+	handler.ServeHTTP(patchRec, patchReq)
+	if patchRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected settings patch to enable proxy, got %d body=%s", patchRec.Code, patchRec.Body.String())
+	}
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/proxy/status", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if attempts != 2 {
+		t.Fatalf("expected 2 attempts after initial EOF, got %d", attempts)
+	}
+	if !strings.Contains(rec.Body.String(), `"status":"ok"`) {
+		t.Fatalf("expected ok status, got %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"externalIp":"198.51.100.10"`) || !strings.Contains(rec.Body.String(), `"country":"Germany"`) {
+		t.Fatalf("expected observed identity payload, got %s", rec.Body.String())
+	}
+}
+
+func TestProxyStatusEndpointReturnsErrorStateWhenLookupFails(t *testing.T) {
+	origDelay := proxyLookupRetryDelay
+	proxyLookupRetryDelay = time.Millisecond
+	t.Cleanup(func() {
+		proxyLookupRetryDelay = origDelay
+	})
+
+	attempts := 0
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		attempts++
 		return nil, io.EOF
 	})
 	handler, _ := newTestRouterWithClient(t, config.Config{
@@ -3179,10 +3237,13 @@ func TestProxyStatusEndpointReturnsErrorStateWhenLookupFails(t *testing.T) {
 	if rec.Code != nethttp.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
+	if attempts != 3 {
+		t.Fatalf("expected 3 attempts before returning error, got %d", attempts)
+	}
 	if !strings.Contains(rec.Body.String(), `"status":"error"`) {
 		t.Fatalf("expected error status, got %s", rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), `"error":"request proxy status`) {
+	if !strings.Contains(rec.Body.String(), `"error":"request proxy status: connection closed unexpectedly (EOF)"`) {
 		t.Fatalf("expected lookup error details, got %s", rec.Body.String())
 	}
 }
