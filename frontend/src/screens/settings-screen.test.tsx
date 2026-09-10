@@ -262,9 +262,14 @@ describe("SettingsScreen", () => {
 
     renderScreen();
 
-    expect(
-      await screen.findByText("request proxy status: lookup failed")
-    ).toBeInTheDocument();
+    const errorElement = await screen.findByText(
+      "Information is unavailable due to an error."
+    );
+    expect(errorElement).toBeInTheDocument();
+    expect(errorElement).toHaveAttribute(
+      "title",
+      "request proxy status: lookup failed"
+    );
   });
 
   it("keeps proxy controls enabled when runtime status confirms configuration", async () => {

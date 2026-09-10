@@ -83,8 +83,12 @@ function formatProxyIdentity(
     }
   }
 
-  if (proxyStatus?.status === "error" && proxyStatus.error) {
-    return proxyStatus.error;
+  if (proxyStatus?.status === "error") {
+    return (
+      <span title={proxyStatus.error ?? undefined}>
+        Information is unavailable due to an error.
+      </span>
+    );
   }
 
   return "Checking proxy status...";
