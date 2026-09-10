@@ -4,6 +4,7 @@ import { ApiError } from "@/lib/api";
 
 import {
   formatClock,
+  formatDateTime,
   formatEpisodeDate,
   formatDuration,
   getErrorMessage,
@@ -40,5 +41,13 @@ describe("screen-utils", () => {
   it("formats episode dates as dd.MM.yy", () => {
     expect(formatEpisodeDate("2026-03-31T10:00:00Z")).toBe("31.03.26");
     expect(formatEpisodeDate(null)).toBe("");
+  });
+
+  it("formats date and time in 24-hour format", () => {
+    expect(formatDateTime(undefined)).toBe("Never");
+    expect(formatDateTime(null)).toBe("Never");
+    const formatted = formatDateTime("2026-09-10T13:52:00Z");
+    expect(formatted).not.toMatch(/AM|PM/i);
+    expect(formatted).toMatch(/\d{2}:\d{2}/);
   });
 });

@@ -58,11 +58,13 @@ export function formatDateTime(value?: string | null) {
     return "Never";
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-GB", {
     month: "short",
     day: "numeric",
-    hour: "numeric",
+    hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
   }).format(new Date(value));
 }
 

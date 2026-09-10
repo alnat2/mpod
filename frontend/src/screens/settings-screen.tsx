@@ -40,16 +40,18 @@ function formatSchedulerRefresh(status: SchedulerStatus | null) {
     refreshDate.getMonth() === now.getMonth() &&
     refreshDate.getDate() === now.getDate();
 
-  const timeLabel = new Intl.DateTimeFormat(undefined, {
+  const timeLabel = new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
   }).format(refreshDate);
 
   if (isSameDay) {
     return `Last refresh today at ${timeLabel}`;
   }
 
-  const dateLabel = new Intl.DateTimeFormat(undefined, {
+  const dateLabel = new Intl.DateTimeFormat("en-GB", {
     month: "short",
     day: "numeric",
   }).format(refreshDate);
@@ -319,6 +321,8 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                   <div className="flex w-full items-center gap-2 min-[1360px]:w-[220px]">
                     <Input
                       type="time"
+                      lang="en-GB"
+                      step="60"
                       aria-label="Daily refresh time"
                       value={dailyRefreshTime}
                       disabled={loading || saving}

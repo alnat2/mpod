@@ -98,7 +98,10 @@ describe("SettingsScreen", () => {
     const { container } = renderScreen();
 
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
-    expect(screen.getByDisplayValue("03:00")).toBeInTheDocument();
+    const timeInput = screen.getByDisplayValue("03:00");
+    expect(timeInput).toBeInTheDocument();
+    expect(timeInput).toHaveAttribute("lang", "en-GB");
+    expect(timeInput).toHaveAttribute("step", "60");
     expect(
       screen.getByText("Last refresh never")
     ).toBeInTheDocument();
@@ -107,6 +110,25 @@ describe("SettingsScreen", () => {
       screen.getByText("Turn on if direct connection update fails.")
     ).toBeInTheDocument();
     await expectNoA11yViolations(container);
+  });
+
+  it("displays last refresh time in 24-hour format", async () => {
+    const todayAt1352 = new Date();
+    todayAt1352.setHours(13, 52, 0, 0);
+
+    vi.spyOn(api.jobs, "status").mockResolvedValue({
+      scheduler: {
+        state: "idle",
+        lastRunAt: todayAt1352.toISOString(),
+        lastSuccessAt: todayAt1352.toISOString(),
+      },
+    });
+
+    renderScreen();
+
+    expect(
+      await screen.findByText("Last refresh today at 13:52")
+    ).toBeInTheDocument();
   });
 
   it("saves the daily refresh time", async () => {
