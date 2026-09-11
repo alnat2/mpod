@@ -165,24 +165,31 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
       setError(null);
 
       try {
-        const [{ settings: values }, { scheduler: status }, { proxy }] = await Promise.all([
+        const [{ settings: values }, { scheduler: status }] = await Promise.all([
           api.settings.get(),
           api.jobs.status(),
-          api.settings.proxyStatus(),
         ]);
 
         if (!cancelled) {
           setSettings(values);
-          setProxyStatus(proxy);
           setDailyRefreshTime(values.dailyRefreshTime);
           setScheduler(status);
+          setLoading(false);
         }
+
+        void api.settings.proxyStatus().then(
+          ({ proxy }) => {
+            if (!cancelled) {
+              setProxyStatus(proxy);
+            }
+          },
+          () => {
+            // Keep last known or default status without failing whole screen
+          }
+        );
       } catch (caught) {
         if (!cancelled) {
           setError(getErrorMessage(caught));
-        }
-      } finally {
-        if (!cancelled) {
           setLoading(false);
         }
       }

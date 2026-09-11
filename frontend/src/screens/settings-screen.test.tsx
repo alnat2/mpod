@@ -113,6 +113,17 @@ describe("SettingsScreen", () => {
     await expectNoA11yViolations(container);
   });
 
+  it("renders app build and settings immediately without waiting for proxy status to resolve", async () => {
+    vi.spyOn(api.settings, "proxyStatus").mockReturnValue(new Promise(() => {}));
+
+    renderScreen();
+
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(await screen.findByText("Current app build: test-build")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("03:00")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save time" })).toBeEnabled();
+  });
+
   it("displays last refresh time in 24-hour format", async () => {
     const todayAt1352 = new Date();
     todayAt1352.setHours(13, 52, 0, 0);
