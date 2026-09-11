@@ -233,7 +233,6 @@ export function primeAudioSource(
   };
 
   if (sourceChanged) {
-    audio.pause();
     audio.src = targetSrc;
     markPrimed();
     applyPlaybackRate(audio, speedLabel);

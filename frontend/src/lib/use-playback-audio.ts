@@ -316,7 +316,7 @@ export function usePlaybackAudio({
       const refreshedQueue = await loadQueue();
       const availableQueue = refreshedQueue?.queue ?? queueRef.current;
       const nextTarget = response?.nextTarget;
-      const nextItem =
+      let nextItem =
         (nextTarget?.type === "episode"
           ? availableQueue.find(
               (episode) =>
@@ -351,9 +351,39 @@ export function usePlaybackAudio({
                 episode.id === response.nextEpisodeId
             )
           : undefined);
+
+      const nextTrackId =
+        nextTarget?.type === "audiobook"
+          ? nextTarget.trackId
+          : (response?.nextTrackId ?? null);
+
+      if (!nextItem && nextTrackId != null && isAudiobookQueueItem(completedItem)) {
+        const abId = completedItem.audiobookId ?? completedItem.id;
+        nextItem = {
+          ...completedItem,
+          trackId: nextTrackId,
+          duration: null,
+          audioUrl: `/api/audiobooks/${abId}/tracks/${nextTrackId}/audio`,
+          playback: {
+            audiobookId: abId,
+            trackId: nextTrackId,
+            positionSeconds: 0,
+            lastUpdated: new Date().toISOString(),
+          },
+        };
+        setQueue((current) =>
+          current.map((episode) =>
+            sameQueueItem(episode, completedItem) ? nextItem! : episode
+          )
+        );
+      }
+
       if (!nextItem) {
+        playingRef.current = false;
+        setPlaying(false);
         return;
       }
+
       if (completionInProgressEpisodeIdRef.current !== completedItemKey) {
         return;
       }
@@ -386,8 +416,14 @@ export function usePlaybackAudio({
       const nextQueueItem =
         currentIndex >= 0 ? (currentQueue[currentIndex + 1] ?? null) : null;
 
-      playingRef.current = false;
-      setPlaying(false);
+      const hasPotentialNext =
+        nextQueueItem != null ||
+        isAudiobookQueueItem(finishedEpisode);
+
+      if (!hasPotentialNext) {
+        playingRef.current = false;
+        setPlaying(false);
+      }
       completionInProgressEpisodeIdRef.current = finishedItemKey;
       completedAudioSourceRef.current = finishedSource;
 
@@ -402,6 +438,14 @@ export function usePlaybackAudio({
             finishedEpisode,
             nextQueueItem,
             response
+          );
+        })
+        .catch(() => {
+          void startAfterCompletion(
+            finishedItemKey,
+            finishedEpisode,
+            nextQueueItem,
+            null
           );
         })
         .finally(() => {
@@ -506,6 +550,7 @@ export function usePlaybackAudio({
     setPlaybackError,
     setPlaying,
     setPositionSeconds,
+    setQueue,
     sourcePrimedRef,
     sourceReadyRef,
     speedLabelRef,

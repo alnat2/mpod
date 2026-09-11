@@ -2257,6 +2257,83 @@ describe("PlaybackProvider", () => {
     expect(queueSpy).toHaveBeenCalledTimes(2);
   });
 
+  it("advances to next audiobook chapter even if refreshed queue is stale or missing the track", async () => {
+    const user = userEvent.setup();
+    const firstTrack = {
+      id: 601,
+      trackNumber: 1,
+      audioUrl: "/api/audiobooks/200/tracks/601/audio",
+      playback: {
+        audiobookId: 200,
+        trackId: 601,
+        positionSeconds: 0,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    };
+    const secondTrack = {
+      id: 602,
+      trackNumber: 2,
+      audioUrl: "/api/audiobooks/200/tracks/602/audio",
+      playback: {
+        audiobookId: 200,
+        trackId: 602,
+        positionSeconds: 0,
+        lastUpdated: "2026-05-22T08:01:00Z",
+      },
+    };
+
+    // Queue always returns firstTrack (simulating stale background queue or delayed reconciliation)
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [{
+        id: 200, podcastId: 0, type: "audiobook" as const, audiobookId: 200,
+        trackId: firstTrack.id, trackNumber: 1, title: "Stale Queue Audiobook", description: "",
+        podcastTitle: "Author", author: "Author", audioUrl: firstTrack.audioUrl,
+        duration: 100, downloaded: true, isListened: false, publishedAt: null, playback: firstTrack.playback,
+      }],
+      activePlayback: { audiobookId: 200, trackId: firstTrack.id, lastUpdated: "2026-05-22T08:00:00Z" },
+    });
+
+    vi.mocked(api.playback.update).mockResolvedValue({
+      playback: { audiobookId: 200, trackId: firstTrack.id, positionSeconds: 100, lastUpdated: "2026-05-22T08:01:00Z" },
+      nextTarget: {
+        type: "audiobook",
+        audiobookId: 200,
+        trackId: secondTrack.id,
+      },
+      nextTrackId: secondTrack.id,
+      nextEpisodeId: null,
+    });
+
+    function Harness() {
+      const { queue, playQueueItem, currentEpisode, playing } = usePlayback();
+      return <>
+        <div data-testid="track-id">{currentEpisode?.trackId}</div>
+        <div data-testid="playing">{playing ? "yes" : "no"}</div>
+        <button
+          type="button"
+          onClick={() => {
+            const item = queue[0];
+            if (item) playQueueItem(item);
+          }}
+        >
+          Play
+        </button>
+      </>;
+    }
+
+    render(<PlaybackProvider><Harness /></PlaybackProvider>);
+    await waitFor(() => expect(screen.getByTestId("track-id")).toHaveTextContent("601"));
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    const audio = FakeAudio.first;
+    audio.currentTime = 100;
+    audio.emit("ended");
+
+    // Must advance to 602 despite queue returning 601
+    await waitFor(() => expect(screen.getByTestId("track-id")).toHaveTextContent("602"));
+    expect(audio.src).toContain("/api/audiobooks/200/tracks/602/audio");
+    expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+  });
+
   it("completes an audiobook from the media ended state before the ended event arrives", async () => {
     const user = userEvent.setup();
     const sendBeaconSpy = vi.fn(
