@@ -1226,6 +1226,59 @@ func TestSetActiveItemDoesNotOverwriteAudiobookPlaybackTimestampOrPosition(t *te
 	}
 }
 
+func TestAudiobookTrackPlaybackSyncDirectTrackQuery(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path, total_duration) VALUES (1, 'Book 1', 'Author 1', 'Book 1', 5400)`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'Track 1', 'Book 1/1.mp3', '/path/1.mp3', 1800)`)
+
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+
+	abID := int64(1)
+	trackID := int64(10)
+
+	// Verify GetAudiobook returns nil when not started
+	initialState, err := service.GetAudiobook(context.Background(), abID, &trackID)
+	if err != nil {
+		t.Fatalf("GetAudiobook error: %v", err)
+	}
+	if initialState != nil {
+		t.Fatalf("expected nil state initially, got %+v", initialState)
+	}
+
+	// Update progress
+	tClient := time.Now().UTC()
+	res, err := service.Update(context.Background(), UpdateInput{
+		AudiobookID:     &abID,
+		TrackID:         &trackID,
+		PositionSeconds: 125,
+		DurationSeconds: 1800,
+		ClientUpdatedAt: &tClient,
+	})
+	if err != nil {
+		t.Fatalf("Update error: %v", err)
+	}
+	if res.Playback.PositionSeconds != 125 {
+		t.Fatalf("expected position 125, got %d", res.Playback.PositionSeconds)
+	}
+
+	// Verify GetAudiobook returns the saved state for this track
+	savedState, err := service.GetAudiobook(context.Background(), abID, &trackID)
+	if err != nil {
+		t.Fatalf("GetAudiobook error: %v", err)
+	}
+	if savedState == nil {
+		t.Fatal("expected saved state, got nil")
+	}
+	if savedState.PositionSeconds != 125 {
+		t.Fatalf("expected saved position 125, got %d", savedState.PositionSeconds)
+	}
+	if savedState.TrackID != trackID {
+		t.Fatalf("expected track ID %d, got %d", trackID, savedState.TrackID)
+	}
+}
+
 func newTestDB(t *testing.T) *storage.DB {
 	t.Helper()
 

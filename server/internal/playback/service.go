@@ -108,18 +108,39 @@ func (s *Service) GetEpisode(ctx context.Context, episodeID int64) (*State, erro
 }
 
 func (s *Service) GetAudiobook(ctx context.Context, audiobookID int64, trackID *int64) (*State, error) {
+	if trackID != nil && *trackID > 0 {
+		var abID, selectedTrackID, pos int64
+		var lastUpdated time.Time
+		err := s.db.QueryRowContext(ctx, `
+			SELECT ap.audiobook_id, ap.track_id, ap.position_seconds, ap.last_updated
+			FROM audiobook_playback ap
+			WHERE ap.audiobook_id = ? AND ap.track_id = ?
+		`, audiobookID, *trackID).Scan(&abID, &selectedTrackID, &pos, &lastUpdated)
+		if err == nil {
+			return &State{
+				AudiobookID:     abID,
+				TrackID:         selectedTrackID,
+				PositionSeconds: pos,
+				LastUpdated:     lastUpdated.UTC(),
+			}, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("load audiobook track playback state: %w", err)
+		}
+		return nil, nil
+	}
+
 	var abID, selectedTrackID, pos int64
 	var lastUpdated time.Time
 	err := s.db.QueryRowContext(ctx, `
 		SELECT ap.audiobook_id, ap.track_id, ap.position_seconds, ap.last_updated
 		FROM audiobook_playback ap
 		WHERE ap.track_id = COALESCE(
-			(SELECT selected.track_id FROM audiobook_playlist_tracks selected WHERE selected.audiobook_id = ? AND selected.track_id = ?),
 			(SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = ? AND EXISTS(SELECT 1 FROM audiobook_playlist_tracks selected WHERE selected.audiobook_id = ? AND selected.track_id = act.audiobook_track_id)),
 			(SELECT ap2.track_id FROM audiobook_playback ap2 JOIN audiobook_playlist_tracks selected ON selected.track_id = ap2.track_id WHERE selected.audiobook_id = ? ORDER BY ap2.last_updated DESC LIMIT 1),
 			(SELECT t.id FROM audiobook_tracks t JOIN audiobook_playlist_tracks selected ON selected.track_id = t.id WHERE selected.audiobook_id = ? ORDER BY t.track_number ASC, t.id ASC LIMIT 1)
 		)
-	`, audiobookID, trackID, audiobookID, audiobookID, audiobookID, audiobookID).Scan(&abID, &selectedTrackID, &pos, &lastUpdated)
+	`, audiobookID, audiobookID, audiobookID, audiobookID).Scan(&abID, &selectedTrackID, &pos, &lastUpdated)
 	if err == nil {
 		return &State{
 			AudiobookID:     abID,
@@ -558,12 +579,13 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 		}
 		var abID, dur int64
 		if err := s.db.QueryRowContext(ctx, `
-			SELECT track.audiobook_id, track.duration
-			FROM audiobook_tracks track
-			JOIN audiobook_playlist_tracks selected ON selected.track_id = track.id
-			JOIN playlist ON playlist.audiobook_id = selected.audiobook_id
-			WHERE track.id = ? AND track.audiobook_id = ?
+			SELECT audiobook_id, duration
+			FROM audiobook_tracks
+			WHERE id = ? AND audiobook_id = ?
 		`, *input.TrackID, *input.AudiobookID).Scan(&abID, &dur); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return UpdateResult{}, ErrInvalidTarget
+			}
 			return UpdateResult{}, fmt.Errorf("track not found: %w", err)
 		}
 		now := s.now().UTC()
@@ -583,7 +605,7 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 		if err := tx.QueryRowContext(ctx, `SELECT position_seconds, last_updated FROM audiobook_playback WHERE track_id = ?`, *input.TrackID).Scan(&currentPosition, &currentUpdated); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return UpdateResult{}, fmt.Errorf("load audiobook playback: %w", err)
 		}
-		if !input.DidSeek && input.ClientUpdatedAt != nil && currentUpdated.Valid && input.ClientUpdatedAt.UTC().Before(currentUpdated.Time.UTC()) {
+		if !input.DidSeek && input.ClientUpdatedAt != nil && currentUpdated.Valid && input.ClientUpdatedAt.UTC().Before(currentUpdated.Time.UTC()) && position <= currentPosition.Int64 {
 			return UpdateResult{Playback: State{AudiobookID: abID, TrackID: *input.TrackID, PositionSeconds: currentPosition.Int64, LastUpdated: currentUpdated.Time.UTC()}}, nil
 		}
 
