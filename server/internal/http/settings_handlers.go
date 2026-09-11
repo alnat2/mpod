@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -100,6 +101,28 @@ type proxyLookupEndpoint struct {
 }
 
 var defaultProxyLookupEndpoints = []proxyLookupEndpoint{
+	{
+		url: "https://www.cloudflare.com/cdn-cgi/trace",
+		parse: func(body io.Reader) (settings.ProxyLookupResult, error) {
+			scanner := bufio.NewScanner(body)
+			var ip, loc string
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if strings.HasPrefix(line, "ip=") {
+					ip = strings.TrimSpace(strings.TrimPrefix(line, "ip="))
+				} else if strings.HasPrefix(line, "loc=") {
+					loc = strings.TrimSpace(strings.TrimPrefix(line, "loc="))
+				}
+			}
+			if ip == "" {
+				return settings.ProxyLookupResult{}, errors.New("empty IP returned")
+			}
+			return settings.ProxyLookupResult{
+				ExternalIP: ip,
+				Country:    loc,
+			}, nil
+		},
+	},
 	{
 		url: "https://ipwho.is/",
 		parse: func(body io.Reader) (settings.ProxyLookupResult, error) {

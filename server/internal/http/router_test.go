@@ -901,7 +901,7 @@ func TestOutboundRequestsUseProxyTransportWhenProxyEnabled(t *testing.T) {
 	if !strings.Contains(proxyStatusRec.Body.String(), `"status":"ok"`) {
 		t.Fatalf("expected ok proxy status when enabled, got %s", proxyStatusRec.Body.String())
 	}
-	recorder.assertOnlyProxy(t, "https://ipwho.is/")
+	recorder.assertOnlyProxy(t, "https://www.cloudflare.com/cdn-cgi/trace")
 }
 
 func TestLoginInvalidCredentials(t *testing.T) {
@@ -3114,10 +3114,10 @@ func TestProxyStatusEndpointReturnsOffWhenDisabled(t *testing.T) {
 
 func TestProxyStatusEndpointReturnsObservedIdentityWhenEnabled(t *testing.T) {
 	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
-		if req.URL.String() != "https://ipwho.is/" {
+		if req.URL.String() != "https://www.cloudflare.com/cdn-cgi/trace" {
 			t.Fatalf("unexpected proxy status request URL: %s", req.URL.String())
 		}
-		return routerJSONResponse(`{"success":true,"ip":"198.51.100.10","country":"Germany"}`), nil
+		return routerTextResponse("ip=198.51.100.10\nloc=Germany\n"), nil
 	})
 	handler, _ := newTestRouterWithClient(t, config.Config{
 		Environment:  "development",
@@ -3164,7 +3164,7 @@ func TestProxyStatusEndpointRetriesOnTransientErrorAndSucceeds(t *testing.T) {
 		if attempts == 1 {
 			return nil, io.EOF
 		}
-		return routerJSONResponse(`{"success":true,"ip":"198.51.100.10","country":"Germany"}`), nil
+		return routerTextResponse("ip=198.51.100.10\nloc=Germany\n"), nil
 	})
 	handler, _ := newTestRouterWithClient(t, config.Config{
 		Environment:  "development",
@@ -3214,11 +3214,11 @@ func TestProxyStatusEndpointFallsBackToSecondaryProviderWhenPrimaryFails(t *test
 		if req.Header.Get("User-Agent") != proxyLookupUserAgent {
 			t.Fatalf("expected browser User-Agent, got %q", req.Header.Get("User-Agent"))
 		}
-		if req.URL.String() == "https://ipwho.is/" {
+		if req.URL.String() == "https://www.cloudflare.com/cdn-cgi/trace" {
 			return nil, io.EOF
 		}
-		if req.URL.String() == "https://ifconfig.co/json" {
-			return routerJSONResponse(`{"ip":"203.0.113.50","country":"Netherlands"}`), nil
+		if req.URL.String() == "https://ipwho.is/" {
+			return routerJSONResponse(`{"success":true,"ip":"203.0.113.50","country":"Netherlands"}`), nil
 		}
 		return nil, errors.New("unexpected URL")
 	})
@@ -3290,8 +3290,8 @@ func TestProxyStatusEndpointReturnsErrorStateWhenLookupFails(t *testing.T) {
 	if rec.Code != nethttp.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if attempts != 6 {
-		t.Fatalf("expected 6 attempts across all providers before returning error, got %d", attempts)
+	if attempts != 8 {
+		t.Fatalf("expected 8 attempts across all providers before returning error, got %d", attempts)
 	}
 	if !strings.Contains(rec.Body.String(), `"status":"error"`) {
 		t.Fatalf("expected error status, got %s", rec.Body.String())
@@ -4316,6 +4316,8 @@ func proxyAwareRouterResponse(t *testing.T, rawURL string) *nethttp.Response {
 		return routerBinaryResponse("audio/mpeg", []byte("download-audio"))
 	case "https://cdn.example.com/audio.mp3":
 		return routerBinaryResponse("audio/mpeg", []byte("stream-audio"))
+	case "https://www.cloudflare.com/cdn-cgi/trace":
+		return routerTextResponse("ip=198.51.100.10\nloc=Germany\n")
 	case "https://ipwho.is/":
 		return routerJSONResponse(`{"success":true,"ip":"198.51.100.10","country":"Germany"}`)
 	default:
@@ -4368,3 +4370,15 @@ func routerBinaryResponse(contentType string, body []byte) *nethttp.Response {
 	resp.Header.Set("Content-Type", contentType)
 	return resp
 }
+
+func routerTextResponse(body string) *nethttp.Response {
+	resp := &nethttp.Response{
+		StatusCode: nethttp.StatusOK,
+		Status:     "200 OK",
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     make(nethttp.Header),
+	}
+	resp.Header.Set("Content-Type", "text/plain")
+	return resp
+}
+
