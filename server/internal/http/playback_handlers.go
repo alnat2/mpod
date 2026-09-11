@@ -125,8 +125,8 @@ func (r *Router) handlePlaybackPost(w nethttp.ResponseWriter, req *nethttp.Reque
 	if !r.decodeJSON(w, req, &payload) {
 		return
 	}
-	if (payload.EpisodeID == nil) == (payload.AudiobookID == nil) || (payload.AudiobookID != nil && payload.TrackID == nil) {
-		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_PLAYBACK_TARGET", "Provide an episodeId or an audiobookId with trackId")
+	if (payload.EpisodeID == nil) == (payload.AudiobookID == nil) {
+		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_PLAYBACK_TARGET", "Provide an episodeId or an audiobookId")
 		return
 	}
 

@@ -66,7 +66,7 @@ function isNewerPlaybackState(
     return nextPlayback.positionSeconds !== currentPlayback.positionSeconds;
   }
 
-  return nextTime > currentTime;
+  return nextTime >= currentTime;
 }
 
 function playbackDurationSeconds(
@@ -133,7 +133,9 @@ export function usePlaybackSync({
       const episode = options.target ?? currentEpisodeRef.current;
       if (!episode) return null;
       const isAudiobook = isAudiobookQueueItem(episode);
-      const trackId = isAudiobook ? episode.trackId : undefined;
+      const trackId = isAudiobook
+        ? (episode.trackId ?? (episode.playback?.trackId as number | undefined))
+        : undefined;
       const mediaID = isAudiobook
         ? (episode.audiobookId ?? episode.id)
         : episode.id;
@@ -204,7 +206,9 @@ export function usePlaybackSync({
         ...(isAudiobook
           ? {
               audiobookId: episode.audiobookId ?? episode.id,
-              trackId: episode.trackId,
+              trackId:
+                episode.trackId ??
+                (episode.playback?.trackId as number | undefined),
             }
           : { episodeId: episode.id }),
         positionSeconds: Math.round(
@@ -254,7 +258,9 @@ export function usePlaybackSync({
         if (isAudiobook) {
           await api.playback.setActive({
             audiobookId: episode.audiobookId ?? episode.id,
-            trackId: episode.trackId,
+            trackId:
+              episode.trackId ??
+              (episode.playback?.trackId as number | undefined),
           });
         } else {
           await api.playback.setActive(episode.id);
@@ -273,11 +279,15 @@ export function usePlaybackSync({
     ) => {
       try {
         const audiobook = isAudiobookQueueItem(episode);
+        const trackId = audiobook
+          ? (episode.trackId ??
+            (episode.playback?.trackId as number | undefined))
+          : undefined;
         const response = await api.playback.get(
           audiobook
             ? {
                 audiobookId: episode.audiobookId ?? episode.id,
-                trackId: episode.trackId,
+                trackId,
               }
             : { episodeId: episode.id }
         );
@@ -301,11 +311,9 @@ export function usePlaybackSync({
           );
           const audio = audioRef.current;
           if (audio && sourcePrimedRef.current && sourceReadyRef.current) {
-            const positionApplied = setAudioPosition(audio, nextPosition);
-            setPositionSeconds(positionApplied ? nextPosition : 0);
-          } else {
-            setPositionSeconds(nextPosition);
+            setAudioPosition(audio, nextPosition);
           }
+          setPositionSeconds(nextPosition);
         }
 
         return { ...episode, playback: nextPlayback };

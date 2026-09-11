@@ -136,11 +136,11 @@ func (s *Service) GetAudiobook(ctx context.Context, audiobookID int64, trackID *
 		SELECT ap.audiobook_id, ap.track_id, ap.position_seconds, ap.last_updated
 		FROM audiobook_playback ap
 		WHERE ap.track_id = COALESCE(
-			(SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = ? AND EXISTS(SELECT 1 FROM audiobook_playlist_tracks selected WHERE selected.audiobook_id = ? AND selected.track_id = act.audiobook_track_id)),
-			(SELECT ap2.track_id FROM audiobook_playback ap2 JOIN audiobook_playlist_tracks selected ON selected.track_id = ap2.track_id WHERE selected.audiobook_id = ? ORDER BY ap2.last_updated DESC LIMIT 1),
-			(SELECT t.id FROM audiobook_tracks t JOIN audiobook_playlist_tracks selected ON selected.track_id = t.id WHERE selected.audiobook_id = ? ORDER BY t.track_number ASC, t.id ASC LIMIT 1)
+			(SELECT act.audiobook_track_id FROM active_playback act WHERE act.singleton_id = 1 AND act.audiobook_id = ?),
+			(SELECT ap2.track_id FROM audiobook_playback ap2 WHERE ap2.audiobook_id = ? ORDER BY ap2.last_updated DESC LIMIT 1),
+			(SELECT t.id FROM audiobook_tracks t WHERE t.audiobook_id = ? ORDER BY t.track_number ASC, t.id ASC LIMIT 1)
 		)
-	`, audiobookID, audiobookID, audiobookID, audiobookID).Scan(&abID, &selectedTrackID, &pos, &lastUpdated)
+	`, audiobookID, audiobookID, audiobookID).Scan(&abID, &selectedTrackID, &pos, &lastUpdated)
 	if err == nil {
 		return &State{
 			AudiobookID:     abID,
@@ -197,8 +197,7 @@ func (s *Service) GetActive(ctx context.Context) (*ActiveState, error) {
 		_ = s.db.QueryRowContext(ctx, `
 			SELECT COUNT(*) FROM playlist
 			WHERE audiobook_id = ?
-			  AND EXISTS(SELECT 1 FROM audiobook_playlist_tracks WHERE audiobook_id = ?)
-		`, audiobookID.Int64, audiobookID.Int64).Scan(&count)
+		`, audiobookID.Int64).Scan(&count)
 		if count == 0 {
 			_, _ = s.db.ExecContext(ctx, `UPDATE active_playback SET audiobook_id = NULL, audiobook_track_id = NULL WHERE singleton_id = 1`)
 			return nil, nil
@@ -276,13 +275,12 @@ func (s *Service) SetActiveItem(ctx context.Context, episodeID *int64, audiobook
 		if err := s.db.QueryRowContext(ctx, `
 			SELECT COUNT(*)
 			FROM playlist
-			JOIN audiobook_playlist_tracks selected ON selected.audiobook_id = playlist.audiobook_id
-			WHERE playlist.audiobook_id = ? AND selected.track_id = ?
-		`, bookID, *trackID).Scan(&count); err != nil {
+			WHERE audiobook_id = ?
+		`, bookID).Scan(&count); err != nil {
 			return nil, fmt.Errorf("check track in playlist: %w", err)
 		}
 		if count == 0 {
-			return nil, errors.New("audiobook track not in playlist")
+			return nil, errors.New("audiobook not in playlist")
 		}
 
 		if _, err := s.db.ExecContext(ctx, `
@@ -309,8 +307,7 @@ func (s *Service) SetActiveItem(ctx context.Context, episodeID *int64, audiobook
 		if err := s.db.QueryRowContext(ctx, `
 			SELECT COUNT(*) FROM playlist
 			WHERE audiobook_id = ?
-			  AND EXISTS(SELECT 1 FROM audiobook_playlist_tracks WHERE audiobook_id = ?)
-		`, *audiobookID, *audiobookID).Scan(&count); err != nil {
+		`, *audiobookID).Scan(&count); err != nil {
 			return nil, fmt.Errorf("check audiobook in playlist: %w", err)
 		}
 		if count == 0 {
@@ -323,8 +320,7 @@ func (s *Service) SetActiveItem(ctx context.Context, episodeID *int64, audiobook
 			if err := s.db.QueryRowContext(ctx, `
 				SELECT progress.track_id
 				FROM audiobook_playback progress
-				JOIN audiobook_playlist_tracks selected ON selected.track_id = progress.track_id
-				WHERE selected.audiobook_id = ?
+				WHERE progress.audiobook_id = ?
 				ORDER BY progress.last_updated DESC LIMIT 1
 			`, *audiobookID).Scan(&lastTrID); err == nil {
 				actualTrackID = &lastTrID
@@ -333,8 +329,7 @@ func (s *Service) SetActiveItem(ctx context.Context, episodeID *int64, audiobook
 				if err := s.db.QueryRowContext(ctx, `
 					SELECT track.id
 					FROM audiobook_tracks track
-					JOIN audiobook_playlist_tracks selected ON selected.track_id = track.id
-					WHERE selected.audiobook_id = ?
+					WHERE track.audiobook_id = ?
 					ORDER BY track.track_number ASC, track.id ASC LIMIT 1
 				`, *audiobookID).Scan(&firstTrID); err == nil {
 					actualTrackID = &firstTrID
@@ -392,19 +387,21 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 			           WHERE active.singleton_id = 1
 			             AND active.audiobook_id = p.audiobook_id
 			             AND active_track.is_listened = 0
-			             AND EXISTS(
-			               SELECT 1 FROM audiobook_playlist_tracks membership
-			               WHERE membership.audiobook_id = p.audiobook_id
-			                 AND membership.track_id = active.audiobook_track_id
+			             AND (
+			               NOT EXISTS(SELECT 1 FROM audiobook_playlist_tracks s WHERE s.audiobook_id = p.audiobook_id)
+			               OR EXISTS(SELECT 1 FROM audiobook_playlist_tracks s WHERE s.audiobook_id = p.audiobook_id AND s.track_id = active.audiobook_track_id)
 			             )
 			         ),
 			         (
 			           SELECT progress.track_id
 			           FROM audiobook_playback progress
-			           JOIN audiobook_playlist_tracks membership ON membership.track_id = progress.track_id
 			           JOIN audiobook_tracks progress_track ON progress_track.id = progress.track_id
-			           WHERE membership.audiobook_id = p.audiobook_id
+			           WHERE progress.audiobook_id = p.audiobook_id
 			             AND progress_track.is_listened = 0
+			             AND (
+			               NOT EXISTS(SELECT 1 FROM audiobook_playlist_tracks s WHERE s.audiobook_id = p.audiobook_id)
+			               OR EXISTS(SELECT 1 FROM audiobook_playlist_tracks s WHERE s.audiobook_id = p.audiobook_id AND s.track_id = progress.track_id)
+			             )
 			           ORDER BY progress.last_updated DESC
 			           LIMIT 1
 			         ),
@@ -414,6 +411,32 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 			           JOIN audiobook_tracks track ON track.id = membership.track_id
 			           WHERE membership.audiobook_id = p.audiobook_id
 			             AND track.is_listened = 0
+			           ORDER BY track.track_number, track.id
+			           LIMIT 1
+			         ),
+			         (
+			           SELECT track.id
+			           FROM audiobook_tracks track
+			           WHERE track.audiobook_id = p.audiobook_id
+			             AND track.is_listened = 0
+			           ORDER BY track.track_number, track.id
+			           LIMIT 1
+			         ),
+			         (
+			           SELECT track.id
+			           FROM audiobook_tracks track
+			           WHERE track.audiobook_id = p.audiobook_id
+			             AND (
+			               NOT EXISTS(SELECT 1 FROM audiobook_playlist_tracks s WHERE s.audiobook_id = p.audiobook_id)
+			               OR EXISTS(SELECT 1 FROM audiobook_playlist_tracks s WHERE s.audiobook_id = p.audiobook_id AND s.track_id = track.id)
+			             )
+			           ORDER BY track.track_number, track.id
+			           LIMIT 1
+			         ),
+			         (
+			           SELECT track.id
+			           FROM audiobook_tracks track
+			           WHERE track.audiobook_id = p.audiobook_id
 			           ORDER BY track.track_number, track.id
 			           LIMIT 1
 			         )
@@ -573,6 +596,34 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 		return UpdateResult{}, ErrInvalidPosition
 	}
 
+	if input.AudiobookID != nil && *input.AudiobookID > 0 && (input.TrackID == nil || *input.TrackID <= 0) {
+		var resolvedTrackID int64
+		err := s.db.QueryRowContext(ctx, `
+			SELECT audiobook_track_id
+			FROM active_playback
+			WHERE singleton_id = 1 AND audiobook_id = ? AND audiobook_track_id IS NOT NULL
+		`, *input.AudiobookID).Scan(&resolvedTrackID)
+		if err != nil || resolvedTrackID <= 0 {
+			err = s.db.QueryRowContext(ctx, `
+				SELECT track_id
+				FROM audiobook_playback
+				WHERE audiobook_id = ?
+				ORDER BY last_updated DESC LIMIT 1
+			`, *input.AudiobookID).Scan(&resolvedTrackID)
+		}
+		if err != nil || resolvedTrackID <= 0 {
+			err = s.db.QueryRowContext(ctx, `
+				SELECT id
+				FROM audiobook_tracks
+				WHERE audiobook_id = ?
+				ORDER BY track_number ASC, id ASC LIMIT 1
+			`, *input.AudiobookID).Scan(&resolvedTrackID)
+		}
+		if err == nil && resolvedTrackID > 0 {
+			input.TrackID = &resolvedTrackID
+		}
+	}
+
 	if input.TrackID != nil && *input.TrackID > 0 {
 		if input.AudiobookID == nil || *input.AudiobookID <= 0 || input.EpisodeID > 0 {
 			return UpdateResult{}, ErrInvalidTarget
@@ -707,6 +758,22 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 		`, *input.TrackID, abID, position, now); err != nil {
 			return UpdateResult{}, fmt.Errorf("save audiobook playback: %w", err)
 		}
+
+		var inPlaylist int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_id = ?`, abID).Scan(&inPlaylist); err == nil && inPlaylist > 0 {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO active_playback (singleton_id, episode_id, audiobook_id, audiobook_track_id, last_updated)
+				VALUES (1, NULL, ?, ?, ?)
+				ON CONFLICT (singleton_id) DO UPDATE SET
+					episode_id = NULL,
+					audiobook_id = excluded.audiobook_id,
+					audiobook_track_id = excluded.audiobook_track_id,
+					last_updated = excluded.last_updated
+			`, abID, *input.TrackID, now); err != nil {
+				return UpdateResult{}, fmt.Errorf("save active audiobook playback: %w", err)
+			}
+		}
+
 		if err := tx.Commit(); err != nil {
 			return UpdateResult{}, fmt.Errorf("commit audiobook playback: %w", err)
 		}

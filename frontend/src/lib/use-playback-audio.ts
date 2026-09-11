@@ -412,6 +412,9 @@ export function usePlaybackAudio({
     };
 
     const onTimeUpdate = () => {
+      if (!sourceReadyRef.current || audio.seeking) {
+        return;
+      }
       positionSecondsRef.current = audio.currentTime;
       setPositionSeconds(audio.currentTime);
       updateActiveDuration(sourceGenerationRef.current);

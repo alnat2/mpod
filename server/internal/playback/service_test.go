@@ -1279,6 +1279,88 @@ func TestAudiobookTrackPlaybackSyncDirectTrackQuery(t *testing.T) {
 	}
 }
 
+func TestAudiobookPlaybackUpdatesActivePlaybackAndResolvesTrack(t *testing.T) {
+	db := newTestDB(t)
+	downloadsService := downloads.NewService(db.SQL, nil, t.TempDir())
+	episodeActions := episodes.NewActions(db.SQL, downloadsService)
+	playlistService := playlist.NewService(db.SQL)
+	service := NewService(db.SQL, episodeActions, playlistService)
+
+	mustExec(t, db.SQL, `
+		INSERT INTO audiobooks (id, title, author, rel_path, total_duration)
+		VALUES (1, 'Dune', 'Frank Herbert', 'Frank Herbert/Dune', 3600);
+	`)
+	mustExec(t, db.SQL, `
+		INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration)
+		VALUES
+			(10, 1, 1, 'Chapter 1', 'Frank Herbert/Dune/01.mp3', '/abs/01.mp3', 1800),
+			(11, 1, 2, 'Chapter 2', 'Frank Herbert/Dune/02.mp3', '/abs/02.mp3', 1800);
+	`)
+	mustExec(t, db.SQL, `INSERT INTO playlist (audiobook_id, position) VALUES (1, 1);`)
+
+	abID := int64(1)
+	trID := int64(11)
+
+	// Update track 11 position to 350 seconds
+	res, err := service.Update(context.Background(), UpdateInput{
+		AudiobookID:     &abID,
+		TrackID:         &trID,
+		PositionSeconds: 350,
+		DurationSeconds: 1800,
+		DidSeek:         true,
+	})
+	if err != nil {
+		t.Fatalf("Update track 11 error: %v", err)
+	}
+	if res.Playback.PositionSeconds != 350 {
+		t.Fatalf("expected position 350, got %d", res.Playback.PositionSeconds)
+	}
+
+	// Verify active_playback was updated to track 11
+	active, err := service.GetActive(context.Background())
+	if err != nil {
+		t.Fatalf("GetActive error: %v", err)
+	}
+	if active == nil {
+		t.Fatal("expected active_playback to be present after audiobook update")
+	}
+	if active.AudiobookID == nil || *active.AudiobookID != 1 {
+		t.Fatalf("expected active AudiobookID 1, got %v", active.AudiobookID)
+	}
+	if active.AudiobookTrackID == nil || *active.AudiobookTrackID != 11 {
+		t.Fatalf("expected active AudiobookTrackID 11, got %v", active.AudiobookTrackID)
+	}
+
+	// Verify ListQueue reflects track 11 and position 350
+	queue, err := service.ListQueue(context.Background())
+	if err != nil {
+		t.Fatalf("ListQueue error: %v", err)
+	}
+	if len(queue) != 1 {
+		t.Fatalf("expected 1 queue item, got %d", len(queue))
+	}
+	if queue[0].TrackID == nil || *queue[0].TrackID != 11 {
+		t.Fatalf("expected queue TrackID 11, got %v", queue[0].TrackID)
+	}
+	if queue[0].Playback == nil || queue[0].Playback.PositionSeconds != 350 {
+		t.Fatalf("expected queue playback position 350, got %v", queue[0].Playback)
+	}
+
+	// Verify Update without TrackID resolves to active track 11 and saves progress
+	res2, err := service.Update(context.Background(), UpdateInput{
+		AudiobookID:     &abID,
+		PositionSeconds: 500,
+		DurationSeconds: 1800,
+		DidSeek:         true,
+	})
+	if err != nil {
+		t.Fatalf("Update without TrackID error: %v", err)
+	}
+	if res2.Playback.TrackID != 11 || res2.Playback.PositionSeconds != 500 {
+		t.Fatalf("expected resolved TrackID 11 at position 500, got %d at %d", res2.Playback.TrackID, res2.Playback.PositionSeconds)
+	}
+}
+
 func newTestDB(t *testing.T) *storage.DB {
 	t.Helper()
 
