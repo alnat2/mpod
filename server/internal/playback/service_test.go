@@ -1172,6 +1172,60 @@ func TestAudiobookCompletionAdvancesWithoutPreexistingActivePlaybackAndPreserves
 	}
 }
 
+func TestSetActiveItemDoesNotOverwriteAudiobookPlaybackTimestampOrPosition(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path, total_duration) VALUES (1, 'Book 1', 'Author 1', 'Book 1', 5400)`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'Track 1', 'Book 1/1.mp3', '/path/1.mp3', 1800)`)
+	mustExec(t, db.SQL, `INSERT INTO playlist (position, audiobook_id) VALUES (1, 1)`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10)`)
+
+	t1 := time.Date(2026, 9, 11, 10, 0, 0, 0, time.UTC)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_playback (track_id, audiobook_id, position_seconds, last_updated) VALUES (10, 1, 350, ?)`, t1)
+
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+	service.now = func() time.Time {
+		return time.Date(2026, 9, 11, 10, 5, 0, 0, time.UTC)
+	}
+
+	abID := int64(1)
+	trackID := int64(10)
+	_, err := service.SetActiveItem(context.Background(), nil, &abID, &trackID)
+	if err != nil {
+		t.Fatalf("SetActiveItem error: %v", err)
+	}
+
+	var pos int64
+	var lastUpdated time.Time
+	err = db.SQL.QueryRow(`SELECT position_seconds, last_updated FROM audiobook_playback WHERE track_id = 10`).Scan(&pos, &lastUpdated)
+	if err != nil {
+		t.Fatalf("query audiobook playback: %v", err)
+	}
+	if pos != 350 {
+		t.Fatalf("expected position 350 preserved, got %d", pos)
+	}
+	if !lastUpdated.Equal(t1) {
+		t.Fatalf("expected lastUpdated %v preserved, got %v", t1, lastUpdated)
+	}
+
+	// Verify that a playback update from another device with clientUpdatedAt after t1 is accepted
+	tClient := time.Date(2026, 9, 11, 10, 2, 0, 0, time.UTC)
+	res, err := service.Update(context.Background(), UpdateInput{
+		AudiobookID:     &abID,
+		TrackID:         &trackID,
+		PositionSeconds: 400,
+		DurationSeconds: 1800,
+		ClientUpdatedAt: &tClient,
+	})
+	if err != nil {
+		t.Fatalf("Update error: %v", err)
+	}
+	if res.Playback.PositionSeconds != 400 {
+		t.Fatalf("expected position updated to 400, got %d", res.Playback.PositionSeconds)
+	}
+}
+
 func newTestDB(t *testing.T) *storage.DB {
 	t.Helper()
 

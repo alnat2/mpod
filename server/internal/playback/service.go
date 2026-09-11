@@ -264,12 +264,6 @@ func (s *Service) SetActiveItem(ctx context.Context, episodeID *int64, audiobook
 			return nil, errors.New("audiobook track not in playlist")
 		}
 
-		_, _ = s.db.ExecContext(ctx, `
-			INSERT INTO audiobook_playback (track_id, audiobook_id, position_seconds, last_updated)
-			VALUES (?, ?, 0, ?)
-			ON CONFLICT (track_id) DO UPDATE SET last_updated = excluded.last_updated
-		`, *trackID, bookID, now)
-
 		if _, err := s.db.ExecContext(ctx, `
 			INSERT INTO active_playback (singleton_id, episode_id, audiobook_id, audiobook_track_id, last_updated)
 			VALUES (1, NULL, ?, ?, ?)
@@ -325,14 +319,6 @@ func (s *Service) SetActiveItem(ctx context.Context, episodeID *int64, audiobook
 					actualTrackID = &firstTrID
 				}
 			}
-		}
-
-		if actualTrackID != nil {
-			_, _ = s.db.ExecContext(ctx, `
-				INSERT INTO audiobook_playback (track_id, audiobook_id, position_seconds, last_updated)
-				VALUES (?, ?, 0, ?)
-				ON CONFLICT (track_id) DO UPDATE SET last_updated = excluded.last_updated
-			`, *actualTrackID, *audiobookID, now)
 		}
 
 		if _, err := s.db.ExecContext(ctx, `
@@ -527,7 +513,7 @@ func (s *Service) ListQueue(ctx context.Context) ([]QueueEpisode, error) {
 				if abTrackPos.Valid {
 					pos = abTrackPos.Int64
 				}
-				upd := time.Now().UTC()
+				var upd time.Time
 				if abTrackUpdated.Valid {
 					upd = abTrackUpdated.Time.UTC()
 				}
