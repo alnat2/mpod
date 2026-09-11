@@ -83,3 +83,48 @@ export function getEpisodeShowNotes(
 
   return "No show notes available.";
 }
+
+export function isValid24HourTime(value: string | null | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value.trim());
+}
+
+export function applyTimeMask(value: string, previousValue = ""): string {
+  if (value.length < previousValue.length) {
+    if (previousValue.endsWith(":") && value.length === previousValue.length - 1) {
+      return value.slice(0, -1);
+    }
+    return value;
+  }
+
+  const digits = value.replace(/\D/g, "").slice(0, 4);
+  if (!digits) {
+    return "";
+  }
+
+  let hours = digits.slice(0, 2);
+  if (hours.length === 1 && Number(hours) > 2) {
+    hours = `0${hours}`;
+  } else if (hours.length === 2 && Number(hours) > 23) {
+    hours = "23";
+  }
+
+  const minutes = digits.slice(2, 4);
+  let formattedMinutes = "";
+  if (minutes.length === 1 && Number(minutes) > 5) {
+    formattedMinutes = "5";
+  } else if (minutes.length === 2 && Number(minutes) > 59) {
+    formattedMinutes = "59";
+  } else {
+    formattedMinutes = minutes;
+  }
+
+  if (hours.length === 2) {
+    return `${hours}:${formattedMinutes}`;
+  }
+
+  return hours;
+}
+

@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api";
 
 import {
+  applyTimeMask,
   formatClock,
   formatDateTime,
   formatEpisodeDate,
   formatDuration,
   getErrorMessage,
+  isValid24HourTime,
 } from "./screen-utils";
 
 describe("screen-utils", () => {
@@ -49,5 +51,43 @@ describe("screen-utils", () => {
     const formatted = formatDateTime("2026-09-10T13:52:00Z");
     expect(formatted).not.toMatch(/AM|PM/i);
     expect(formatted).toMatch(/\d{2}:\d{2}/);
+  });
+
+  it("validates 24-hour time format", () => {
+    expect(isValid24HourTime("00:00")).toBe(true);
+    expect(isValid24HourTime("04:00")).toBe(true);
+    expect(isValid24HourTime("13:52")).toBe(true);
+    expect(isValid24HourTime("23:59")).toBe(true);
+
+    expect(isValid24HourTime("24:00")).toBe(false);
+    expect(isValid24HourTime("04:60")).toBe(false);
+    expect(isValid24HourTime("4:00")).toBe(false);
+    expect(isValid24HourTime("12:5")).toBe(false);
+    expect(isValid24HourTime("")).toBe(false);
+    expect(isValid24HourTime(null)).toBe(false);
+    expect(isValid24HourTime(undefined)).toBe(false);
+  });
+
+  it("applies 24-hour time mask while typing and deleting", () => {
+    expect(applyTimeMask("")).toBe("");
+    expect(applyTimeMask("1")).toBe("1");
+    expect(applyTimeMask("14")).toBe("14:");
+    expect(applyTimeMask("14:3")).toBe("14:3");
+    expect(applyTimeMask("14:30")).toBe("14:30");
+
+    // Auto-prefix single digits > 2
+    expect(applyTimeMask("4")).toBe("04:");
+    expect(applyTimeMask("9")).toBe("09:");
+
+    // Clamp out-of-range hours (> 23)
+    expect(applyTimeMask("28")).toBe("23:");
+
+    // Clamp out-of-range minutes (> 59)
+    expect(applyTimeMask("14:7")).toBe("14:5");
+    expect(applyTimeMask("14:85")).toBe("14:59");
+
+    // Deletion support
+    expect(applyTimeMask("14:", "14:3")).toBe("14:");
+    expect(applyTimeMask("14", "14:")).toBe("1");
   });
 });

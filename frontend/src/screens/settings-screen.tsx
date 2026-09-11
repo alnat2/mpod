@@ -19,7 +19,7 @@ import { useLatestRequest } from "@/lib/use-latest-request";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
 import { ErrorBanner, ScreenBannerStack } from "./screen-states";
-import { getErrorMessage } from "./screen-utils";
+import { applyTimeMask, getErrorMessage, isValid24HourTime } from "./screen-utils";
 
 type SettingsScreenProps = {
   onSessionChange?: () => void | Promise<void>;
@@ -229,6 +229,9 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
   }, [reloadKey, statusPollRequests]);
 
   async function handleSaveRefreshTime() {
+    if (!isValid24HourTime(dailyRefreshTime)) {
+      return;
+    }
     setSaving(true);
     setActionError(null);
 
@@ -324,19 +327,33 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                 >
                   <div className="flex w-full items-center gap-2 min-[1360px]:w-[220px]">
                     <Input
-                      type="time"
-                      lang="en-GB"
-                      step="60"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="04:00"
+                      maxLength={5}
                       aria-label="Daily refresh time"
                       value={dailyRefreshTime}
                       disabled={loading || saving}
-                      className="h-9 rounded-md px-3 text-base"
-                      onChange={(event) => setDailyRefreshTime(event.target.value)}
+                      aria-invalid={!isValid24HourTime(dailyRefreshTime)}
+                      className="h-9 w-24 rounded-md px-3 text-center font-mono text-base"
+                      onChange={(event) =>
+                        setDailyRefreshTime(
+                          applyTimeMask(event.target.value, dailyRefreshTime)
+                        )
+                      }
+                      onBlur={() => {
+                        if (dailyRefreshTime && !isValid24HourTime(dailyRefreshTime)) {
+                          const digits = dailyRefreshTime.replace(/\D/g, "");
+                          if (digits.length > 0 && digits.length <= 2 && Number(digits) <= 23) {
+                            setDailyRefreshTime(`${digits.padStart(2, "0")}:00`);
+                          }
+                        }
+                      }}
                     />
                     <Button
                       type="button"
                       className="h-9 w-[116px] rounded-lg px-4 min-[1360px]:w-auto"
-                      disabled={saving || loading}
+                      disabled={saving || loading || !isValid24HourTime(dailyRefreshTime)}
                       onClick={() => void handleSaveRefreshTime()}
                     >
                       Save time

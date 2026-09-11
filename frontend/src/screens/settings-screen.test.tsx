@@ -100,8 +100,9 @@ describe("SettingsScreen", () => {
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
     const timeInput = screen.getByDisplayValue("03:00");
     expect(timeInput).toBeInTheDocument();
-    expect(timeInput).toHaveAttribute("lang", "en-GB");
-    expect(timeInput).toHaveAttribute("step", "60");
+    expect(timeInput).toHaveAttribute("type", "text");
+    expect(timeInput).toHaveAttribute("placeholder", "04:00");
+    expect(timeInput).toHaveAttribute("maxLength", "5");
     expect(
       screen.getByText("Last refresh never")
     ).toBeInTheDocument();
@@ -153,6 +154,25 @@ describe("SettingsScreen", () => {
     await waitFor(() => {
       expect(updateSpy).toHaveBeenCalledWith({ dailyRefreshTime: "04:30" });
     });
+  });
+
+  it("disables save time button when entered time is invalid", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+
+    const timeInput = await screen.findByDisplayValue("03:00");
+    const saveButton = screen.getByRole("button", { name: "Save time" });
+    expect(saveButton).toBeEnabled();
+
+    await user.clear(timeInput);
+    expect(saveButton).toBeDisabled();
+
+    await user.type(timeInput, "2");
+    expect(saveButton).toBeDisabled();
+
+    await user.type(timeInput, "359");
+    expect(timeInput).toHaveValue("23:59");
+    expect(saveButton).toBeEnabled();
   });
 
   it("updates proxy enabled state when the switch is clicked", async () => {
