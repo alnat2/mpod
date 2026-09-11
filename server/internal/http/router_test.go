@@ -3201,6 +3201,59 @@ func TestProxyStatusEndpointRetriesOnTransientErrorAndSucceeds(t *testing.T) {
 	}
 }
 
+func TestProxyStatusEndpointFallsBackToSecondaryProviderWhenPrimaryFails(t *testing.T) {
+	origDelay := proxyLookupRetryDelay
+	proxyLookupRetryDelay = time.Millisecond
+	t.Cleanup(func() {
+		proxyLookupRetryDelay = origDelay
+	})
+
+	var requestedURLs []string
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		requestedURLs = append(requestedURLs, req.URL.String())
+		if req.Header.Get("User-Agent") != proxyLookupUserAgent {
+			t.Fatalf("expected browser User-Agent, got %q", req.Header.Get("User-Agent"))
+		}
+		if req.URL.String() == "https://ipwho.is/" {
+			return nil, io.EOF
+		}
+		if req.URL.String() == "https://ifconfig.co/json" {
+			return routerJSONResponse(`{"ip":"203.0.113.50","country":"Netherlands"}`), nil
+		}
+		return nil, errors.New("unexpected URL")
+	})
+	handler, _ := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+		SOCKS5Host:   "127.0.0.1",
+		SOCKS5Port:   "1080",
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+
+	patchReq := httptest.NewRequest(nethttp.MethodPatch, "/api/settings", bytes.NewReader([]byte(`{"proxyEnabled":true}`)))
+	patchReq.AddCookie(cookie)
+	patchRec := httptest.NewRecorder()
+	handler.ServeHTTP(patchRec, patchReq)
+	if patchRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected settings patch to enable proxy, got %d body=%s", patchRec.Code, patchRec.Body.String())
+	}
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/proxy/status", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"status":"ok"`) {
+		t.Fatalf("expected ok status, got %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"externalIp":"203.0.113.50"`) || !strings.Contains(rec.Body.String(), `"country":"Netherlands"`) {
+		t.Fatalf("expected observed identity payload from fallback, got %s", rec.Body.String())
+	}
+}
+
 func TestProxyStatusEndpointReturnsErrorStateWhenLookupFails(t *testing.T) {
 	origDelay := proxyLookupRetryDelay
 	proxyLookupRetryDelay = time.Millisecond
@@ -3237,8 +3290,8 @@ func TestProxyStatusEndpointReturnsErrorStateWhenLookupFails(t *testing.T) {
 	if rec.Code != nethttp.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if attempts != 3 {
-		t.Fatalf("expected 3 attempts before returning error, got %d", attempts)
+	if attempts != 6 {
+		t.Fatalf("expected 6 attempts across all providers before returning error, got %d", attempts)
 	}
 	if !strings.Contains(rec.Body.String(), `"status":"error"`) {
 		t.Fatalf("expected error status, got %s", rec.Body.String())

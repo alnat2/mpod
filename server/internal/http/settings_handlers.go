@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	proxyLookupMaxAttempts = 3
+	proxyLookupMaxAttempts = 2
 	proxyLookupRetryDelay  = 200 * time.Millisecond
 )
 
@@ -92,66 +92,127 @@ func (r *Router) handleProxyStatus(w nethttp.ResponseWriter, req *nethttp.Reques
 	})
 }
 
+const proxyLookupUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+
+type proxyLookupEndpoint struct {
+	url   string
+	parse func(body io.Reader) (settings.ProxyLookupResult, error)
+}
+
+var defaultProxyLookupEndpoints = []proxyLookupEndpoint{
+	{
+		url: "https://ipwho.is/",
+		parse: func(body io.Reader) (settings.ProxyLookupResult, error) {
+			var payload struct {
+				Success bool   `json:"success"`
+				IP      string `json:"ip"`
+				Country string `json:"country"`
+				Message string `json:"message"`
+			}
+			if err := json.NewDecoder(body).Decode(&payload); err != nil {
+				return settings.ProxyLookupResult{}, fmt.Errorf("decode: %w", err)
+			}
+			if !payload.Success {
+				msg := strings.TrimSpace(payload.Message)
+				if msg != "" {
+					return settings.ProxyLookupResult{}, errors.New(msg)
+				}
+				return settings.ProxyLookupResult{}, errors.New("external identity lookup failed")
+			}
+			return settings.ProxyLookupResult{
+				ExternalIP: strings.TrimSpace(payload.IP),
+				Country:    strings.TrimSpace(payload.Country),
+			}, nil
+		},
+	},
+	{
+		url: "https://ifconfig.co/json",
+		parse: func(body io.Reader) (settings.ProxyLookupResult, error) {
+			var payload struct {
+				IP      string `json:"ip"`
+				Country string `json:"country"`
+			}
+			if err := json.NewDecoder(body).Decode(&payload); err != nil {
+				return settings.ProxyLookupResult{}, fmt.Errorf("decode: %w", err)
+			}
+			if strings.TrimSpace(payload.IP) == "" {
+				return settings.ProxyLookupResult{}, errors.New("empty IP returned")
+			}
+			return settings.ProxyLookupResult{
+				ExternalIP: strings.TrimSpace(payload.IP),
+				Country:    strings.TrimSpace(payload.Country),
+			}, nil
+		},
+	},
+	{
+		url: "https://api.ipify.org?format=json",
+		parse: func(body io.Reader) (settings.ProxyLookupResult, error) {
+			var payload struct {
+				IP string `json:"ip"`
+			}
+			if err := json.NewDecoder(body).Decode(&payload); err != nil {
+				return settings.ProxyLookupResult{}, fmt.Errorf("decode: %w", err)
+			}
+			if strings.TrimSpace(payload.IP) == "" {
+				return settings.ProxyLookupResult{}, errors.New("empty IP returned")
+			}
+			return settings.ProxyLookupResult{
+				ExternalIP: strings.TrimSpace(payload.IP),
+			}, nil
+		},
+	},
+}
+
 func fetchObservedProxyStatus(ctx context.Context, client *nethttp.Client) (settings.ProxyLookupResult, error) {
 	var lastErr error
 
-	for attempt := 1; attempt <= proxyLookupMaxAttempts; attempt++ {
-		if attempt > 1 {
-			select {
-			case <-ctx.Done():
-				return settings.ProxyLookupResult{}, ctx.Err()
-			case <-time.After(proxyLookupRetryDelay):
+	for _, endpoint := range defaultProxyLookupEndpoints {
+		for attempt := 1; attempt <= proxyLookupMaxAttempts; attempt++ {
+			if attempt > 1 {
+				select {
+				case <-ctx.Done():
+					return settings.ProxyLookupResult{}, ctx.Err()
+				case <-time.After(proxyLookupRetryDelay):
+				}
+			}
+
+			req, err := nethttp.NewRequestWithContext(ctx, nethttp.MethodGet, endpoint.url, nil)
+			if err != nil {
+				lastErr = fmt.Errorf("build proxy status request: %w", err)
+				break
+			}
+			req.Header.Set("Accept", "application/json")
+			req.Header.Set("User-Agent", proxyLookupUserAgent)
+
+			resp, err := client.Do(req)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+
+			if resp.StatusCode >= 500 {
+				_ = resp.Body.Close()
+				lastErr = fmt.Errorf("remote server returned status %d", resp.StatusCode)
+				continue
+			}
+
+			if resp.StatusCode != nethttp.StatusOK {
+				_ = resp.Body.Close()
+				lastErr = fmt.Errorf("unexpected status %d", resp.StatusCode)
+				break
+			}
+
+			result, parseErr := endpoint.parse(resp.Body)
+			_ = resp.Body.Close()
+			if parseErr != nil {
+				lastErr = parseErr
+				continue
+			}
+
+			if result.ExternalIP != "" {
+				return result, nil
 			}
 		}
-
-		req, err := nethttp.NewRequestWithContext(ctx, nethttp.MethodGet, "https://ipwho.is/", nil)
-		if err != nil {
-			return settings.ProxyLookupResult{}, fmt.Errorf("build proxy status request: %w", err)
-		}
-		req.Header.Set("Accept", "application/json")
-
-		resp, err := client.Do(req)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		if resp.StatusCode >= 500 {
-			_ = resp.Body.Close()
-			lastErr = fmt.Errorf("remote server returned status %d", resp.StatusCode)
-			continue
-		}
-
-		if resp.StatusCode != nethttp.StatusOK {
-			_ = resp.Body.Close()
-			return settings.ProxyLookupResult{}, fmt.Errorf("request proxy status: unexpected status %d", resp.StatusCode)
-		}
-
-		var payload struct {
-			Success bool   `json:"success"`
-			IP      string `json:"ip"`
-			Country string `json:"country"`
-			Message string `json:"message"`
-		}
-		decodeErr := json.NewDecoder(resp.Body).Decode(&payload)
-		_ = resp.Body.Close()
-		if decodeErr != nil {
-			lastErr = fmt.Errorf("decode proxy status: %w", decodeErr)
-			continue
-		}
-
-		if !payload.Success {
-			msg := strings.TrimSpace(payload.Message)
-			if msg != "" {
-				return settings.ProxyLookupResult{}, fmt.Errorf("request proxy status: %s", msg)
-			}
-			return settings.ProxyLookupResult{}, fmt.Errorf("request proxy status: external identity lookup failed")
-		}
-
-		return settings.ProxyLookupResult{
-			ExternalIP: payload.IP,
-			Country:    payload.Country,
-		}, nil
 	}
 
 	if errors.Is(lastErr, io.EOF) || strings.Contains(lastErr.Error(), "EOF") {
