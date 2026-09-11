@@ -717,6 +717,15 @@ export function usePlaybackAudio({
           }
         }
       );
+    } else if (!playing && !userInitiatedPlayRef.current) {
+      const initialPos = clampPosition(
+        currentEpisode.playback?.positionSeconds ?? 0,
+        currentEpisodeDuration
+      );
+      if (currentEpisode.playback?.positionSeconds !== undefined) {
+        setAudioPosition(audio, initialPos);
+        setPositionSeconds(initialPos);
+      }
     }
   }, [
     audioRef,
@@ -731,6 +740,7 @@ export function usePlaybackAudio({
     sourcePrimedRef,
     sourceReadyRef,
     speedLabelRef,
+    userInitiatedPlayRef,
   ]);
 
   useEffect(() => {
@@ -998,7 +1008,25 @@ export function usePlaybackAudio({
       setPlaybackError(null);
       userInitiatedPlayRef.current = true;
 
-      const initialPosition = track.isListened ? 0 : track.positionSeconds;
+      let initialPosition = track.isListened ? 0 : track.positionSeconds;
+      let lastUpdated = new Date().toISOString();
+      if (!track.isListened) {
+        try {
+          const res = await api.playback.get({
+            audiobookId,
+            trackId: track.id,
+          });
+          if (res.playback) {
+            initialPosition = res.playback.positionSeconds;
+            lastUpdated = res.playback.lastUpdated;
+          }
+        } catch {
+          // fallback to track.positionSeconds
+        }
+      }
+      if (sourceGenerationRef.current !== currentGen) {
+        return;
+      }
       if (track.isListened) {
         await api.playback.update({
           audiobookId,
@@ -1029,7 +1057,7 @@ export function usePlaybackAudio({
           audiobookId,
           trackId: track.id,
           positionSeconds: initialPosition,
-          lastUpdated: new Date().toISOString(),
+          lastUpdated,
         },
       };
       setQueue((current) =>

@@ -3273,6 +3273,96 @@ describe("PlaybackProvider", () => {
     );
   });
 
+  it("playAudiobookTrack fetches and applies latest server playback position when starting track", async () => {
+    const user = userEvent.setup();
+    const chapter2 = {
+      id: 802,
+      audiobookId: 400,
+      trackNumber: 2,
+      title: "Chapter 2",
+      relPath: "02.mp3",
+      filePath: "/share/audio/abooks/Book/02.mp3",
+      duration: 500,
+      isListened: false,
+      positionSeconds: 0,
+    };
+    const audiobookQueueItem: PlaybackQueueEpisode = {
+      id: 400,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 400,
+      trackId: 801,
+      trackNumber: 1,
+      trackCount: 2,
+      title: "Sync Test Book",
+      author: "Author",
+      podcastTitle: "Author",
+      audioUrl: "/api/audiobooks/400/tracks/801/audio",
+      duration: 500,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: {
+        audiobookId: 400,
+        trackId: 801,
+        positionSeconds: 0,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    };
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [audiobookQueueItem],
+      activePlayback: {
+        audiobookId: 400,
+        trackId: 801,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    });
+    vi.mocked(api.playback.get).mockImplementation(async (target) => {
+      if ("audiobookId" in target && target.trackId === 802) {
+        return {
+          playback: {
+            audiobookId: 400,
+            trackId: 802,
+            positionSeconds: 250,
+            lastUpdated: "2026-05-22T08:30:00Z",
+          },
+        };
+      }
+      return { playback: null };
+    });
+
+    function TestHarness() {
+      const { positionSeconds } = usePlaybackProgress();
+      const { playAudiobookTrack } = usePlaybackDispatch();
+      return (
+        <div>
+          <div data-testid="position">{positionSeconds}</div>
+          <button
+            type="button"
+            onClick={() => playAudiobookTrack(400, chapter2)}
+          >
+            Play Chapter 2
+          </button>
+        </div>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <TestHarness />
+      </PlaybackProvider>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Play Chapter 2" }));
+    const audio = FakeAudio.first;
+    audio.duration = 500;
+    audio.emit("loadedmetadata");
+
+    await waitFor(() =>
+      expect(screen.getByTestId("position")).toHaveTextContent("250")
+    );
+  });
+
   it("commits previous episode with effective browser duration and completed=false on intentional playEpisode switch, without duplicate or misdirected progress, using DB duration before metadata", async () => {
     const user = userEvent.setup();
     const episodeA: PlaybackQueueEpisode = {

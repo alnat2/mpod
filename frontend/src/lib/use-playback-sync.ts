@@ -60,10 +60,13 @@ function isNewerPlaybackState(
     return true;
   }
 
-  return (
-    new Date(nextPlayback.lastUpdated).getTime() >
-    new Date(currentPlayback.lastUpdated).getTime()
-  );
+  const nextTime = new Date(nextPlayback.lastUpdated).getTime();
+  const currentTime = new Date(currentPlayback.lastUpdated).getTime();
+  if (Number.isNaN(nextTime) || Number.isNaN(currentTime) || nextTime === currentTime) {
+    return nextPlayback.positionSeconds !== currentPlayback.positionSeconds;
+  }
+
+  return nextTime > currentTime;
 }
 
 function playbackDurationSeconds(
