@@ -112,7 +112,7 @@ export function applyTimeMask(value: string, previousValue = ""): string {
   }
 
   const minutes = digits.slice(2, 4);
-  let formattedMinutes = "";
+  let formattedMinutes: string;
   if (minutes.length === 1 && Number(minutes) > 5) {
     formattedMinutes = "5";
   } else if (minutes.length === 2 && Number(minutes) > 59) {

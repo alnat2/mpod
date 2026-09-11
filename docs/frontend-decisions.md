@@ -86,8 +86,22 @@ Decision:
 
 Rules:
 - when proxy runtime lookup succeeds, use `Current IP: {ip} • Geo: {country}` with backend-provided values
+- when proxy runtime lookup fails or reports an error, error copy must use the `destructive` font color (`text-destructive`)
 - do not repeat scheduler or proxy runtime status inside their setting cards
 - desktop keeps the wide refresh card on the left and the remaining settings in a compact `2×2` grid; mobile stacks the same cards vertically
+
+### Error Text and Status Styling
+
+Decision:
+- all error copy, validation feedback, and operational error states must use the semantic `destructive` font color (`text-destructive`)
+
+Reasoning:
+- error states must be immediately recognizable and clearly distinguishable from neutral or muted informational copy
+- relying on the `destructive` design token keeps styling uniform across inputs, forms, cards, banners, and header subtitles
+
+Rules:
+- use `destructive` (`text-destructive`) for any error text, validation error message, banner, or error status indicator
+- do not render error states or failure notices using neutral or muted font colors (`text-muted-foreground`)
 
 ### shadcn Skills
 

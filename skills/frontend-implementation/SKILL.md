@@ -77,6 +77,7 @@ Before implementing from Figma, read:
 - Compose mpod components on top of shadcn primitives; do not build a new design system.
 - Keep mpod-specific components outside `frontend/src/components/ui/`.
 - Use semantic Tailwind/shadcn tokens such as `bg-background`, `bg-card`, `text-foreground`, `text-muted-foreground`, `border-border`, `bg-primary`, and `text-primary-foreground`.
+- For error states, validation feedback, and error status indicators, use the semantic destructive font color (`text-destructive`); do not use neutral or muted text for errors.
 - Do not use raw hex colors for app UI unless a documented asset or external image requires it.
 - Use shadcn variants before custom styling.
 - Use `gap-*` for layout spacing, not `space-x-*` or `space-y-*`.

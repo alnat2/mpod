@@ -85,7 +85,10 @@ function formatProxyIdentity(
 
   if (proxyStatus?.status === "error") {
     return (
-      <span title={proxyStatus.error ?? undefined}>
+      <span
+        className="text-destructive"
+        title={proxyStatus.error ?? undefined}
+      >
         Information is unavailable due to an error.
       </span>
     );

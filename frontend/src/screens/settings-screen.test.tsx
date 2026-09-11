@@ -297,6 +297,7 @@ describe("SettingsScreen", () => {
       "Information is unavailable due to an error."
     );
     expect(errorElement).toBeInTheDocument();
+    expect(errorElement).toHaveClass("text-destructive");
     expect(errorElement).toHaveAttribute(
       "title",
       "request proxy status: lookup failed"
