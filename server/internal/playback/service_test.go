@@ -1359,6 +1359,36 @@ func TestAudiobookPlaybackUpdatesActivePlaybackAndResolvesTrack(t *testing.T) {
 	if res2.Playback.TrackID != 11 || res2.Playback.PositionSeconds != 500 {
 		t.Fatalf("expected resolved TrackID 11 at position 500, got %d at %d", res2.Playback.TrackID, res2.Playback.PositionSeconds)
 	}
+
+	// Verify that sending 0 seconds without DidSeek does NOT reset the position
+	res3, err := service.Update(context.Background(), UpdateInput{
+		AudiobookID:     &abID,
+		TrackID:         &trID,
+		PositionSeconds: 0,
+		DurationSeconds: 1800,
+		DidSeek:         false,
+	})
+	if err != nil {
+		t.Fatalf("Update with 0 without seek error: %v", err)
+	}
+	if res3.Playback.PositionSeconds != 500 {
+		t.Fatalf("expected position to stay 500 when 0 sent without seek, got %d", res3.Playback.PositionSeconds)
+	}
+
+	// Verify that sending 0 seconds WITH DidSeek DOES reset the position
+	res4, err := service.Update(context.Background(), UpdateInput{
+		AudiobookID:     &abID,
+		TrackID:         &trID,
+		PositionSeconds: 0,
+		DurationSeconds: 1800,
+		DidSeek:         true,
+	})
+	if err != nil {
+		t.Fatalf("Update with 0 with seek error: %v", err)
+	}
+	if res4.Playback.PositionSeconds != 0 {
+		t.Fatalf("expected position to reset to 0 when explicitly seeking, got %d", res4.Playback.PositionSeconds)
+	}
 }
 
 func newTestDB(t *testing.T) *storage.DB {

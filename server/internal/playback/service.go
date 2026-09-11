@@ -748,6 +748,18 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 			return result, nil
 		}
 
+		if currentPosition.Valid && position < currentPosition.Int64 {
+			diff := currentPosition.Int64 - position
+			if diff < 30 || !input.DidSeek {
+				return UpdateResult{Playback: State{
+					AudiobookID:     abID,
+					TrackID:         *input.TrackID,
+					PositionSeconds: currentPosition.Int64,
+					LastUpdated:     currentUpdated.Time.UTC(),
+				}}, nil
+			}
+		}
+
 		if _, err := tx.ExecContext(ctx, `UPDATE audiobook_tracks SET is_listened = 0 WHERE id = ? AND is_listened = 1`, *input.TrackID); err != nil {
 			return UpdateResult{}, fmt.Errorf("mark replayed audiobook track unlistened: %w", err)
 		}

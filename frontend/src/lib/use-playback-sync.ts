@@ -444,7 +444,14 @@ export function usePlaybackSync({
   }, [audioRef, commitPlayback, currentItemKey, playing]);
 
   useEffect(() => {
-    const flushPlaybackState = () => {
+    const flushPlaybackState = (event?: Event) => {
+      if (event?.type === "visibilitychange" && document.visibilityState !== "hidden") {
+        return;
+      }
+      const audio = audioRef.current;
+      if (!playingRef.current && (!audio || audio.currentTime === 0)) {
+        return;
+      }
       commitCurrentPlayback({ beacon: true });
     };
 
@@ -455,7 +462,7 @@ export function usePlaybackSync({
       window.removeEventListener("pagehide", flushPlaybackState);
       document.removeEventListener("visibilitychange", flushPlaybackState);
     };
-  }, [commitCurrentPlayback]);
+  }, [audioRef, commitCurrentPlayback, playingRef]);
 
   return {
     commitPlayback,
