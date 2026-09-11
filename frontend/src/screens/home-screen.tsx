@@ -389,7 +389,7 @@ export function HomeScreen() {
       const isCurrentTrack =
         (currentEpisode?.audiobookId ?? currentEpisode?.id) ===
           selectedBookForChapters.id && currentEpisode?.trackId === track.id;
-      if (isCurrentTrack) {
+      if (isCurrentTrack && playing) {
         playToggle();
         return;
       }
