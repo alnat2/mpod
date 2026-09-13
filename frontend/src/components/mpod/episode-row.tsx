@@ -16,7 +16,6 @@ import {
   ViewIcon,
 } from "@hugeicons/core-free-icons";
 
-import downloadedStatusIcon from "@/assets/episode-downloaded-status.svg";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -70,36 +69,6 @@ type EpisodeRowProps = {
   children?: ReactNode;
 };
 
-function EpisodeStatusIcon({
-  className,
-  src,
-}: {
-  className?: string;
-  src: string;
-}) {
-  return (
-    <span
-      className="flex size-4 shrink-0 items-center justify-center"
-      data-episode-status-icon="downloaded"
-      aria-hidden="true"
-    >
-      <span
-        className={cn("block bg-current", className)}
-        style={{
-          maskImage: `url("${src}")`,
-          maskPosition: "center",
-          maskRepeat: "no-repeat",
-          maskSize: "100% 100%",
-          WebkitMaskImage: `url("${src}")`,
-          WebkitMaskPosition: "center",
-          WebkitMaskRepeat: "no-repeat",
-          WebkitMaskSize: "100% 100%",
-        }}
-      />
-    </span>
-  );
-}
-
 function EpisodeIconButton({
   action,
 }: {
@@ -138,12 +107,10 @@ export const EpisodeRow = memo(function EpisodeRow({
   compactMobile = false,
   current,
   currentStatusLabel,
-  downloaded = false,
   layout = "auto",
   title,
   podcastTitle,
   subtitle,
-  dateLabel,
   durationLabel,
   thumbnailUrl,
   thumbnailAlt = "",
@@ -176,9 +143,7 @@ export const EpisodeRow = memo(function EpisodeRow({
       { label: "Show notes", icon: ViewIcon },
     ];
   const resolvedSubtitle = subtitle ?? podcastTitle;
-  const mobileInfoLabel = current
-    ? (currentStatusLabel ?? "Now playing")
-    : resolvedSubtitle;
+  const mobileInfoLabel = currentStatusLabel ?? resolvedSubtitle;
   const desktopActions = children ?? resolvedActions.map((action) => (
     <EpisodeIconButton action={action} key={action.label} />
   ));
@@ -186,7 +151,7 @@ export const EpisodeRow = memo(function EpisodeRow({
   return (
     <div
       className={cn(
-        "w-full shrink-0 bg-card text-foreground shadow-xs",
+        "w-full shrink-0 bg-card text-foreground shadow-xs border border-transparent",
         isMobile
           ? cn(
               "relative grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2 overflow-hidden rounded-[16px] py-3 pr-3 pl-8",
@@ -199,7 +164,7 @@ export const EpisodeRow = memo(function EpisodeRow({
             : "relative grid h-[116px] grid-cols-[minmax(0,1fr)_auto] grid-rows-[40px_44px] gap-x-2 gap-y-2 overflow-hidden rounded-[16px] py-3 pr-3 pl-8 md:flex md:h-[70px] md:items-center md:gap-3 md:rounded md:px-3 md:py-0",
         draggable && "cursor-grab",
         dragging && "opacity-60",
-        current && "bg-accent",
+        current && "bg-accent border-border",
         className
       )}
       data-episode-row-id={episodeRowId}
@@ -279,9 +244,6 @@ export const EpisodeRow = memo(function EpisodeRow({
             )}
           >
             <div className="col-span-2 flex min-w-0 items-center gap-0.5 text-chart-5">
-              {downloaded ? (
-                <EpisodeStatusIcon className="size-full" src={downloadedStatusIcon} />
-              ) : null}
               {mobileInfoLabel ? (
                 <p className="min-w-0 flex-1 truncate text-xs leading-4">
                   {mobileInfoLabel}
@@ -293,22 +255,16 @@ export const EpisodeRow = memo(function EpisodeRow({
                 {durationLabel}
               </span>
             ) : null}
-            {dateLabel ? (
-              <span className="self-start text-right whitespace-nowrap text-xs leading-4 text-muted-foreground">
-                {dateLabel}
-              </span>
-            ) : null}
           </div>
         ) : null}
         {!isMobile && resolvedSubtitle ? (
           <p
             className={cn(
-              "truncate text-xs leading-4 text-muted-foreground",
-              !isDesktop && "hidden md:block",
-              current && "text-chart-5"
+              "truncate text-xs leading-4 text-chart-5",
+              !isDesktop && "hidden md:block"
             )}
           >
-            {current ? `${resolvedSubtitle} · now playing` : resolvedSubtitle}
+            {resolvedSubtitle}
           </p>
         ) : null}
       </div>
@@ -321,7 +277,6 @@ export const EpisodeRow = memo(function EpisodeRow({
               : "hidden md:flex md:flex-row md:items-center md:gap-2"
           )}
         >
-          {dateLabel ? <span>{dateLabel}</span> : null}
           {durationLabel ? <span>{durationLabel}</span> : null}
         </div>
       ) : null}

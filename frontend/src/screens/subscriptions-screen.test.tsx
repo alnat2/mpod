@@ -512,7 +512,8 @@ describe("SubscriptionsScreen", () => {
       "Show notes",
       "Mark as unlistened",
     ]);
-    expect(row).toHaveTextContent("Downloaded");
+    expect(row).toHaveTextContent("In playlist");
+    expect(row).not.toHaveTextContent("Downloaded");
   });
 
   it("opens the show notes modal from the row action", async () => {

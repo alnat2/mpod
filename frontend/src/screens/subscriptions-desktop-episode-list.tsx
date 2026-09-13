@@ -16,7 +16,7 @@ import type {
   CachedSubscriptionPodcast,
 } from "@/lib/subscriptions-cache";
 
-import { formatDuration, formatEpisodeDate } from "./screen-utils";
+import { formatDurationHHMM } from "./screen-utils";
 import { useAudioMetadataDurations } from "./use-audio-metadata-durations";
 
 const EPISODE_ROW_HEIGHT = 70;
@@ -142,15 +142,8 @@ export function SubscriptionsDesktopEpisodeList({
         />
       ) : null}
       {virtualEpisodeWindow.items.map((episode) => {
-        const duration = formatDuration(durationForEpisode(episode));
-        const publishedAt = formatEpisodeDate(episode.publishedAt);
-        const subtitle = episode.downloaded
-          ? episode.inPlaylist
-            ? "Downloaded · In playlist"
-            : "Downloaded"
-          : episode.inPlaylist
-            ? "In playlist"
-            : undefined;
+        const duration = formatDurationHHMM(durationForEpisode(episode));
+        const subtitle = episode.inPlaylist ? "In playlist" : undefined;
         const playlistAction = {
           label: episode.inPlaylist
             ? "Remove from playlist"
@@ -185,9 +178,7 @@ export function SubscriptionsDesktopEpisodeList({
               title={episode.title}
               podcastTitle={podcast.title}
               subtitle={subtitle}
-              downloaded={episode.downloaded}
               inPlaylist={episode.inPlaylist}
-              dateLabel={publishedAt || undefined}
               durationLabel={duration || undefined}
               thumbnailUrl={
                 podcast.imageUrl

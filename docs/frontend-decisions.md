@@ -333,6 +333,27 @@ Rules:
 - switching chapters within the same audiobook resets active browser duration and strictly scopes duration to the new `trackId`, preventing duration bleed from prior chapters
 - explicit completion signals (`completed: true`) are emitted only upon actual playback termination (`ended`), preserving existing completion contracts, auto-advance rules, and render optimizations (preventing queue/list re-renders on progress ticks)
 
+### Playlist & Episode Row Presentation
+
+Decision:
+- Remove all downloaded status icons (`downloadedStatusIcon`) from episode rows across the entire UI.
+- Remove publication date (`dateLabel`) from all episode rows.
+- Active episode row styling:
+  - Background is `bg-accent`.
+  - In addition to background change, an active episode row has a 1px border using the border token (`border-border`). Inactive rows use `border-transparent` to prevent layout shifts.
+- Subtitle presentation in playlist items:
+  - Podcast: podcast title (`episode.podcastTitle`).
+  - Single-file audiobook: book author (`episode.author || "Audiobook"`).
+  - Multi-file audiobook: only current chapter and total chapter count, formatted as `Chapter X / Y` (e.g. `Chapter 26 / 26`), without author prefix.
+  - No `· now playing` or `Now playing` label in subtitles; active status is indicated by the row background and border.
+- Time and progress formatting:
+  - Time format uses `HH:MM` (`ЧЧ:ММ` mask without spaces, e.g. `01:12`, and `00:54` for tracks under 1 hour).
+  - Unplayed track: shows total duration (`HH:MM`).
+  - Partially played track (`progress > 0`): shows played time and total duration (`HH:MM / HH:MM`, e.g. `01:12 / 01:24`).
+  - On desktop: time is displayed on the right before action buttons.
+  - On mobile: time is displayed on the 3rd row under subtitle.
+  - Artwork on mobile remains hidden; on desktop artwork is visible.
+
 ## Guidance For Frontend Implementation
 
 - keep the frontend simple and maintainable

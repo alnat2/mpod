@@ -207,6 +207,7 @@ vi.mock("@/components/mpod", () => ({
     subtitle,
     current,
     currentStatusLabel,
+    durationLabel,
     downloaded,
     inPlaylist,
     showDragHandle,
@@ -218,6 +219,7 @@ vi.mock("@/components/mpod", () => ({
     subtitle?: string;
     current?: boolean;
     currentStatusLabel?: string;
+    durationLabel?: string;
     downloaded?: boolean;
     inPlaylist?: boolean;
     showDragHandle?: boolean;
@@ -232,6 +234,7 @@ vi.mock("@/components/mpod", () => ({
         data-subtitle={subtitle}
         data-current={current ? "yes" : "no"}
         data-current-status-label={currentStatusLabel}
+        data-duration={durationLabel}
         data-downloaded={downloaded ? "yes" : "no"}
         data-in-playlist={inPlaylist ? "yes" : "no"}
         draggable={draggable}
@@ -340,7 +343,7 @@ describe("HomeScreen", () => {
     );
   });
 
-  it("passes 'Now playing · Chapter N / M' as currentStatusLabel for active multi-chapter audiobooks", async () => {
+  it("passes 'Chapter N / M' as subtitle for multi-chapter audiobooks without author prefix", async () => {
     const multiChapterBook: PlaybackQueueEpisode = {
       id: 8,
       podcastId: 0,
@@ -367,10 +370,8 @@ describe("HomeScreen", () => {
 
     const row = await screen.findByTestId("episode-row-Oathbringer");
     expect(row).toHaveAttribute("data-current", "yes");
-    expect(row).toHaveAttribute(
-      "data-current-status-label",
-      "Now playing · Chapter 3 / 12"
-    );
+    expect(row).toHaveAttribute("data-subtitle", "Chapter 3 / 12");
+    expect(row).toHaveAttribute("data-duration", "01:00");
   });
 
   it("uses totalTrackCount for chapter denominator when only partial chapters are in playlist", async () => {
@@ -402,13 +403,39 @@ describe("HomeScreen", () => {
     const row = await screen.findByTestId("episode-row-Audiobook Title");
     expect(row).toHaveAttribute("data-current", "yes");
     expect(row).toHaveAttribute(
-      "data-current-status-label",
-      "Now playing · Chapter 26 / 26"
-    );
-    expect(row).toHaveAttribute(
       "data-subtitle",
-      "Some Author · Chapter 26 / 26"
+      "Chapter 26 / 26"
     );
+    expect(row).toHaveAttribute("data-duration", "00:30");
+  });
+
+  it("shows played / total duration for partially played playlist items", async () => {
+    const partiallyPlayed: PlaybackQueueEpisode = {
+      id: 10,
+      podcastId: 5,
+      type: "episode",
+      title: "Partially Played Episode",
+      podcastTitle: "Tech Podcast",
+      audioUrl: "/api/episodes/10/audio",
+      duration: 5040,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: {
+        episodeId: 10,
+        positionSeconds: 4320,
+        lastUpdated: "2026-05-22T08:00:00Z",
+      },
+    };
+    queue = [partiallyPlayed];
+    currentEpisode = partiallyPlayed;
+
+    render(<HomeScreen />);
+
+    const row = await screen.findByTestId("episode-row-Partially Played Episode");
+    expect(row).toHaveAttribute("data-current", "yes");
+    expect(row).toHaveAttribute("data-subtitle", "Tech Podcast");
+    expect(row).toHaveAttribute("data-duration", "01:12 / 01:24");
   });
 
   it("gives the playlist body a real scroll viewport", () => {
@@ -424,16 +451,12 @@ describe("HomeScreen", () => {
     );
   });
 
-  it("shows download state without a redundant playlist state in player rows", async () => {
+  it("shows playlist items with clean subtitle and duration formatting", async () => {
     render(<HomeScreen />);
 
-    expect(
-      await screen.findByTestId("episode-row-First queued episode")
-    ).toHaveAttribute("data-downloaded", "yes");
-    expect(screen.getByTestId("episode-row-First queued episode")).toHaveAttribute(
-      "data-in-playlist",
-      "no"
-    );
+    const row = await screen.findByTestId("episode-row-First queued episode");
+    expect(row).toHaveAttribute("data-subtitle", "Queue Podcast");
+    expect(row).toHaveAttribute("data-duration", "00:30");
   });
 
   it("does not reload the queue when the playback provider has already loaded it", async () => {

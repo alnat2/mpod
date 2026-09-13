@@ -34,7 +34,7 @@ describe("EpisodeRow", () => {
       "truncate"
     );
     expect(screen.getByText("22m")).toBeInTheDocument();
-    expect(screen.getByText("21.05.26")).toBeInTheDocument();
+    expect(screen.queryByText("21.05.26")).not.toBeInTheDocument();
   });
 
   it("uses the compact 96px Figma row for mobile audiobooks", () => {
@@ -57,7 +57,7 @@ describe("EpisodeRow", () => {
     expect(screen.getByText("The Running Grave")).toHaveClass("truncate");
   });
 
-  it("shows local-ready as the downloaded icon and does not add a playlist status icon", () => {
+  it("does not render downloaded status icons or playlist icons", () => {
     const { container } = render(
       <TooltipProvider>
         <EpisodeRow
@@ -77,7 +77,7 @@ describe("EpisodeRow", () => {
     expect(screen.getByText("Decoder Ring")).toBeInTheDocument();
     expect(
       container.querySelector('[data-episode-status-icon="downloaded"]')
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     expect(
       container.querySelector('[data-episode-status-icon="in-playlist"]')
     ).not.toBeInTheDocument();
@@ -91,12 +91,12 @@ describe("EpisodeRow", () => {
           inPlaylist
           layout="desktop"
           title="Why store loyalty cards became a UX minefield"
-          subtitle="Downloaded · In playlist"
+          subtitle="In playlist"
         />
       </TooltipProvider>
     );
 
-    expect(screen.getByText("Downloaded · In playlist")).toBeInTheDocument();
+    expect(screen.getByText("In playlist")).toBeInTheDocument();
     expect(
       screen.queryByRole("img", { name: "Downloaded, In playlist" })
     ).not.toBeInTheDocument();
@@ -212,7 +212,7 @@ describe("EpisodeRow", () => {
     expect(screen.queryByText("Now playing")).not.toBeInTheDocument();
   });
 
-  it("shows 'Now playing' for an active podcast with podcastTitle 'Chapter 3' without altering the status label", () => {
+  it("shows resolved subtitle without adding 'Now playing' prefix for active items", () => {
     const { rerender } = render(
       <TooltipProvider>
         <EpisodeRow
@@ -226,8 +226,8 @@ describe("EpisodeRow", () => {
     );
 
     expect(screen.getByText("Episode 1")).toBeInTheDocument();
-    expect(screen.getByText("Now playing")).toBeInTheDocument();
-    expect(screen.queryByText("Now playing · Chapter 3")).not.toBeInTheDocument();
+    expect(screen.getByText("Chapter 3")).toBeInTheDocument();
+    expect(screen.queryByText("Now playing")).not.toBeInTheDocument();
 
     rerender(
       <TooltipProvider>
@@ -242,12 +242,11 @@ describe("EpisodeRow", () => {
       </TooltipProvider>
     );
 
-    expect(screen.getByText("Chapter 3: The Big Reveal")).toBeInTheDocument();
-    expect(screen.getByText("Now playing")).toBeInTheDocument();
-    expect(screen.queryByText("Now playing · Chapter 3")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Chapter 3: The Big Reveal")).toHaveLength(2);
+    expect(screen.queryByText("Now playing")).not.toBeInTheDocument();
   });
 
-  it("shows 'Now playing' for active mobile podcast and single-track audiobook without currentStatusLabel", () => {
+  it("shows subtitle for active mobile podcast and single-track audiobook directly", () => {
     const { rerender } = render(
       <TooltipProvider>
         <EpisodeRow
@@ -261,7 +260,8 @@ describe("EpisodeRow", () => {
     );
 
     expect(screen.getByText("Why store loyalty cards became a UX minefield")).toBeInTheDocument();
-    expect(screen.getByText("Now playing")).toBeInTheDocument();
+    expect(screen.getByText("Decoder Ring")).toBeInTheDocument();
+    expect(screen.queryByText("Now playing")).not.toBeInTheDocument();
 
     rerender(
       <TooltipProvider>
@@ -278,11 +278,12 @@ describe("EpisodeRow", () => {
     );
 
     expect(screen.getByText("Single Track Audiobook")).toBeInTheDocument();
-    expect(screen.getByText("Now playing")).toBeInTheDocument();
+    expect(screen.getByText("Audiobook Author")).toBeInTheDocument();
+    expect(screen.queryByText("Now playing")).not.toBeInTheDocument();
   });
 
   it("preserves desktop presentation for active and inactive rows", () => {
-    const { rerender } = render(
+    const { container, rerender } = render(
       <TooltipProvider>
         <EpisodeRow
           current={false}
@@ -297,6 +298,7 @@ describe("EpisodeRow", () => {
 
     expect(screen.getByText("Robert Galbraith · Chapter 3 / 15")).toBeInTheDocument();
     expect(screen.queryByText(/now playing/i)).not.toBeInTheDocument();
+    expect(container.firstElementChild).toHaveClass("border", "border-transparent");
 
     rerender(
       <TooltipProvider>
@@ -312,8 +314,10 @@ describe("EpisodeRow", () => {
     );
 
     expect(
-      screen.getByText("Robert Galbraith · Chapter 3 / 15 · now playing")
+      screen.getByText("Robert Galbraith · Chapter 3 / 15")
     ).toBeInTheDocument();
+    expect(screen.queryByText(/now playing/i)).not.toBeInTheDocument();
+    expect(container.firstElementChild).toHaveClass("bg-accent", "border-border");
   });
 
   it("hides artwork on mobile layout and displays it on desktop layout", () => {

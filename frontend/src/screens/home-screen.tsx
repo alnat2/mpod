@@ -40,7 +40,7 @@ import {
 import {
   formatClock,
   formatDuration,
-  formatEpisodeDate,
+  formatPlaybackProgressDuration,
   getErrorMessage,
   getEpisodeShowNotes,
 } from "./screen-utils";
@@ -210,12 +210,15 @@ const HomeScreenQueueItem = memo(function HomeScreenQueueItem({
   );
   const subtitle = isAudiobook
     ? isMultiChapterAudiobook
-      ? `${episode.author || "Audiobook"} · Chapter ${episode.trackNumber ?? 1} / ${totalChapters}`
+      ? `Chapter ${episode.trackNumber ?? 1} / ${totalChapters}`
       : episode.author || "Audiobook"
-    : undefined;
-  const currentStatusLabel = isMultiChapterAudiobook
-    ? `Now playing · Chapter ${episode.trackNumber ?? 1} / ${totalChapters}`
-    : undefined;
+    : episode.podcastTitle;
+
+  const itemPositionSeconds = episode.playback?.positionSeconds;
+  const durationLabel = formatPlaybackProgressDuration(
+    itemPositionSeconds,
+    episode.duration ?? duration
+  );
 
   const handlePlayClick = useCallback(() => {
     if (isCurrentEpisode) {
@@ -275,17 +278,10 @@ const HomeScreenQueueItem = memo(function HomeScreenQueueItem({
       compactMobile={isMobile && isAudiobook}
       showDragHandle
       current={isCurrentEpisode}
-      currentStatusLabel={currentStatusLabel}
-      downloaded={episode.downloaded}
       title={episode.title}
       podcastTitle={isAudiobook ? (episode.author || "Audiobook") : episode.podcastTitle}
       subtitle={subtitle}
-      dateLabel={
-        isMobile || isAudiobook
-          ? undefined
-          : formatEpisodeDate(episode.publishedAt) || undefined
-      }
-      durationLabel={formatDuration(episode.duration ?? duration)}
+      durationLabel={durationLabel}
       thumbnailUrl={artwork}
       thumbnailAlt={`${episode.title} artwork`}
       episodeRowId={episode.id}

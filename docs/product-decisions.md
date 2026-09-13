@@ -907,6 +907,7 @@ Podcast unsubscribe keeps a 15-second undo window. During that window, the app k
 - A client that wants to switch during active playback may poll the existing episode response while `downloaded = false`. When it becomes `true`, the client pauses, preserves the exact playback position, reloads the same audio URL, seeks to that position, waits until the local source is ready, and resumes. A controlled pause is preferred over a position jump.
 - Web and Android clients may instead finish the current remote stream and use the local file on the next audio request; source switching is not required for API compatibility.
 - The legacy manual download endpoints may remain for compatibility, but normal clients do not expose manual download controls.
+- Download status indicators (downloaded badge/icon) are removed from all UI views (playlist and podcast episode lists). Downloaded files continue to be managed automatically in the background as disposable local copies, but no download icon is displayed in the user interface.
 
 ### Deletion Rules
 - `DELETE /api/episodes/:id/download` deletes the local file if it exists and clears `downloaded_path`.

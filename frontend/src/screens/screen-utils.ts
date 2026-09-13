@@ -22,6 +22,29 @@ export function formatDuration(seconds: number | null | undefined, fallback = ""
   return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
 }
 
+export function formatDurationHHMM(seconds: number | null | undefined, fallback = "00:00") {
+  if (!seconds || seconds <= 0) {
+    return fallback;
+  }
+
+  const totalMinutes = Math.floor(seconds / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+}
+
+export function formatPlaybackProgressDuration(
+  positionSeconds: number | null | undefined,
+  totalSeconds: number | null | undefined
+) {
+  const total = formatDurationHHMM(totalSeconds);
+  if (positionSeconds && positionSeconds > 0) {
+    return `${formatDurationHHMM(positionSeconds)} / ${total}`;
+  }
+  return total;
+}
+
 export function formatClock(seconds: number | null | undefined) {
   if (!seconds || seconds <= 0) {
     return "0:00";

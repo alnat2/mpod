@@ -6,8 +6,10 @@ import {
   applyTimeMask,
   formatClock,
   formatDateTime,
+  formatDurationHHMM,
   formatEpisodeDate,
   formatDuration,
+  formatPlaybackProgressDuration,
   getErrorMessage,
   isValid24HourTime,
 } from "./screen-utils";
@@ -21,6 +23,24 @@ describe("screen-utils", () => {
 
   it("falls back to a generic error message", () => {
     expect(getErrorMessage(new Error("boom"))).toBe("Request failed");
+  });
+
+  it("formats durations in HH:MM mask format", () => {
+    expect(formatDurationHHMM(undefined)).toBe("00:00");
+    expect(formatDurationHHMM(0)).toBe("00:00");
+    expect(formatDurationHHMM(54 * 60)).toBe("00:54");
+    expect(formatDurationHHMM(72 * 60)).toBe("01:12");
+    expect(formatDurationHHMM(84 * 60)).toBe("01:24");
+    expect(formatDurationHHMM(10 * 3600 + 5 * 60)).toBe("10:05");
+  });
+
+  it("formats playback progress duration", () => {
+    // Unplayed track
+    expect(formatPlaybackProgressDuration(0, 54 * 60)).toBe("00:54");
+    expect(formatPlaybackProgressDuration(undefined, 84 * 60)).toBe("01:24");
+    // Partially played track
+    expect(formatPlaybackProgressDuration(72 * 60, 84 * 60)).toBe("01:12 / 01:24");
+    expect(formatPlaybackProgressDuration(15 * 60, 54 * 60)).toBe("00:15 / 00:54");
   });
 
   it("formats durations for minutes and hours", () => {
