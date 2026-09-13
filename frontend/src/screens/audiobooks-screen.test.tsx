@@ -446,4 +446,41 @@ describe("AudiobooksScreen", () => {
       expect(listSpy).toHaveBeenCalledTimes(2);
     });
   });
+
+  it("passes an AbortSignal to api.audiobooks.list and aborts on unmount", async () => {
+    let capturedSignal: AbortSignal | undefined;
+    vi.spyOn(api.audiobooks, "list").mockImplementation((signal) => {
+      capturedSignal = signal;
+      return new Promise(() => {});
+    });
+
+    const { unmount } = render(
+      <MemoryRouter>
+        <AudiobooksScreen />
+      </MemoryRouter>
+    );
+
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal?.aborted).toBe(false);
+
+    unmount();
+
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
+  it("does not show an error banner when api.audiobooks.list is aborted", async () => {
+    const abortError = new DOMException("The user aborted a request.", "AbortError");
+    vi.spyOn(api.audiobooks, "list").mockRejectedValue(abortError);
+
+    render(
+      <MemoryRouter>
+        <AudiobooksScreen />
+      </MemoryRouter>
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText("Request failed")).not.toBeInTheDocument();
+  });
 });

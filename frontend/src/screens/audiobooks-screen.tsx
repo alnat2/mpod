@@ -58,21 +58,27 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
   const [pendingAddBookIds, setPendingAddBookIds] = useState<Set<number>>(() => new Set());
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
 
     async function fetchAudiobooks() {
       try {
-        const response = await api.audiobooks.list();
-        if (!cancelled) {
+        const response = await api.audiobooks.list(controller.signal);
+        if (!controller.signal.aborted) {
           setAudiobooks(response.audiobooks ?? []);
           setError(null);
         }
       } catch (caught) {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
+          if (
+            (caught instanceof DOMException && caught.name === "AbortError") ||
+            (caught instanceof Error && caught.name === "AbortError")
+          ) {
+            return;
+          }
           setError(getErrorMessage(caught));
         }
       } finally {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setLoading(false);
         }
       }
@@ -81,7 +87,7 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
     void fetchAudiobooks();
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [reloadKey]);
 
