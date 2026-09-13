@@ -1083,7 +1083,7 @@ func TestIndividualTrackInQueue(t *testing.T) {
 	if len(queue) != 1 {
 		t.Fatalf("expected 1 queue item, got %d", len(queue))
 	}
-	if queue[0].Title != "Dune" || *queue[0].TrackID != 11 || queue[0].TrackCount != 1 {
+	if queue[0].Title != "Dune" || *queue[0].TrackID != 11 || queue[0].TrackCount != 1 || queue[0].TotalTrackCount != 2 {
 		t.Fatalf("unexpected queue item for individual track: %+v", queue[0])
 	}
 	if !queue[0].HasChapters {

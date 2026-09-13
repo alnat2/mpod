@@ -204,16 +204,17 @@ const HomeScreenQueueItem = memo(function HomeScreenQueueItem({
       ? `/api/audiobooks/${episode.audiobookId ?? episode.id}/cover`
       : "/audiobook-fallback.png"
     : (episode.podcastImageUrl ?? undefined);
+  const totalChapters = episode.totalTrackCount || episode.trackCount;
   const isMultiChapterAudiobook = Boolean(
-    isAudiobook && episode.trackCount && episode.trackCount > 1
+    isAudiobook && (episode.hasChapters || (totalChapters && totalChapters > 1))
   );
   const subtitle = isAudiobook
     ? isMultiChapterAudiobook
-      ? `${episode.author || "Audiobook"} · Chapter ${episode.trackNumber ?? 1} / ${episode.trackCount}`
+      ? `${episode.author || "Audiobook"} · Chapter ${episode.trackNumber ?? 1} / ${totalChapters}`
       : episode.author || "Audiobook"
     : undefined;
   const currentStatusLabel = isMultiChapterAudiobook
-    ? `Now playing · Chapter ${episode.trackNumber ?? 1} / ${episode.trackCount}`
+    ? `Now playing · Chapter ${episode.trackNumber ?? 1} / ${totalChapters}`
     : undefined;
 
   const handlePlayClick = useCallback(() => {

@@ -204,6 +204,7 @@ vi.mock("@/components/mpod", () => ({
   ),
   EpisodeRow: ({
     title,
+    subtitle,
     current,
     currentStatusLabel,
     downloaded,
@@ -214,6 +215,7 @@ vi.mock("@/components/mpod", () => ({
     actions = [],
   }: {
     title: string;
+    subtitle?: string;
     current?: boolean;
     currentStatusLabel?: string;
     downloaded?: boolean;
@@ -227,6 +229,7 @@ vi.mock("@/components/mpod", () => ({
     return (
       <div
         data-testid={`episode-row-${title}`}
+        data-subtitle={subtitle}
         data-current={current ? "yes" : "no"}
         data-current-status-label={currentStatusLabel}
         data-downloaded={downloaded ? "yes" : "no"}
@@ -367,6 +370,44 @@ describe("HomeScreen", () => {
     expect(row).toHaveAttribute(
       "data-current-status-label",
       "Now playing · Chapter 3 / 12"
+    );
+  });
+
+  it("uses totalTrackCount for chapter denominator when only partial chapters are in playlist", async () => {
+    const partialAudiobook: PlaybackQueueEpisode = {
+      id: 9,
+      podcastId: 0,
+      type: "audiobook",
+      audiobookId: 9,
+      trackId: 92,
+      trackNumber: 26,
+      trackCount: 19,
+      totalTrackCount: 26,
+      hasChapters: true,
+      title: "Audiobook Title",
+      author: "Some Author",
+      podcastTitle: "Some Author",
+      audioUrl: "/api/audiobooks/9/tracks/92/audio",
+      duration: 1800,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: null,
+    };
+    queue = [partialAudiobook];
+    currentEpisode = partialAudiobook;
+
+    render(<HomeScreen />);
+
+    const row = await screen.findByTestId("episode-row-Audiobook Title");
+    expect(row).toHaveAttribute("data-current", "yes");
+    expect(row).toHaveAttribute(
+      "data-current-status-label",
+      "Now playing · Chapter 26 / 26"
+    );
+    expect(row).toHaveAttribute(
+      "data-subtitle",
+      "Some Author · Chapter 26 / 26"
     );
   });
 
