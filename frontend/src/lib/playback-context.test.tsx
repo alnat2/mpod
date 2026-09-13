@@ -9,6 +9,7 @@ import {
   type PlaybackQueueEpisode,
   type Podcast,
   type PlaybackState,
+  type PlaybackUpdateResponse,
 } from "./api";
 import {
   PlaybackProvider,
@@ -2255,6 +2256,146 @@ describe("PlaybackProvider", () => {
     expect(audio.src).toContain("/api/audiobooks/100/tracks/502/audio");
     expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({ audiobookId: 100, trackId: 501, completed: true }));
     expect(queueSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("seamlessly advances to the next audiobook chapter synchronously when the track ends without waiting for backend network response", async () => {
+    const user = userEvent.setup();
+    const firstTrack = {
+      id: 701,
+      audiobookId: 150,
+      trackNumber: 1,
+      title: "Chapter 1",
+      audioUrl: "/api/audiobooks/150/tracks/701/audio",
+      duration: 100,
+      downloaded: true,
+      isListened: false,
+      publishedAt: null,
+      playback: { audiobookId: 150, trackId: 701, positionSeconds: 0, lastUpdated: "2026-05-22T08:00:00Z" },
+    };
+
+    vi.mocked(api.playback.queue).mockResolvedValue({
+      queue: [{
+        id: 150,
+        podcastId: 0,
+        type: "audiobook" as const,
+        audiobookId: 150,
+        trackId: firstTrack.id,
+        trackNumber: 1,
+        title: "Synchronous Audiobook",
+        description: "",
+        podcastTitle: "Author",
+        author: "Author",
+        audioUrl: firstTrack.audioUrl,
+        duration: 100,
+        downloaded: true,
+        isListened: false,
+        publishedAt: null,
+        playback: firstTrack.playback,
+      }],
+      activePlayback: { audiobookId: 150, trackId: firstTrack.id, lastUpdated: "2026-05-22T08:00:00Z" },
+    });
+
+    vi.spyOn(api.audiobooks, "get").mockResolvedValue({
+      audiobook: {
+        id: 150,
+        title: "Synchronous Audiobook",
+        author: "Author",
+        relPath: "abooks/test",
+        hasCover: false,
+        totalDuration: 200,
+        trackCount: 2,
+        listenedCount: 0,
+        isListened: false,
+        positionSeconds: 0,
+        createdAt: "2026-05-22T08:00:00Z",
+        updatedAt: "2026-05-22T08:00:00Z",
+        tracks: [
+          {
+            id: 701,
+            audiobookId: 150,
+            trackNumber: 1,
+            title: "Chapter 1",
+            relPath: "01.mp3",
+            filePath: "/abooks/test/01.mp3",
+            duration: 100,
+            isListened: false,
+            inPlaylist: true,
+            positionSeconds: 0,
+          },
+          {
+            id: 702,
+            audiobookId: 150,
+            trackNumber: 2,
+            title: "Chapter 2",
+            relPath: "02.mp3",
+            filePath: "/abooks/test/02.mp3",
+            duration: 100,
+            isListened: false,
+            inPlaylist: true,
+            positionSeconds: 0,
+          },
+        ],
+      },
+    });
+
+    let resolveUpdate: (value: PlaybackUpdateResponse) => void;
+    const updatePromise = new Promise<PlaybackUpdateResponse>((resolve) => {
+      resolveUpdate = resolve;
+    });
+    const updateSpy = vi.mocked(api.playback.update).mockReturnValue(updatePromise);
+
+    function AudiobookSyncHarness() {
+      const { queue, playQueueItem, currentEpisode, playing } = usePlayback();
+      return (
+        <>
+          <div data-testid="current-title">{currentEpisode?.title}</div>
+          <div data-testid="track-id">{currentEpisode?.trackId}</div>
+          <div data-testid="playing">{playing ? "yes" : "no"}</div>
+          <button
+            type="button"
+            onClick={() => {
+              const item = queue[0];
+              if (item) playQueueItem(item);
+            }}
+          >
+            Play audiobook
+          </button>
+        </>
+      );
+    }
+
+    render(
+      <PlaybackProvider>
+        <AudiobookSyncHarness />
+      </PlaybackProvider>
+    );
+
+    await waitFor(() => expect(screen.getByTestId("track-id")).toHaveTextContent("701"));
+    await user.click(screen.getByRole("button", { name: "Play audiobook" }));
+    const audio = FakeAudio.first;
+    audio.playImpl.mockClear();
+
+    // Track 1 finishes
+    audio.currentTime = 100;
+    audio.emit("ended");
+
+    // Immediately and synchronously: track 702 is loaded and played without awaiting network
+    expect(audio.src).toContain("/api/audiobooks/150/tracks/702/audio");
+    expect(audio.playImpl).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByTestId("track-id")).toHaveTextContent("702");
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+
+    expect(updateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ audiobookId: 150, trackId: 701, completed: true })
+    );
+
+    resolveUpdate!({
+      playback: { audiobookId: 150, trackId: 701, positionSeconds: 100, lastUpdated: "2026-05-22T08:01:00Z" },
+      nextTrackId: 702,
+      nextEpisodeId: null,
+    });
   });
 
   it("advances to next audiobook chapter even if refreshed queue is stale or missing the track", async () => {
