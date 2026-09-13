@@ -2,7 +2,11 @@ package audiobooks
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/cross/mpod/server/internal/storage"
@@ -270,3 +274,123 @@ func TestBookInPlaylistReflectsOnTracks(t *testing.T) {
 		t.Fatalf("expected final chapter removal to reset book state, got playlist=%d playback=%d listened=%d", remainingPlaylist, remainingPlayback, listenedTracks)
 	}
 }
+
+func fileSHA256(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file for hashing: %v", err)
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func TestRescanAppearanceDisappearanceAndSourceImmutability(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	audiobooksDir := t.TempDir()
+	svc := NewService(db, audiobooksDir)
+	ctx := context.Background()
+
+	// 1. Setup initial books on filesystem
+	book1Dir := filepath.Join(audiobooksDir, "Author One", "Book One")
+	mustMkdir(t, book1Dir)
+	mustCopyFixture(t, "valid.mp3", filepath.Join(book1Dir, "01.mp3"))
+	mustCopyFixture(t, "valid.mp3", filepath.Join(book1Dir, "02.mp3"))
+
+	book2File := filepath.Join(audiobooksDir, "Book Two.m4b")
+	mustCopyFixture(t, "valid.m4b", book2File)
+
+	// Record initial SHA256 of files on disk
+	initialHash1 := fileSHA256(t, filepath.Join(book1Dir, "01.mp3"))
+	initialHash2 := fileSHA256(t, filepath.Join(book1Dir, "02.mp3"))
+
+	// 2. Initial rescan -> both books found
+	if err := svc.Rescan(ctx); err != nil {
+		t.Fatalf("initial rescan failed: %v", err)
+	}
+
+	books, err := svc.List(ctx)
+	if err != nil || len(books) != 2 {
+		t.Fatalf("expected 2 books after initial rescan, got %d (err: %v)", len(books), err)
+	}
+
+	var book1, book2 *Audiobook
+	for i := range books {
+		if books[i].Title == "Book One" {
+			book1 = &books[i]
+		} else if books[i].Title == "Book Two" {
+			book2 = &books[i]
+		}
+	}
+	if book1 == nil || book2 == nil {
+		t.Fatalf("expected both Book One and Book Two in library")
+	}
+
+	// 3. Add chapter 1 of Book 1 to playlist -> 1 playlist item
+	b1Detail, err := svc.Get(ctx, book1.ID)
+	if err != nil || len(b1Detail.Tracks) != 2 {
+		t.Fatalf("expected 2 tracks in Book One, got %+v", b1Detail)
+	}
+	if err := svc.AddTrackToPlaylist(ctx, b1Detail.Tracks[0].ID); err != nil {
+		t.Fatalf("add track 0 to playlist failed: %v", err)
+	}
+
+	// Add chapter 2 to playlist -> still 1 playlist item
+	if err := svc.AddTrackToPlaylist(ctx, b1Detail.Tracks[1].ID); err != nil {
+		t.Fatalf("add track 1 to playlist failed: %v", err)
+	}
+
+	var playlistCount int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_id = ?`, book1.ID).Scan(&playlistCount); err != nil || playlistCount != 1 {
+		t.Fatalf("expected 1 playlist item for Book One, got %d", playlistCount)
+	}
+
+	// 4. Remove Book Two from disk
+	if err := os.Remove(book2File); err != nil {
+		t.Fatalf("remove book2 file failed: %v", err)
+	}
+
+	// 5. Rescan -> Book Two disappears from library, Book One remains
+	if err := svc.Rescan(ctx); err != nil {
+		t.Fatalf("rescan after removal failed: %v", err)
+	}
+
+	booksAfterRemove, err := svc.List(ctx)
+	if err != nil || len(booksAfterRemove) != 1 {
+		t.Fatalf("expected 1 book after Book Two removal, got %d", len(booksAfterRemove))
+	}
+	if booksAfterRemove[0].Title != "Book One" {
+		t.Fatalf("expected Book One to remain, got %q", booksAfterRemove[0].Title)
+	}
+
+	// Book One selected chapters are preserved
+	b1Check, err := svc.Get(ctx, book1.ID)
+	if err != nil || !b1Check.InPlaylist || !b1Check.Tracks[0].InPlaylist || !b1Check.Tracks[1].InPlaylist {
+		t.Fatalf("expected Book One playlist tracks to be preserved across rescan")
+	}
+
+	// 6. Add Book Three to disk
+	book3File := filepath.Join(audiobooksDir, "Book Three.mp3")
+	mustCopyFixture(t, "valid.mp3", book3File)
+
+	// Rescan -> Book Three appears
+	if err := svc.Rescan(ctx); err != nil {
+		t.Fatalf("rescan after adding book3 failed: %v", err)
+	}
+
+	booksAfterAdd, err := svc.List(ctx)
+	if err != nil || len(booksAfterAdd) != 2 {
+		t.Fatalf("expected 2 books after Book Three added, got %d", len(booksAfterAdd))
+	}
+
+	// 7. Verify source files are byte-for-byte identical (immutable)
+	if hash := fileSHA256(t, filepath.Join(book1Dir, "01.mp3")); hash != initialHash1 {
+		t.Fatalf("source file Book One/01.mp3 was modified!")
+	}
+	if hash := fileSHA256(t, filepath.Join(book1Dir, "02.mp3")); hash != initialHash2 {
+		t.Fatalf("source file Book One/02.mp3 was modified!")
+	}
+}
+
