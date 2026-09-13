@@ -989,6 +989,55 @@ describe("SubscriptionsScreen", () => {
     vi.useRealTimers();
   });
 
+  it("stops polling and shows error when Refresh all exceeds wall-clock timeout", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api.podcasts, "list").mockResolvedValue({ podcasts: [podcast] });
+    let resolveRefresh!: () => void;
+    const refreshPromise = new Promise<void>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    vi.spyOn(api.podcasts, "list").mockResolvedValue({ podcasts: [podcast] });
+    vi.spyOn(api.podcasts, "refreshAll").mockReturnValue(
+      refreshPromise.then(() => ({ success: true, state: "running" }))
+    );
+    vi.spyOn(api.jobs, "status").mockResolvedValue({
+      scheduler: {
+        state: "running",
+        lastRunAt: "2026-05-27T10:00:00Z",
+        lastSuccessAt: null,
+      },
+    });
+
+    renderSubscriptionsScreen();
+
+    const refreshButton = await screen.findByRole("button", {
+      name: "Refresh all",
+    });
+    await user.click(refreshButton);
+
+    expect(refreshButton).toBeDisabled();
+
+    vi.useFakeTimers();
+    await act(async () => {
+      resolveRefresh();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    const steps = Math.ceil(120_000 / 3000) + 1;
+    for (let i = 0; i < steps; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000);
+      });
+    }
+
+    expect(refreshButton).not.toBeDisabled();
+    expect(
+      screen.getByText("Refresh all timed out. Please try again.")
+    ).toBeInTheDocument();
+
+    vi.useRealTimers();
+  });
+
   it("disables a podcast Refresh button while that refresh is in progress", async () => {
     const user = userEvent.setup();
     let resolveRefresh!: () => void;

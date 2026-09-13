@@ -13,8 +13,10 @@ import type { CachedSubscriptionPodcast } from "@/lib/subscriptions-cache";
 import { getErrorMessage } from "./screen-utils";
 import { useDelayedActions } from "./use-delayed-actions";
 
-const PODCAST_EXIT_ANIMATION_MS = 220;
-const REFRESH_ALL_STATUS_POLL_MS = 3000;
+export const PODCAST_EXIT_ANIMATION_MS = 220;
+export const REFRESH_ALL_STATUS_POLL_MS = 3000;
+export const REFRESH_ALL_WALL_CLOCK_TIMEOUT_MS = 120_000;
+export const REFRESH_ALL_MAX_CONSECUTIVE_ERRORS = 3;
 
 type UseSubscriptionActionsOptions = {
   podcasts: CachedSubscriptionPodcast[];
@@ -29,6 +31,13 @@ function shouldReduceMotion() {
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
+}
+
+function isRefreshAllTimedOut(startTime: number | null): boolean {
+  if (startTime === null) {
+    return false;
+  }
+  return Date.now() - startTime >= REFRESH_ALL_WALL_CLOCK_TIMEOUT_MS;
 }
 
 export function useSubscriptionActions({
@@ -52,18 +61,29 @@ export function useSubscriptionActions({
   const refreshAllStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
+  const refreshAllStartTimeRef = useRef<number | null>(null);
+  const refreshAllConsecutiveErrorsRef = useRef<number>(0);
+  const refreshAllOperationIdRef = useRef<number>(0);
   const mountedRef = useRef(true);
   const { pendingActions, scheduleAction, undoAction } = useDelayedActions({
     onCommitted: () => setReloadKey((current) => current + 1),
     onError: (caught) => setActionError(getErrorMessage(caught)),
   });
 
+  function cancelRefreshAllPolling() {
+    refreshAllOperationIdRef.current += 1;
+    if (refreshAllStatusTimeoutRef.current !== null) {
+      clearTimeout(refreshAllStatusTimeoutRef.current);
+      refreshAllStatusTimeoutRef.current = null;
+    }
+    refreshAllStartTimeRef.current = null;
+    refreshAllConsecutiveErrorsRef.current = 0;
+  }
+
   useEffect(() => {
     return () => {
       mountedRef.current = false;
-      if (refreshAllStatusTimeoutRef.current !== null) {
-        clearTimeout(refreshAllStatusTimeoutRef.current);
-      }
+      cancelRefreshAllPolling();
     };
   }, []);
 
@@ -133,50 +153,96 @@ export function useSubscriptionActions({
     });
   }
 
-  function pollRefreshAllCompletion() {
+  function pollRefreshAllCompletion(operationId: number) {
     if (refreshAllStatusTimeoutRef.current !== null) {
       clearTimeout(refreshAllStatusTimeoutRef.current);
+      refreshAllStatusTimeoutRef.current = null;
+    }
+
+    if (!mountedRef.current || refreshAllOperationIdRef.current !== operationId) {
+      return;
+    }
+
+    if (isRefreshAllTimedOut(refreshAllStartTimeRef.current)) {
+      setRefreshingAll(false);
+      setActionError("Refresh all timed out. Please try again.");
+      return;
     }
 
     refreshAllStatusTimeoutRef.current = setTimeout(() => {
-      void refreshAfterRefreshAllCompletes();
+      void refreshAfterRefreshAllCompletes(operationId);
     }, REFRESH_ALL_STATUS_POLL_MS);
   }
 
-  async function refreshAfterRefreshAllCompletes() {
+  async function refreshAfterRefreshAllCompletes(operationId: number) {
     refreshAllStatusTimeoutRef.current = null;
+
+    if (!mountedRef.current || refreshAllOperationIdRef.current !== operationId) {
+      return;
+    }
+
+    if (isRefreshAllTimedOut(refreshAllStartTimeRef.current)) {
+      setRefreshingAll(false);
+      setActionError("Refresh all timed out. Please try again.");
+      return;
+    }
 
     try {
       const { scheduler } = await api.jobs.status();
-      if (!mountedRef.current) {
+      if (!mountedRef.current || refreshAllOperationIdRef.current !== operationId) {
         return;
       }
+
+      refreshAllConsecutiveErrorsRef.current = 0;
+
       if (scheduler.state === "running") {
-        pollRefreshAllCompletion();
+        pollRefreshAllCompletion(operationId);
         return;
       }
+
       if (scheduler.state === "failed") {
         setActionError(scheduler.lastError ?? "Failed to refresh podcasts");
       }
       setRefreshingAll(false);
       setReloadKey((current) => current + 1);
-    } catch {
-      if (mountedRef.current) {
-        pollRefreshAllCompletion();
+    } catch (caught) {
+      if (!mountedRef.current || refreshAllOperationIdRef.current !== operationId) {
+        return;
       }
+
+      refreshAllConsecutiveErrorsRef.current += 1;
+      if (
+        refreshAllConsecutiveErrorsRef.current >=
+        REFRESH_ALL_MAX_CONSECUTIVE_ERRORS
+      ) {
+        setRefreshingAll(false);
+        setActionError(getErrorMessage(caught) || "Failed to check refresh status");
+        return;
+      }
+
+      pollRefreshAllCompletion(operationId);
     }
   }
 
   async function refreshAllPodcasts() {
+    cancelRefreshAllPolling();
+    const operationId = refreshAllOperationIdRef.current;
+    refreshAllStartTimeRef.current = Date.now();
+    refreshAllConsecutiveErrorsRef.current = 0;
+
     setActionError(null);
     setRefreshingAll(true);
 
     try {
       await api.podcasts.refreshAll();
-      pollRefreshAllCompletion();
+      if (mountedRef.current && refreshAllOperationIdRef.current === operationId) {
+        pollRefreshAllCompletion(operationId);
+      }
     } catch (caught) {
-      setActionError(getErrorMessage(caught));
-      setRefreshingAll(false);
+      if (mountedRef.current && refreshAllOperationIdRef.current === operationId) {
+        setActionError(getErrorMessage(caught));
+        setRefreshingAll(false);
+      }
     }
   }
 
