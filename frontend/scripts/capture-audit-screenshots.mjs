@@ -62,13 +62,10 @@ async function main() {
     });
     const page = await context.newPage();
 
-    console.log("Navigating to http://127.0.0.1:4173/component-preview ...");
-    await page.goto("http://127.0.0.1:4173/component-preview", {
-      waitUntil: "networkidle",
-      timeout: 30000,
-    });
-
-    await page.waitForTimeout(1000);
+    const targets = process.argv.slice(2);
+    const shouldCapture = (name) =>
+      targets.length === 0 ||
+      targets.some((t) => name.toLowerCase().includes(t.toLowerCase()));
 
     const components = [
       { id: "#audit-logo", file: "logo-actual.png" },
@@ -84,60 +81,78 @@ async function main() {
       { id: "#audit-filemanager", file: "filemanager-actual.png" },
     ];
 
-    for (const comp of components) {
-      const locator = page.locator(comp.id);
-      await locator.waitFor({ state: "visible", timeout: 10000 });
+    const componentsToCapture = components.filter(
+      (comp) => shouldCapture(comp.id) || shouldCapture(comp.file)
+    );
+
+    if (componentsToCapture.length > 0) {
+      console.log("Navigating to http://127.0.0.1:4173/component-preview ...");
+      await page.goto("http://127.0.0.1:4173/component-preview", {
+        waitUntil: "networkidle",
+        timeout: 30000,
+      });
+
+      await page.waitForTimeout(1000);
+
+      for (const comp of componentsToCapture) {
+        const locator = page.locator(comp.id);
+        await locator.waitFor({ state: "visible", timeout: 10000 });
+        await page.mouse.move(0, 0);
+        await page.evaluate(() => {
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
+        });
+        await page.waitForTimeout(100);
+        const targetPath = path.join(auditAssetsDir, comp.file);
+        await locator.screenshot({ path: targetPath });
+        console.log(`Saved screenshot: ${comp.file}`);
+      }
+    }
+
+    if (shouldCapture("modalscreen") || shouldCapture("shownotes")) {
+      // Capture ModalScreen (ShowNotes with backdrop at 1440x900)
+      console.log("Navigating to ShowNotes modal view...");
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto("http://127.0.0.1:4173/component-preview?modal=shownotes", {
+        waitUntil: "networkidle",
+        timeout: 30000,
+      });
       await page.mouse.move(0, 0);
       await page.evaluate(() => {
         if (document.activeElement instanceof HTMLElement) {
           document.activeElement.blur();
         }
       });
-      await page.waitForTimeout(100);
-      const targetPath = path.join(auditAssetsDir, comp.file);
-      await locator.screenshot({ path: targetPath });
-      console.log(`Saved screenshot: ${comp.file}`);
+      await page.waitForTimeout(500);
+      const modalScreenPath = path.join(auditAssetsDir, "modalscreen-actual.png");
+      await page.screenshot({ path: modalScreenPath });
+      console.log("Saved screenshot: modalscreen-actual.png");
     }
 
-    // Capture ModalScreen (ShowNotes with backdrop at 1440x900)
-    console.log("Navigating to ShowNotes modal view...");
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto("http://127.0.0.1:4173/component-preview?modal=shownotes", {
-      waitUntil: "networkidle",
-      timeout: 30000,
-    });
-    await page.mouse.move(0, 0);
-    await page.evaluate(() => {
-      if (document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
-      }
-    });
-    await page.waitForTimeout(500);
-    const modalScreenPath = path.join(auditAssetsDir, "modalscreen-actual.png");
-    await page.screenshot({ path: modalScreenPath });
-    console.log("Saved screenshot: modalscreen-actual.png");
-
-    // Capture AudiobookPlaybackChaptersModal
-    console.log("Navigating to Audiobook Chapters modal view...");
-    await page.goto("http://127.0.0.1:4173/component-preview?modal=abookchapter", {
-      waitUntil: "networkidle",
-      timeout: 30000,
-    });
-    await page.mouse.move(0, 0);
-    await page.evaluate(() => {
-      if (document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
-      }
-    });
-    await page.waitForTimeout(500);
-    const abookLocator = page.locator('[data-slot="abook-playback-chapters-modal"]');
-    await abookLocator.waitFor({ state: "visible", timeout: 10000 });
-    const abookPath = path.join(auditAssetsDir, "abookchapter-actual.png");
-    await abookLocator.screenshot({ path: abookPath });
-    console.log("Saved screenshot: abookchapter-actual.png");
+    if (shouldCapture("abookchapter")) {
+      // Capture AudiobookPlaybackChaptersModal
+      console.log("Navigating to Audiobook Chapters modal view...");
+      await page.goto("http://127.0.0.1:4173/component-preview?modal=abookchapter", {
+        waitUntil: "networkidle",
+        timeout: 30000,
+      });
+      await page.mouse.move(0, 0);
+      await page.evaluate(() => {
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+      });
+      await page.waitForTimeout(500);
+      const abookLocator = page.locator('[data-slot="abook-playback-chapters-modal"]');
+      await abookLocator.waitFor({ state: "visible", timeout: 10000 });
+      const abookPath = path.join(auditAssetsDir, "abookchapter-actual.png");
+      await abookLocator.screenshot({ path: abookPath });
+      console.log("Saved screenshot: abookchapter-actual.png");
+    }
 
     await browser.close();
-    console.log("All component screenshots captured successfully!");
+    console.log("Screenshots captured successfully!");
   } finally {
     vite.kill();
   }

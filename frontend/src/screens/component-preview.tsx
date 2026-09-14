@@ -46,11 +46,7 @@ Some podcast feeds include full essays, dense links, guest bios, sponsor copy, c
 
 Recommendation for MVP: use this modal pattern when show notes are opened from the focused player on smaller screens or when notes are long. On wider desktop layouts, the side panel can still work, but the modal is safer for overflow-heavy content.
 
-The scrollbar on the right is intentionally visible here. It communicates that there is more content without inventing a fake button-like affordance.
-
-Additional paragraph to demonstrate overflow: the implementation should preserve playback state, avoid changing queue order, and avoid marking the episode listened just because the notes were opened.
-
-Another paragraph: show notes are read-only feed content for MVP. Links can open externally later, but the core state is simple: open, read, scroll, close.`;
+The scrollbar on the right is intentionally visible here. It communicates that there is more content without inventing a fake button-like affordance.`;
 
 const previewAudiobook: Audiobook = {
   id: 1,
