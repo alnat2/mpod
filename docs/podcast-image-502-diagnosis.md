@@ -40,15 +40,24 @@ Accept: */*
 
 ```http
 HTTP/1.1 404 Not Found
-Date: Mon, 14 Sep 2026 10:51:29 GMT
-Content-Type: text/html
-Content-Length: 27150
-Connection: keep-alive
-Server: Fly/728d0e526 (2026-09-10)
-Via: 1.1 0801900ad35008 (Varnish/7.7), 1.1 fly.io, 1.1 fly.io
-CF-RAY: a3aed63629f3560e-AMS
-Fly-Request-Id: 01M2FST0HVN2H93JVH8EKG8Y6C-arn
-Cache-Control: max-age=3600, s-maxage=604800, stale-while-revalidate=604800, stale-if-error=604800
+cache-control: max-age=3600, s-maxage=604800, stale-while-revalidate=604800, stale-if-error=604800
+cf-cache-status: DYNAMIC
+cf-ray: a3aed63629f3560e-AMS
+content-type: text/html
+date: Mon, 14 Sep 2026 10:51:29 GMT
+nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=cm7qXd9XAq1mT16sd51OOa%2BvFw%2BvKohuvuG%2B3KElHrCAhHtscFalqW9xeSVu%2FIe9Vf7dCCYIGWArg3z3C5txW2ztD7njyK8rw3QspKS1Dr9arMxSKjuE2Nnf%2Bwm5sqoG534%3D"}]}
+server: Fly/728d0e526 (2026-09-10)
+vary: Accept-Encoding
+x-varnish: 4236054 3815468
+age: 3655
+via: 1.1 0801900ad35008 (Varnish/7.7), 1.1 fly.io, 1.1 fly.io
+access-control-allow-origin: *
+x-request-id: 01M2FW5S2JK1PSVDKTTBSB7SEZ-arn
+cache-status: region=ams; origin=assets(localhost:5010),changelog.place; ttl=82744.853; grace=172800.000; keep=604800.000; storage=storage.memory; hit; hits=4
+content-length: 27150
+connection: keep-alive
+fly-request-id: 01M2FW5S2JK1PSVDKTTBSB7SEZ-arn
 
 <!doctype html>
 <html lang="en">
@@ -58,11 +67,10 @@ Cache-Control: max-age=3600, s-maxage=604800, stale-while-revalidate=604800, sta
     <link rel="icon" href="https://www.cloudflare.com/favicon.ico" />
     <title>Not Found</title>
 ```
-*(HTML-страница ошибки размером 27 150 байт, MIME-тип `text/html`).*
-
+*(Размер тела ответа составляет ровно 27 150 байт, MIME-тип `text/html`).*
 
 ### 2.4. Реакция бэкенда `mpod`
-В коде `podcast_handlers.go:130-139`:
+В кодовой базе `server/internal/http/podcast_handlers.go:130-139`:
 ```go
 if resp.StatusCode < 200 || resp.StatusCode >= 300 {
     r.writeAPIError(w, nethttp.StatusBadGateway, "PODCAST_IMAGE_LOAD_FAILED", "Failed to load podcast image")
@@ -118,7 +126,7 @@ Cache-Control: no-store
 
 ## 4. Итоговые выводы
 
-1. **Причина ошибки 502 для подкаста ID 28:** Внешний CDN (`cdn.changelog.com`) возвращает `HTTP 404 Not Found` с телом HTML-страницы ошибки (`Content-Type: text/html`), так как исходный статичный файл обложки был перемещён на стороне источника. Обработчик `handlePodcastImage` строго валидирует HTTP-статус (`resp.StatusCode < 200 || resp.StatusCode >= 300`) и MIME-тип (`!strings.HasPrefix(contentType, "image/")`), правомерно возвращая клиенту `502 PODCAST_IMAGE_LOAD_FAILED` вместо отдачи невалидного HTML браузеру.
+1. **Причина ошибки 502 для подкаста ID 28:** На момент проверки указанный URL возвращал HTTP 404 с Content-Type: text/html. Причина отсутствия файла на стороне источника неизвестна. Обработчик `handlePodcastImage` строго валидирует HTTP-статус (`resp.StatusCode < 200 || resp.StatusCode >= 300`) и MIME-тип (`!strings.HasPrefix(contentType, "image/")`), правомерно возвращая клиенту `502 PODCAST_IMAGE_LOAD_FAILED` вместо отдачи невалидного HTML браузеру.
 2. **Корректность работы бэкенда:** Поведение бэкенда строго соответствует контрактным тестам (`TestPodcastImageInvalidContentTypeAndUpstreamError` в `router_test.go`). Бэкенд не должен проксировать HTML-страницы ошибок внешних серверов под видом изображений.
 3. **Корректность работы фронтенда:** Фронтенд корректно и бесшовно переключается на локальный ассет `/podcast_fallback.png`.
 4. **Решение:** Изменений в production-код бэкенда не требуется.
