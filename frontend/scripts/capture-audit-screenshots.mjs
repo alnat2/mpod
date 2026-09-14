@@ -13,13 +13,17 @@ console.log("Starting Vite dev server on port 4173...");
 const vite = spawn("npx", ["vite", "--port", "4173", "--host", "127.0.0.1"], {
   cwd: frontendDir,
   stdio: "pipe",
+  shell: true,
 });
 
 vite.stdout.on("data", (d) => {
-  // console.log(`[vite] ${d}`);
+  console.log(`[vite] ${d}`);
 });
 vite.stderr.on("data", (d) => {
-  // console.error(`[vite err] ${d}`);
+  console.error(`[vite err] ${d}`);
+});
+vite.on("error", (err) => {
+  console.error(`[vite process error] ${err}`);
 });
 
 function waitForServer(url, timeout = 20000) {
@@ -27,7 +31,7 @@ function waitForServer(url, timeout = 20000) {
   return new Promise((resolve, reject) => {
     const interval = setInterval(() => {
       http
-        .get(url, (res) => {
+        .get(url, () => {
           clearInterval(interval);
           resolve();
         })
@@ -74,10 +78,10 @@ async function main() {
       { id: "#audit-player", file: "player-actual.png" },
       { id: "#audit-queue", file: "queue-actual.png" },
       { id: "#audit-addpodcast", file: "addpodcast-actual.png" },
+      { id: "#audit-filedropzone", file: "filedropzone-actual.png" },
       { id: "#audit-shownotes", file: "shownotes-actual.png" },
       { id: "#audit-podcastcard", file: "podcastcard-actual.png" },
       { id: "#audit-filemanager", file: "filemanager-actual.png" },
-      { id: "#audit-abookchapter", file: "abookchapter-actual.png" },
     ];
 
     for (const comp of components) {
@@ -88,8 +92,33 @@ async function main() {
       console.log(`Saved screenshot: ${comp.file}`);
     }
 
+    // Capture ModalScreen (ShowNotes with backdrop at 1440x900)
+    console.log("Navigating to ShowNotes modal view...");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("http://127.0.0.1:4173/component-preview?modal=shownotes", {
+      waitUntil: "networkidle",
+      timeout: 30000,
+    });
+    await page.waitForTimeout(500);
+    const modalScreenPath = path.join(auditAssetsDir, "modalscreen-actual.png");
+    await page.screenshot({ path: modalScreenPath });
+    console.log("Saved screenshot: modalscreen-actual.png");
+
+    // Capture AudiobookPlaybackChaptersModal
+    console.log("Navigating to Audiobook Chapters modal view...");
+    await page.goto("http://127.0.0.1:4173/component-preview?modal=abookchapter", {
+      waitUntil: "networkidle",
+      timeout: 30000,
+    });
+    await page.waitForTimeout(500);
+    const abookLocator = page.locator('[data-slot="abook-playback-chapters-modal"]');
+    await abookLocator.waitFor({ state: "visible", timeout: 10000 });
+    const abookPath = path.join(auditAssetsDir, "abookchapter-actual.png");
+    await abookLocator.screenshot({ path: abookPath });
+    console.log("Saved screenshot: abookchapter-actual.png");
+
     await browser.close();
-    console.log("All 11 component screenshots captured successfully!");
+    console.log("All component screenshots captured successfully!");
   } finally {
     vite.kill();
   }
