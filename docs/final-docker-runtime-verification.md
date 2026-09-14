@@ -12,7 +12,7 @@
 - **База данных:** встроенная SQLite (`/data/mpod.sqlite`).
 - **Файлы скачиваний:** одноразовые копии (`/data/downloads/`).
 - **Постоянный том данных:** Docker volume `mpod_data` смонтирован в `/data` с правами `RW`.
-- **Библиотека аудиокниг:** директория на хосте смонтирована в `/share/audio/abooks/` строго с флагом `:ro` (Read-Only).
+- **Библиотека аудиокниг:** директория на хосте смонтирована в `/share/audio/abooks` строго с флагом `:ro` (Read-Only).
 - **Пользователь процесса:** непривилегированный пользователь `mpod` (UID/GID в Alpine).
 
 ---
@@ -33,7 +33,9 @@
      cp .env.example .env
      APP_BUILD="$(git rev-parse --short HEAD)" docker compose up -d --build
      ```
-   Убедиться, что в `.env` заданы рабочие параметры:
+     *Примечание:* В данном варианте переменная `APP_BUILD` передаётся непосредственно процессу Compose из окружения командной строки, переопределяя значение для сборки, а статическое значение `APP_BUILD=dev` внутри `.env` не проверяется как актуальное.
+
+   Убедиться, что в конфигурации заданы рабочие параметры:
    ```ini
    PORT=5050
    APP_ENV=production
@@ -122,7 +124,7 @@
 ### 2.5. Проверка защиты директории аудиокниг (Read-Only Enforcement)
 1. Убедиться, что том примонтирован с флагом `:ro`:
    ```bash
-   docker inspect $(docker compose ps -q mpod) --format '{{json .Mounts}}' | jq '.[] | select(.Destination == "/share/audio/abooks/")'
+   docker inspect $(docker compose ps -q mpod) --format '{{json .Mounts}}' | jq '.[] | select(.Destination == "/share/audio/abooks")'
    ```
    *Ожидается:* `"RW": false`.
 2. Попытка создания или изменения файла внутри директории аудиокниг:
@@ -135,66 +137,129 @@
 
 ## 3. Задание тестировщику (QA Operational Verification)
 
+Для выполнения проверок на тестирующей машине требуются утилиты `curl` и `jq`. Все запросы к API выполняются с флагом `--fail-with-body -sS` для немедленной остановки при получении ошибочного HTTP-статуса.
+
 ### 3.1. Smoke-тестирование API и доступности
-1. Проверить ответ сервера при старте:
-   ```bash
-   curl -i http://localhost:5050/api/settings
-   ```
-   - Если пользователь не зарегистрирован: перенаправление/статус сессии.
-   - После логина: `HTTP 200`, JSON с полями настроек и значением `appBuild`.
+1. Проверить ответ сервера при обращении к настройкам:
+   - **До авторизации (неавторизованный запрос):**
+     ```bash
+     curl -i http://localhost:5050/api/settings
+     ```
+     *Фактический результат:* `HTTP/1.1 401 Unauthorized`, JSON с телом ошибки авторизации:
+     ```json
+     {"error":{"code":"UNAUTHORIZED","message":"Authentication required"}}
+     ```
+   - **После авторизации:**
+     ```bash
+     curl --fail-with-body -sS -i -b "$COOKIE_JAR" http://localhost:5050/api/settings
+     ```
+     *Фактический результат:* `HTTP/1.1 200 OK`, JSON с полями настроек и значением `appBuild`.
+
 2. Проверить раздачу фронтенда:
    ```bash
-   curl -i http://localhost:5050/
+   curl --fail-with-body -sS -i http://localhost:5050/
    ```
-   *Ожидается:* `HTTP 200 OK`, `Content-Type: text/html`, рендеринг SPA приложения.
+   *Ожидается:* `HTTP/1.1 200 OK`, `Content-Type: text/html`, рендеринг SPA приложения.
 
 ### 3.2. Проверка работы с базой данных и жизненного цикла
-1. Авторизоваться в приложении с сохранением сессионной cookie:
+
+Для изоляции сессии и безопасной очистки создаётся временный cookie jar:
+```bash
+COOKIE_JAR=$(mktemp)
+AUDIO_HEADERS=$(mktemp)
+AUDIO_CHUNK=$(mktemp)
+trap 'rm -f "$COOKIE_JAR" "$AUDIO_HEADERS" "$AUDIO_CHUNK"' EXIT
+```
+
+1. **Авторизоваться в приложении:**
    ```bash
-   curl -s -i -c /tmp/mpod_cookies.txt -X POST http://localhost:5050/api/auth/login \
+   LOGIN_RESP=$(curl --fail-with-body -sS -c "$COOKIE_JAR" -X POST http://localhost:5050/api/auth/login \
      -H "Content-Type: application/json" \
-     -d '{"username":"<user>","password":"<pass>"}'
+     -d '{"username":"<user>","password":"<pass>"}')
+   echo "$LOGIN_RESP" | jq -er '.user.username' >/dev/null
    ```
-2. Добавить RSS-ленту подкаста и сохранить `PODCAST_ID`:
+
+2. **Задать URL рабочей RSS-ленты подкаста:**
+   Использование заглушек вида `example.com` недопустимо, так как они делают сценарий неисполняемым. Переменная `TEST_RSS_URL` обязательна:
    ```bash
-   PODCAST_RESP=$(curl -s -b /tmp/mpod_cookies.txt -X POST http://localhost:5050/api/podcasts \
+   : "${TEST_RSS_URL:?Set TEST_RSS_URL to a valid podcast RSS feed}"
+   ```
+
+3. **Добавить RSS-ленту подкаста и сохранить `PODCAST_ID`:**
+   ```bash
+   PODCAST_RESP=$(curl --fail-with-body -sS -b "$COOKIE_JAR" -X POST http://localhost:5050/api/podcasts \
      -H "Content-Type: application/json" \
-     -d '{"rssUrl":"https://example.com/feed.xml"}')
-   PODCAST_ID=$(echo "$PODCAST_RESP" | grep -o '"id":[0-9]*' | head -n1 | cut -d: -f2)
+     -d "{\"rssUrl\":\"${TEST_RSS_URL}\"}")
+
+   PODCAST_ID=$(
+     printf '%s' "$PODCAST_RESP" |
+       jq -er '.podcast.id'
+   )
+   test -n "$PODCAST_ID"
    ```
-3. Получить список эпизодов созданного подкаста через `/api/podcasts/${PODCAST_ID}/episodes` и сохранить `EPISODE_ID`:
+
+4. **Получить список эпизодов подкаста и сохранить `EPISODE_ID` первого выпуска:**
    ```bash
-   EPISODES_RESP=$(curl -s -b /tmp/mpod_cookies.txt "http://localhost:5050/api/podcasts/${PODCAST_ID}/episodes")
-   EPISODE_ID=$(echo "$EPISODES_RESP" | grep -o '"id":[0-9]*' | head -n1 | cut -d: -f2)
+   EPISODES_RESP=$(curl --fail-with-body -sS -b "$COOKIE_JAR" "http://localhost:5050/api/podcasts/${PODCAST_ID}/episodes")
+
+   EPISODE_ID=$(
+     printf '%s' "$EPISODES_RESP" |
+       jq -er '.episodes[0].id'
+   )
+   test -n "$EPISODE_ID"
    ```
-4. Добавить выпуск в плейлист:
+
+5. **Добавить выпуск в плейлист:**
    ```bash
-   curl -s -b /tmp/mpod_cookies.txt -X POST http://localhost:5050/api/playlist \
+   curl --fail-with-body -sS -b "$COOKIE_JAR" -X POST http://localhost:5050/api/playlist \
      -H "Content-Type: application/json" \
      -d "{\"episodeId\": ${EPISODE_ID}}"
    ```
-5. Назначить выпуск активным для воспроизведения:
+
+6. **Назначить выпуск активным для воспроизведения:**
    ```bash
-   curl -s -b /tmp/mpod_cookies.txt -X PUT http://localhost:5050/api/playback/active \
+   curl --fail-with-body -sS -b "$COOKIE_JAR" -X PUT http://localhost:5050/api/playback/active \
      -H "Content-Type: application/json" \
      -d "{\"episodeId\": ${EPISODE_ID}}"
    ```
-6. Зафиксировать прогресс воспроизведения:
+
+7. **Зафиксировать прогресс воспроизведения:**
    ```bash
-   curl -s -b /tmp/mpod_cookies.txt -X POST http://localhost:5050/api/playback \
+   curl --fail-with-body -sS -b "$COOKIE_JAR" -X POST http://localhost:5050/api/playback \
      -H "Content-Type: application/json" \
      -d "{\"episodeId\": ${EPISODE_ID}, \"positionSeconds\": 15}"
    ```
-7. Для фактической проверки отдачи медиапотока выполнить запрос к аудиофайлу с cookie:
+
+8. **Проверка отдачи медиапотока (Range GET):**
+   Запрос выполняется методом `GET` с заголовком `Range: bytes=0-1023`. Ответные заголовки и бинарное тело разделяются, чтобы не выводить бинарный поток в терминал:
    ```bash
-   curl -i -b /tmp/mpod_cookies.txt -H "Range: bytes=0-1023" "http://localhost:5050/api/episodes/${EPISODE_ID}/audio"
+   curl --fail-with-body -sS -b "$COOKIE_JAR" \
+     -H "Range: bytes=0-1023" \
+     -D "$AUDIO_HEADERS" \
+     -o "$AUDIO_CHUNK" \
+     "http://localhost:5050/api/episodes/${EPISODE_ID}/audio"
+
+   HTTP_STATUS=$(head -n 1 "$AUDIO_HEADERS" | awk '{print $2}')
+   CONTENT_TYPE=$(grep -i '^content-type:' "$AUDIO_HEADERS" | tr -d '\r' | awk '{print $2}')
+   BYTES_RECEIVED=$(wc -c < "$AUDIO_CHUNK" | tr -d ' ')
+
+   echo "HTTP Status: $HTTP_STATUS"
+   echo "Content-Type: $CONTENT_TYPE"
+   echo "Bytes received: $BYTES_RECEIVED"
    ```
-   *Ожидается:* `HTTP 206 Partial Content` (при поддержке Range удалённым сервером подкаста либо для локально скачанного файла) или `HTTP 200 OK` (если внешний CDN игнорирует заголовок Range и отдаёт полный поток), с соответствующим `Content-Type: audio/...`. Либо запустить воспроизведение в веб-интерфейсе через нажатие кнопки Play в карточке плеера.
-8. Выполнить Rescan аудиокниг:
+   *Критерии валидации аудио:*
+   - **`HTTP 206 Partial Content`**: Локально скачанный файл либо upstream CDN поддерживает Range-запросы (в тело получены первые 1024 байта).
+   - **`HTTP 200 OK`**: Внешний CDN проигнорировал Range-заголовок и отдал аудиопоток с начала (тело успешно получено).
+   - **`Content-Type`**: Строго аудиоформат (начинается с `audio/`, например `audio/mpeg`, `audio/mp4`, `audio/aac`).
+   - **`401 Unauthorized`**, **`404 Not Found`**, **`500 Internal Server Error`**, **`502 Bad Gateway`**: Являются безусловным **FAIL**.
+   - `BYTES_RECEIVED` строго больше 0 (`test "$BYTES_RECEIVED" -gt 0`).
+
+9. **Выполнить Rescan аудиокниг:**
    ```bash
-   curl -s -b /tmp/mpod_cookies.txt -X POST http://localhost:5050/api/audiobooks/rescan
+   curl --fail-with-body -sS -b "$COOKIE_JAR" -X POST http://localhost:5050/api/audiobooks/rescan
    ```
-9. Перезагрузить страницу браузера (`F5`) и убедиться, что позиция воспроизведения, активный трек, очередь и состояние подписок полностью восстановились из базы данных.
+
+10. **Перезагрузить страницу браузера (`F5`)** и убедиться, что позиция воспроизведения, активный трек, очередь и состояние подписок полностью восстановились из базы данных.
 
 ### 3.3. Мониторинг стабильности процесса
 1. Проверить отсутствие неожиданных перезапусков контейнера:
@@ -214,8 +279,8 @@
 
 - [x] Конфигурация Docker Compose настроена на порт `5050`
 - [x] Persistent volume `mpod_data` смонтирован в `/data` (`RW: true`)
-- [x] Библиотека аудиокниг смонтирована в `/share/audio/abooks/` строго с `RW: false` (`:ro`)
+- [x] Библиотека аудиокниг смонтирована в `/share/audio/abooks` строго с `RW: false` (`:ro`)
 - [x] Приложение выполняется под непривилегированным пользователем `mpod`
 - [x] Multi-stage build исключает сборочные зависимости Node.js и Go из финального образа
-- [x] Процедура горячего резервного копирования SQLite (`VACUUM INTO`) верифицирована
+- [ ] Резервное копирование SQLite (`VACUUM INTO`) и восстановление (процедура подготовлена для стендовой проверки)
 - [x] Инструкции администратору и тестировщику зафиксированы в документации
