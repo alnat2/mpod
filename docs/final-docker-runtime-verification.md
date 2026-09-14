@@ -20,16 +20,19 @@
 ## 2. Задание администратору стенда / сервера
 
 ### 2.1. Чистое развёртывание (Clean Deployment)
-1. Подготовить конфигурационный файл `.env`:
-   ```bash
-   cp .env.example .env
-   # Заменить значение APP_BUILD на короткий хэш текущего Git-коммита (не дописывая в конец, чтобы избежать дубликатов):
-   sed -i.bak "s/^APP_BUILD=.*/APP_BUILD=$(git rev-parse --short HEAD)/" .env && rm -f .env.bak
-   ```
-   Либо передать значение напрямую при сборке и запуске:
-   ```bash
-   APP_BUILD="$(git rev-parse --short HEAD)" docker compose up -d --build
-   ```
+1. Подготовить конфигурационный файл и запустить контейнер (выбрать один из двух способов):
+   - **Способ А (рекомендуемый, через `.env`):**
+     ```bash
+     cp .env.example .env
+     # Заменить значение APP_BUILD на короткий хэш текущего Git-коммита без дублирования строк:
+     sed -i.bak "s/^APP_BUILD=.*/APP_BUILD=$(git rev-parse --short HEAD)/" .env && rm -f .env.bak
+     docker compose up -d --build
+     ```
+   - **Способ Б (через переменную окружения без модификации `.env`):**
+     ```bash
+     cp .env.example .env
+     APP_BUILD="$(git rev-parse --short HEAD)" docker compose up -d --build
+     ```
    Убедиться, что в `.env` заданы рабочие параметры:
    ```ini
    PORT=5050
@@ -44,11 +47,8 @@
    AUDIOBOOKS_DIR=/share/audio/abooks/
    DAILY_REFRESH_TIME=03:00
    ```
-2. Собрать образ и запустить контейнер:
-   ```bash
-   docker compose up -d --build
-   ```
-3. Проверить статус контейнера и логи:
+
+2. Проверить статус контейнера и логи:
    ```bash
    docker compose ps
    docker compose logs --tail=100 mpod
@@ -149,18 +149,52 @@
    *Ожидается:* `HTTP 200 OK`, `Content-Type: text/html`, рендеринг SPA приложения.
 
 ### 3.2. Проверка работы с базой данных и жизненного цикла
-1. Авторизоваться в приложении (`POST /api/auth/login`).
-2. Добавить тестовую RSS ленту подкаста (`POST /api/podcasts`).
-3. Добавить выпуск в плейлист: `POST /api/playlist` с телом `{"episodeId": 1}`.
-4. Назначить выпуск активным для воспроизведения: `PUT /api/playback/active` с телом `{"episodeId": 1}`.
-5. Зафиксировать прогресс воспроизведения: `POST /api/playback` с телом `{"episodeId": 1, "positionSeconds": 15}`.
-6. Для фактической проверки отдачи медиапотока выполнить запрос к аудиофайлу:
+1. Авторизоваться в приложении с сохранением сессионной cookie:
    ```bash
-   curl -i -H "Range: bytes=0-1023" http://localhost:5050/api/episodes/1/audio
+   curl -s -i -c /tmp/mpod_cookies.txt -X POST http://localhost:5050/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"username":"<user>","password":"<pass>"}'
    ```
-   *Ожидается:* `HTTP 206 Partial Content`, `Content-Range: bytes 0-1023/...`, либо запустить воспроизведение в веб-интерфейсе через нажатие кнопки Play в карточке плеера.
-7. Выполнить Rescan аудиокниг (`POST /api/audiobooks/rescan`).
-8. Перезагрузить страницу браузера (`F5`) и убедиться, что позиция воспроизведения, активный трек, очередь и состояние подписок полностью восстановились из базы данных.
+2. Добавить RSS-ленту подкаста и сохранить `PODCAST_ID`:
+   ```bash
+   PODCAST_RESP=$(curl -s -b /tmp/mpod_cookies.txt -X POST http://localhost:5050/api/podcasts \
+     -H "Content-Type: application/json" \
+     -d '{"rssUrl":"https://example.com/feed.xml"}')
+   PODCAST_ID=$(echo "$PODCAST_RESP" | grep -o '"id":[0-9]*' | head -n1 | cut -d: -f2)
+   ```
+3. Получить список эпизодов созданного подкаста через `/api/podcasts/${PODCAST_ID}/episodes` и сохранить `EPISODE_ID`:
+   ```bash
+   EPISODES_RESP=$(curl -s -b /tmp/mpod_cookies.txt "http://localhost:5050/api/podcasts/${PODCAST_ID}/episodes")
+   EPISODE_ID=$(echo "$EPISODES_RESP" | grep -o '"id":[0-9]*' | head -n1 | cut -d: -f2)
+   ```
+4. Добавить выпуск в плейлист:
+   ```bash
+   curl -s -b /tmp/mpod_cookies.txt -X POST http://localhost:5050/api/playlist \
+     -H "Content-Type: application/json" \
+     -d "{\"episodeId\": ${EPISODE_ID}}"
+   ```
+5. Назначить выпуск активным для воспроизведения:
+   ```bash
+   curl -s -b /tmp/mpod_cookies.txt -X PUT http://localhost:5050/api/playback/active \
+     -H "Content-Type: application/json" \
+     -d "{\"episodeId\": ${EPISODE_ID}}"
+   ```
+6. Зафиксировать прогресс воспроизведения:
+   ```bash
+   curl -s -b /tmp/mpod_cookies.txt -X POST http://localhost:5050/api/playback \
+     -H "Content-Type: application/json" \
+     -d "{\"episodeId\": ${EPISODE_ID}, \"positionSeconds\": 15}"
+   ```
+7. Для фактической проверки отдачи медиапотока выполнить запрос к аудиофайлу с cookie:
+   ```bash
+   curl -i -b /tmp/mpod_cookies.txt -H "Range: bytes=0-1023" "http://localhost:5050/api/episodes/${EPISODE_ID}/audio"
+   ```
+   *Ожидается:* `HTTP 206 Partial Content` (при поддержке Range удалённым сервером подкаста либо для локально скачанного файла) или `HTTP 200 OK` (если внешний CDN игнорирует заголовок Range и отдаёт полный поток), с соответствующим `Content-Type: audio/...`. Либо запустить воспроизведение в веб-интерфейсе через нажатие кнопки Play в карточке плеера.
+8. Выполнить Rescan аудиокниг:
+   ```bash
+   curl -s -b /tmp/mpod_cookies.txt -X POST http://localhost:5050/api/audiobooks/rescan
+   ```
+9. Перезагрузить страницу браузера (`F5`) и убедиться, что позиция воспроизведения, активный трек, очередь и состояние подписок полностью восстановились из базы данных.
 
 ### 3.3. Мониторинг стабильности процесса
 1. Проверить отсутствие неожиданных перезапусков контейнера:

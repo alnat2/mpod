@@ -40,22 +40,26 @@ Accept: */*
 
 ```http
 HTTP/1.1 404 Not Found
-Date: Mon, 14 Sep 2026 08:30:12 GMT
-Content-Type: text/html; charset=utf-8
-Content-Length: 162
+Date: Mon, 14 Sep 2026 10:51:29 GMT
+Content-Type: text/html
+Content-Length: 27150
 Connection: keep-alive
-Server: cloudflare
-CF-RAY: 8c2f10ab39d1-AMS
+Server: Fly/728d0e526 (2026-09-10)
+Via: 1.1 0801900ad35008 (Varnish/7.7), 1.1 fly.io, 1.1 fly.io
+CF-RAY: a3aed63629f3560e-AMS
+Fly-Request-Id: 01M2FST0HVN2H93JVH8EKG8Y6C-arn
+Cache-Control: max-age=3600, s-maxage=604800, stale-while-revalidate=604800, stale-if-error=604800
 
-<!DOCTYPE html>
-<html>
-<head><title>404 Not Found</title></head>
-<body>
-<center><h1>404 Not Found</h1></center>
-<hr><center>cloudflare</center>
-</body>
-</html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="https://www.cloudflare.com/favicon.ico" />
+    <title>Not Found</title>
 ```
+*(HTML-страница ошибки размером 27 150 байт, MIME-тип `text/html`).*
+
 
 ### 2.4. Реакция бэкенда `mpod`
 В коде `podcast_handlers.go:130-139`:
