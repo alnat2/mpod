@@ -40,11 +40,17 @@ import {
 import episodeArtwork from "@/assets/episode-artwork.png";
 import type { Audiobook } from "@/lib/api";
 
-const showNotesText = `This modal version keeps the main player context visible behind a muted backdrop while giving long show notes enough dedicated space.
+const showNotesText = `This modal version keeps the main player context visible behind a muted backdrop while giving long show notes enough dedicated space. It is useful when notes need more reading focus than a side panel can comfortably provide.
 
-Some podcast feeds include full essays, dense links, guest bios, sponsor copy, chapters, transcript excerpts, and source references.
+Some podcast feeds include full essays, dense links, guest bios, sponsor copy, chapters, transcript excerpts, and source references. In modal mode the text area should scroll independently, while the modal header and close action remain obvious.
 
-Recommendation for MVP: use this modal pattern when show notes are opened from the focused player on smaller screens or when notes are long.`;
+Recommendation for MVP: use this modal pattern when show notes are opened from the focused player on smaller screens or when notes are long. On wider desktop layouts, the side panel can still work, but the modal is safer for overflow-heavy content.
+
+The scrollbar on the right is intentionally visible here. It communicates that there is more content without inventing a fake button-like affordance.
+
+Additional paragraph to demonstrate overflow: the implementation should preserve playback state, avoid changing queue order, and avoid marking the episode listened just because the notes were opened.
+
+Another paragraph: show notes are read-only feed content for MVP. Links can open externally later, but the core state is simple: open, read, scroll, close.`;
 
 const previewAudiobook: Audiobook = {
   id: 1,
@@ -177,7 +183,7 @@ export function ComponentPreview() {
         <AudiobookPlaybackChaptersModal
           audiobook={previewAudiobook}
           currentTrackId={2}
-          currentDurationSeconds={720}
+          currentDurationSeconds={1440}
           playing={true}
           onClose={() => undefined}
           onPlayTrack={() => undefined}
@@ -246,7 +252,7 @@ export function ComponentPreview() {
 
       {/* 5. Player */}
       <PreviewSection title="5. Player">
-        <div id="audit-player" className="w-[484px] max-w-full rounded-xl border border-border bg-card">
+        <div id="audit-player" className="w-[480px] max-w-full">
           <Player
             title="Why store loyalty cards became a UX minefield"
             podcastTitle="Decoder Ring"
@@ -267,7 +273,7 @@ export function ComponentPreview() {
 
       {/* 6. PlaylistQueue & EpisodeRow */}
       <PreviewSection title="6. PlaylistQueue & EpisodeRow">
-        <div id="audit-queue" className="w-[1044px] max-w-full rounded-xl border border-border bg-card">
+        <div id="audit-queue" className="w-[1040px] max-w-full">
           <PlaylistQueue summary="3 episodes · 2h 13m">
             <EpisodeRow
               showDragHandle
@@ -309,18 +315,18 @@ export function ComponentPreview() {
 
       {/* 7. AddPodcast & FileDropzone */}
       <PreviewSection title="7. AddPodcast & FileDropzone">
-        <div id="audit-addpodcast" className="flex w-[1488px] max-w-full items-start gap-6 rounded-xl border border-border bg-card p-6">
+        <div id="audit-addpodcast" className="flex w-[1488px] max-w-full items-start gap-12">
           <AddPodcast mode="rss" />
           <AddPodcast mode="opml" />
         </div>
-        <div id="audit-filedropzone" className="w-[265px] rounded-xl border border-border bg-card p-4">
+        <div id="audit-filedropzone" className="w-[265px]">
           <FileDropzone />
         </div>
       </PreviewSection>
 
       {/* 8. ShowNotes */}
       <PreviewSection title="8. ShowNotes">
-        <div id="audit-shownotes" className="w-[730px] max-w-full">
+        <div id="audit-shownotes" className="w-[720px] max-w-full">
           <ShowNotes
             podcastTitle="Decoder Ring"
             episodeTitle="Why store loyalty cards became a UX minefield"
@@ -333,7 +339,7 @@ export function ComponentPreview() {
 
       {/* 9. PodcastCard */}
       <PreviewSection title="9. PodcastCard">
-        <div id="audit-podcastcard" className="flex w-[688px] max-w-full items-start gap-6">
+        <div id="audit-podcastcard" className="flex w-[688px] max-w-full items-start gap-12">
           <PodcastCard
             title="Decoder Ring"
             description="Culture stories behind everyday design"
@@ -350,7 +356,7 @@ export function ComponentPreview() {
 
       {/* 10. Filemanager Item */}
       <PreviewSection title="10. Filemanager Item">
-        <div id="audit-filemanager" className="flex w-[1044px] max-w-full flex-col gap-2 rounded-xl border border-border bg-card p-6">
+        <div id="audit-filemanager" className="flex w-[1040px] max-w-full flex-col gap-2">
           <Breadcrumb className="flex h-[50px] shrink-0 items-center py-0">
             <BreadcrumbList>
               <BreadcrumbItem>
