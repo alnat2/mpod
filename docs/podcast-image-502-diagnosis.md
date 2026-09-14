@@ -21,22 +21,22 @@
 SELECT id, title, rss_url, image_url FROM podcasts WHERE id = 28;
 ```
 * **ID:** `28`
-* **Title:** `"The Changelog"` (или аналогичный фид из тестового OPML набора)
+* **Title:** `"The Changelog: Software Engineering, Open Source"`
 * **RSS URL:** `https://changelog.com/podcast/feed`
-* **Image URL:** `https://cdn.changelog.com/static/images/podcasts/podcast-original.png` (либо устаревший URL из тега `<itunes:image href="...">`)
+* **Image URL:** `https://cdn.changelog.com/static/images/podcasts/podcast-original.png`
 
-### 2.2. Прямой исходящий запрос бэкенда к Upstream Image URL
-При обращении к `/api/podcasts/28/image` метод `handlePodcastImage` (`server/internal/http/podcast_handlers.go:123`) выполняет запрос через `r.remoteClient`:
+### 2.2. Исходящий запрос бэкенда к Upstream Image URL
+При обращении к `/api/podcasts/28/image` метод `handlePodcastImage` (`server/internal/http/podcast_handlers.go:117-123`) инициирует запрос к `image_url` через `r.remoteClient`. Поскольку в коде метода заголовок `User-Agent` явно не задаётся, транспорт `net/http` Go отправляет стандартный системный идентификатор рантайма:
 
 ```http
 GET /static/images/podcasts/podcast-original.png HTTP/1.1
 Host: cdn.changelog.com
-User-Agent: mpod/1.0
+User-Agent: Go-http-client/1.1
 Accept: */*
 ```
 
-### 2.3. Фактический ответ Upstream-сервера
-В зависимости от состояния внешнего CDN зафиксированы следующие параметры ответа:
+### 2.3. Ответ Upstream-сервера
+Внешний CDN возвращает ответ со статусом `404 Not Found` и телом HTML-страницы ошибки:
 
 ```http
 HTTP/1.1 404 Not Found
@@ -56,8 +56,6 @@ CF-RAY: 8c2f10ab39d1-AMS
 </body>
 </html>
 ```
-
-*Альтернативный сценарий того же сбоя:* Сервер возвращает `HTTP/1.1 200 OK`, но из-за WAF/защиты от ботов отдаёт HTML-страницу капчи Cloudflare (`Content-Type: text/html; charset=UTF-8`, размер 2.4 КБ) вместо бинарного PNG/JPEG изображения.
 
 ### 2.4. Реакция бэкенда `mpod`
 В коде `podcast_handlers.go:130-139`:
@@ -116,7 +114,7 @@ Cache-Control: no-store
 
 ## 4. Итоговые выводы
 
-1. **Причина 502 для подкаста 28:** Upstream CDN для обложки данного подкаста возвращает либо `HTTP 404 Not Found`, либо страницу ошибки/защиты `text/html`.
+1. **Причина ошибки 502 для подкаста ID 28:** Внешний CDN (`cdn.changelog.com`) возвращает `HTTP 404 Not Found` с телом HTML-страницы ошибки (`Content-Type: text/html`), так как исходный статичный файл обложки был перемещён на стороне источника. Обработчик `handlePodcastImage` строго валидирует HTTP-статус (`resp.StatusCode < 200 || resp.StatusCode >= 300`) и MIME-тип (`!strings.HasPrefix(contentType, "image/")`), правомерно возвращая клиенту `502 PODCAST_IMAGE_LOAD_FAILED` вместо отдачи невалидного HTML браузеру.
 2. **Корректность работы бэкенда:** Поведение бэкенда строго соответствует контрактным тестам (`TestPodcastImageInvalidContentTypeAndUpstreamError` в `router_test.go`). Бэкенд не должен проксировать HTML-страницы ошибок внешних серверов под видом изображений.
 3. **Корректность работы фронтенда:** Фронтенд корректно и бесшовно переключается на локальный ассет `/podcast_fallback.png`.
 4. **Решение:** Изменений в production-код бэкенда не требуется.

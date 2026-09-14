@@ -23,12 +23,18 @@
 1. Подготовить конфигурационный файл `.env`:
    ```bash
    cp .env.example .env
+   # Заменить значение APP_BUILD на короткий хэш текущего Git-коммита (не дописывая в конец, чтобы избежать дубликатов):
+   sed -i.bak "s/^APP_BUILD=.*/APP_BUILD=$(git rev-parse --short HEAD)/" .env && rm -f .env.bak
    ```
-   Указать:
+   Либо передать значение напрямую при сборке и запуске:
+   ```bash
+   APP_BUILD="$(git rev-parse --short HEAD)" docker compose up -d --build
+   ```
+   Убедиться, что в `.env` заданы рабочие параметры:
    ```ini
    PORT=5050
    APP_ENV=production
-   APP_BUILD=$(git rev-parse --short HEAD)
+   APP_BUILD=<git-commit-hash>
    TZ=UTC
    SESSION_SECRET=<random-strong-secret-key>
    DATA_DIR=/data
@@ -82,24 +88,36 @@
 
 1. **Онлайн-бэкап базы данных (горячая консистентная копия через `VACUUM INTO`):**
    ```bash
-   docker run --rm --volumes-from $(docker compose ps -q mpod) -v $(pwd):/backup alpine sh -c \
-     "apk add --no-cache sqlite >/dev/null && sqlite3 /data/mpod.sqlite \"VACUUM INTO '/backup/backup_\$(date +%Y%m%d_%H%M%S).sqlite';\""
+   BACKUP_FILE="backup_$(date +%Y%m%d_%H%M%S).sqlite"
+   docker run --rm --volumes-from $(docker compose ps -q mpod) -v "$(pwd)":/backup alpine sh -c \
+     "apk add --no-cache sqlite >/dev/null && sqlite3 /data/mpod.sqlite \"VACUUM INTO '/backup/$BACKUP_FILE';\""
    ```
    *Альтернативный оффлайн-бэкап (при остановленном сервисе для сохранения WAL-файлов):*
    ```bash
    docker compose stop mpod
-   docker run --rm --volumes-from $(docker compose ps -qa mpod) -v $(pwd):/backup alpine sh -c \
+   docker run --rm --volumes-from $(docker compose ps -qa mpod) -v "$(pwd)":/backup alpine sh -c \
      "cp -a /data/mpod.sqlite* /backup/"
    docker compose start mpod
    ```
 
 2. **Восстановление базы данных (Restore):**
-   ```bash
-   docker compose stop mpod
-   docker run --rm --volumes-from $(docker compose ps -qa mpod) -v $(pwd):/backup alpine sh -c \
-     "cp /backup/backup.sqlite /data/mpod.sqlite && chown 1000:1000 /data/mpod.sqlite"
-   docker compose start mpod
-   ```
+   - Перед остановкой контейнера обязательно проверяем наличие файла резервной копии:
+     ```bash
+     RESTORE_FILE="backup_20260914_120000.sqlite"
+     test -f "$RESTORE_FILE" || { echo "Файл $RESTORE_FILE не найден"; exit 1; }
+     ```
+   - Останавливаем сервис и удаляем старые файлы журнала предзаписи WAL/SHM, чтобы транзакции из них случайно не применились к восстанавливаемой базе:
+     ```bash
+     docker compose stop mpod
+     docker run --rm --volumes-from $(docker compose ps -qa mpod) alpine sh -c \
+       "rm -f /data/mpod.sqlite-wal /data/mpod.sqlite-shm"
+     ```
+   - Копируем файл бэкапа на место основной базы и выставляем права пользователя `mpod`:
+     ```bash
+     docker run --rm --volumes-from $(docker compose ps -qa mpod) -v "$(pwd)":/backup alpine sh -c \
+       "cp \"/backup/$RESTORE_FILE\" /data/mpod.sqlite && chown 1000:1000 /data/mpod.sqlite"
+     docker compose start mpod
+     ```
 
 ### 2.5. Проверка защиты директории аудиокниг (Read-Only Enforcement)
 1. Убедиться, что том примонтирован с флагом `:ro`:
@@ -133,9 +151,16 @@
 ### 3.2. Проверка работы с базой данных и жизненного цикла
 1. Авторизоваться в приложении (`POST /api/auth/login`).
 2. Добавить тестовую RSS ленту подкаста (`POST /api/podcasts`).
-3. Запустить воспроизведение эпизода (`POST /api/playback` с телом `{"episodeId": 1, "positionSeconds": 0}`).
-4. Выполнить Rescan аудиокниг (`POST /api/audiobooks/rescan`).
-5. Перезагрузить страницу браузера (`F5`) и убедиться, что позиция воспроизведения, очередь и состояние подписок полностью восстановились из базы данных.
+3. Добавить выпуск в плейлист: `POST /api/playlist` с телом `{"episodeId": 1}`.
+4. Назначить выпуск активным для воспроизведения: `PUT /api/playback/active` с телом `{"episodeId": 1}`.
+5. Зафиксировать прогресс воспроизведения: `POST /api/playback` с телом `{"episodeId": 1, "positionSeconds": 15}`.
+6. Для фактической проверки отдачи медиапотока выполнить запрос к аудиофайлу:
+   ```bash
+   curl -i -H "Range: bytes=0-1023" http://localhost:5050/api/episodes/1/audio
+   ```
+   *Ожидается:* `HTTP 206 Partial Content`, `Content-Range: bytes 0-1023/...`, либо запустить воспроизведение в веб-интерфейсе через нажатие кнопки Play в карточке плеера.
+7. Выполнить Rescan аудиокниг (`POST /api/audiobooks/rescan`).
+8. Перезагрузить страницу браузера (`F5`) и убедиться, что позиция воспроизведения, активный трек, очередь и состояние подписок полностью восстановились из базы данных.
 
 ### 3.3. Мониторинг стабильности процесса
 1. Проверить отсутствие неожиданных перезапусков контейнера:
