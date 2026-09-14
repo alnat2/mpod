@@ -28,8 +28,8 @@
 - **Фактическая реализация (`frontend/src/components/mpod/logo.tsx`):** Геометрия контуров и цвета темы совпадают, однако в коде production-компонента жестко заданы классы `h-11 w-[123px]`, в результате чего Actual-компонент рендерится с размерами **123x44 px** (отличие на 1 px по ширине и высоте).
 - **Статус:** `FAIL`
 - **Визуальные доказательства:**
-  - Figma: [docs/audit-assets/logo-figma.png](docs/audit-assets/logo-figma.png) (124x45)
-  - Actual: [docs/audit-assets/logo-actual.png](docs/audit-assets/logo-actual.png) (123x44)
+  - Figma: [docs/audit-assets/logo-figma.png](audit-assets/logo-figma.png) (124x45)
+  - Actual: [docs/audit-assets/logo-actual.png](audit-assets/logo-actual.png) (123x44)
 
 ### 2.2. TopNav (Figma node `372:643` vs `top-nav.tsx`)
 - **Figma (узел `372:643`, Desktop, 1440px с центрированным контейнером 1200px, h=64px):**
@@ -41,8 +41,8 @@
   - Отступы (h=64px, gap=28px), шрифты, цвета фона и кнопки идентичны макету. Размеры совпадают 1:1 (**1440x64 px**).
 - **Статус:** `PASS`
 - **Визуальные доказательства:**
-  - Figma: [docs/audit-assets/topnav-figma.png](docs/audit-assets/topnav-figma.png) (1440x64)
-  - Actual: [docs/audit-assets/topnav-actual.png](docs/audit-assets/topnav-actual.png) (1440x64)
+  - Figma: [docs/audit-assets/topnav-figma.png](audit-assets/topnav-figma.png) (1440x64)
+  - Actual: [docs/audit-assets/topnav-actual.png](audit-assets/topnav-actual.png) (1440x64)
 
 ### 2.3. AppShell (Figma node `374:295` vs `app-shell.tsx`)
 - **Figma (узел `374:295`, 1440x900 px):** Верхняя панель `TopNav`, под ней область контента 1200px, где заголовок `Subscriptions`, подзаголовок `Short description`, кнопки действий `Refresh all` и `Show all`, а также контентная область находятся **внутри единой большой рамки/карточки**.
@@ -50,8 +50,8 @@
   - **Структурное расхождение:** Заголовок страницы и кнопки действий вынесены в `PageHeader` над рамкой контента. В рамку заключён только дочерний контент (`children`), а не весь экранный блок с заголовком и кнопками.
 - **Статус:** `FAIL`
 - **Визуальные доказательства:**
-  - Figma: [docs/audit-assets/appshell-figma.png](docs/audit-assets/appshell-figma.png) (1440x900)
-  - Actual: [docs/audit-assets/appshell-actual.png](docs/audit-assets/appshell-actual.png) (1440x900)
+  - Figma: [docs/audit-assets/appshell-figma.png](audit-assets/appshell-figma.png) (1440x900)
+  - Actual: [docs/audit-assets/appshell-actual.png](audit-assets/appshell-actual.png) (1440x900)
 
 ### 2.4. AuthShell и AuthCard (Figma node `343:348` vs `auth-shell.tsx`, `auth-card.tsx`)
 - **Figma (узел `343:348`, 1440x900 px):** Десктопный экран регистрации:
@@ -62,8 +62,8 @@
   - **Расхождение:** Левый блок с Logo и заголовком в Actual расположен с фиксированным верхним отступом (`items-start` с `py-5 md:items-center lg:flex-row`) и визуально находится заметно выше, чем в Figma, где левая текстовая колонка строго сцентрирована по высоте правой формы.
 - **Статус:** `FAIL`
 - **Визуальные доказательства:**
-  - Figma: [docs/audit-assets/auth-figma.png](docs/audit-assets/auth-figma.png) (1440x900)
-  - Actual: [docs/audit-assets/auth-actual.png](docs/audit-assets/auth-actual.png) (1440x900)
+  - Figma: [docs/audit-assets/auth-figma.png](audit-assets/auth-figma.png) (1440x900)
+  - Actual: [docs/audit-assets/auth-actual.png](audit-assets/auth-actual.png) (1440x900)
 
 ### 2.5. Player (Figma node `462:2515` vs `player.tsx`)
 - **Figma (узел `462:2515`, 484x462 px):**
@@ -76,23 +76,23 @@
   - **Расхождение 2 (размеры):** Размеры фрейма в Figma составляют **484x462 px**, а фактический размер production-карточки — **480x458 px**.
 - **Статус:** `FAIL`
 - **Визуальные доказательства:**
-  - Figma: [docs/audit-assets/player-figma.png](docs/audit-assets/player-figma.png) (484x462)
-  - Actual: [docs/audit-assets/player-actual.png](docs/audit-assets/player-actual.png) (480x458)
+  - Figma: [docs/audit-assets/player-figma.png](audit-assets/player-figma.png) (484x462)
+  - Actual: [docs/audit-assets/player-actual.png](audit-assets/player-actual.png) (480x458)
 
 ### 2.6. PlaylistQueue и EpisodeRow (Figma node `472:520` vs `playlist-queue.tsx`, `episode-row.tsx`)
 - **Figma (узел `472:520`, 1044x275 px):**
   - Шапка списка: `3 episodes · 2h 13m`.
   - 3 строки выпусков в виде единого плоского списка с тонкими разделителями строк. Заголовки строго прижаты влево рядом с обложкой. Подзаголовки имеют нейтральный серый цвет. На строках отображаются иконки статуса скачивания.
 - **Фактическая реализация и различия:**
-  - **Согласованная часть различий:** Иконки статуса скачивания отсутствуют на основании утверждённого решения [docs/product-decisions.md#L910](docs/product-decisions.md#L910) (*"Download status indicators (downloaded badge/icon) are removed from all UI views"*).
+  - **Согласованная часть различий:** Иконки статуса скачивания отсутствуют на основании утверждённого решения [docs/product-decisions.md#L910](product-decisions.md#L910) (*"Download status indicators (downloaded badge/icon) are removed from all UI views"*).
   - **Несогласованное расхождение 1 (выравнивание):** Заголовки выпусков в Actual смещены ближе к центру строки вместо левого выравнивания рядом с обложкой.
   - **Несогласованное расхождение 2 (цвет подзаголовка):** Подзаголовок в коде окрашен в зелёный цвет темы (`text-primary` / `#5EA500`), тогда как в Figma он нейтральный серый (`text-muted-foreground`).
   - **Несогласованное расхождение 3 (структура строк):** В Actual каждая строка выпущена в виде отдельной скруглённой карточки (`rounded-sm` с тенью `shadow-xs`), тогда как в Figma это сплошной плоский список с линиями-разделителями.
   - **Несогласованное расхождение 4 (размеры):** 1044x275 px в Figma против 1040x272 px в Actual.
 - **Статус:** `FAIL`
 - **Визуальные доказательства:**
-  - Figma: [docs/audit-assets/queue-figma.png](docs/audit-assets/queue-figma.png) (1044x275)
-  - Actual: [docs/audit-assets/queue-actual.png](docs/audit-assets/queue-actual.png) (1040x272)
+  - Figma: [docs/audit-assets/queue-figma.png](audit-assets/queue-figma.png) (1044x275)
+  - Actual: [docs/audit-assets/queue-actual.png](audit-assets/queue-actual.png) (1040x272)
 
 ### 2.7. AddPodcast (Figma node `521:540` vs `add-podcast.tsx`)
 - **Figma (узел `521:540`, сет `AddPodcast-desktop` 1488x473 px):**
@@ -104,8 +104,8 @@
   - **Размеры:** 1488x473 px в Figma против 1486x473 px в Actual.
 - **Статус:** `FAIL`
 - **Визуальные доказательства:**
-  - Figma: [docs/audit-assets/addpodcast-figma.png](docs/audit-assets/addpodcast-figma.png) (1488x473)
-  - Actual: [docs/audit-assets/addpodcast-actual.png](docs/audit-assets/addpodcast-actual.png) (1486x473)
+  - Figma: [docs/audit-assets/addpodcast-figma.png](audit-assets/addpodcast-figma.png) (1488x473)
+  - Actual: [docs/audit-assets/addpodcast-actual.png](audit-assets/addpodcast-actual.png) (1486x473)
 
 ### 2.8. FileDropzone (Figma node `517:504` vs `file-dropzone.tsx`)
 - **Figma (узел `517:504`):** Самостоятельный компонент дропзоны размером **265x232 px** с пунктирной зелёной рамкой (`border-primary border-dashed`), иконкой выгрузки файла, заголовком `Drag and drop your file` и ссылкой `Browse files`.
@@ -114,8 +114,8 @@
   - **Расхождение по высоте (2 px):** В Actual компонент рендерится с размером **265x234 px** (на 2 px выше макета) из-за внутренних отступов `p-6`, размеров иконки `size-20` (80px), межстрочных промежутков `gap` и кнопки `h-9`.
 - **Статус:** `FAIL`
 - **Визуальные доказательства:**
-  - Figma: [docs/audit-assets/filedropzone-figma.png](docs/audit-assets/filedropzone-figma.png) (265x232)
-  - Actual: [docs/audit-assets/filedropzone-actual.png](docs/audit-assets/filedropzone-actual.png) (265x234)
+  - Figma: [docs/audit-assets/filedropzone-figma.png](audit-assets/filedropzone-figma.png) (265x232)
+  - Actual: [docs/audit-assets/filedropzone-actual.png](audit-assets/filedropzone-actual.png) (265x234)
 
 ### 2.9. ShowNotes (Figma node `544:1104` vs `show-notes.tsx`)
 - **Figma (узел `544:1104`, 730x560 px):** Карточка заметок выпуска фиксированной высоты 560px с точным текстом из 4 абзацев, кнопкой закрытия и выделенным статическим скроллбаром (`Visible Scrollbar`, ширина 6px, подложка `#f4f4f5`, ползунок `#696867` высотой 116px).
@@ -125,8 +125,8 @@
   - **Расхождение 2 (размеры):** 730x560 px в Figma против 720x480 px в Actual.
 - **Статус:** `FAIL`
 - **Визуальные доказательства:**
-  - Figma: [docs/audit-assets/shownotes-figma.png](docs/audit-assets/shownotes-figma.png) (730x560)
-  - Actual: [docs/audit-assets/shownotes-actual.png](docs/audit-assets/shownotes-actual.png) (720x480)
+  - Figma: [docs/audit-assets/shownotes-figma.png](audit-assets/shownotes-figma.png) (730x560)
+  - Actual: [docs/audit-assets/shownotes-actual.png](audit-assets/shownotes-actual.png) (720x480)
 
 ### 2.10. ModalScreen (Figma node `544:1399` vs `modal-screen.tsx`, `show-notes.tsx`)
 - **Figma (узел `544:1399`, 1440x900 px):** Полноэкранный модальный экран 1440x900 с карточкой Show Notes на глубоко затенённом фоне (backdrop).
@@ -136,8 +136,8 @@
   - **Расхождение 2 (карточка контента):** Наследуются расхождения внутренней карточки ShowNotes (высота 480 px вместо 560 px, отсутствие статического скроллбара).
 - **Статус:** `FAIL`
 - **Визуальные доказательства:**
-  - Figma: [docs/audit-assets/modalscreen-figma.png](docs/audit-assets/modalscreen-figma.png) (1440x900)
-  - Actual: [docs/audit-assets/modalscreen-actual.png](docs/audit-assets/modalscreen-actual.png) (1440x900)
+  - Figma: [docs/audit-assets/modalscreen-figma.png](audit-assets/modalscreen-figma.png) (1440x900)
+  - Actual: [docs/audit-assets/modalscreen-actual.png](audit-assets/modalscreen-actual.png) (1440x900)
 
 ### 2.11. PodcastCard (Figma node `694:2836` vs `podcast-card.tsx`)
 - **Figma (узел `694:2836`, фрейм 688x460 px):** Две карточки подкаста (Default и Selected):
@@ -149,8 +149,8 @@
   - **Расхождение 3 (размеры):** 688x460 px в Figma против 688x420 px в Actual (из-за отсутствия строки счётчика высота карточки меньше на 40 px).
 - **Статус:** `FAIL`
 - **Визуальные доказательства:**
-  - Figma: [docs/audit-assets/podcastcard-figma.png](docs/audit-assets/podcastcard-figma.png) (688x460)
-  - Actual: [docs/audit-assets/podcastcard-actual.png](docs/audit-assets/podcastcard-actual.png) (688x420)
+  - Figma: [docs/audit-assets/podcastcard-figma.png](audit-assets/podcastcard-figma.png) (688x460)
+  - Actual: [docs/audit-assets/podcastcard-actual.png](audit-assets/podcastcard-actual.png) (688x420)
 
 ### 2.12. FileManager (Figma node `1285:8972` vs `filemanager-item.tsx`, `breadcrumb.tsx`)
 - **Figma (узел `1285:8972`, 1044x275 px):**
@@ -161,8 +161,8 @@
   - **Расхождение 2 (размеры):** 1044x275 px в Figma против 1040x276 px в Actual.
 - **Статус:** `FAIL`
 - **Визуальные доказательства:**
-  - Figma: [docs/audit-assets/filemanager-figma.png](docs/audit-assets/filemanager-figma.png) (1044x275)
-  - Actual: [docs/audit-assets/filemanager-actual.png](docs/audit-assets/filemanager-actual.png) (1040x276)
+  - Figma: [docs/audit-assets/filemanager-figma.png](audit-assets/filemanager-figma.png) (1044x275)
+  - Actual: [docs/audit-assets/filemanager-actual.png](audit-assets/filemanager-actual.png) (1040x276)
 
 ### 2.13. AbookChapter (Figma node `1309:11657` vs `audiobook-playback-chapters-modal.tsx`)
 - **Figma (узел `1309:11657`, 730x566 px):** Модальное окно глав аудиокниги:
@@ -175,8 +175,8 @@
   - **Расхождение 3 (размеры):** 730x566 px в Figma против 720x556 px в Actual.
 - **Статус:** `FAIL`
 - **Визуальные доказательства:**
-  - Figma: [docs/audit-assets/abookchapter-figma.png](docs/audit-assets/abookchapter-figma.png) (730x566)
-  - Actual: [docs/audit-assets/abookchapter-actual.png](docs/audit-assets/abookchapter-actual.png) (720x556)
+  - Figma: [docs/audit-assets/abookchapter-figma.png](audit-assets/abookchapter-figma.png) (730x566)
+  - Actual: [docs/audit-assets/abookchapter-actual.png](audit-assets/abookchapter-actual.png) (720x556)
 
 ---
 
@@ -207,6 +207,6 @@
 - Из 13 проверяемых компонентов:
   - **1 компонент получил статус PASS:** TopNav (узел `372:643`) — полное визуальное соответствие и точные размеры 1440x64 px.
   - **12 компонентов получили статус FAIL:** Logo, AppShell, Auth, Player, PlaylistQueue, AddPodcast, FileDropzone, ShowNotes, ModalScreen, PodcastCard, FileManager, AbookChapter.
-  - В компоненте **PlaylistQueue** отсутствие иконок статуса скачивания выпусков подтверждено утверждённым продуктовым решением [docs/product-decisions.md#L910](docs/product-decisions.md#L910), однако наличие иных несогласованных визуальных и структурных отличий (центрирование заголовков, цвет подзаголовка, скруглённые карточки, габариты) переводит общий статус компонента в **FAIL**.
+  - В компоненте **PlaylistQueue** отсутствие иконок статуса скачивания выпусков подтверждено утверждённым продуктовым решением [docs/product-decisions.md#L910](product-decisions.md#L910), однако наличие иных несогласованных визуальных и структурных отличий (центрирование заголовков, цвет подзаголовка, скруглённые карточки, габариты) переводит общий статус компонента в **FAIL**.
 
 Аудит отражает фактическое состояние кодовой базы: production-компоненты не подгонялись под скриншоты, все реальные расхождения зафиксированы с указанием их причин.
