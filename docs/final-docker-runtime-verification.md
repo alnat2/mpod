@@ -1,6 +1,6 @@
 # Финальная Docker и Runtime-проверка
 
-Дата подготовки: 13 сентября 2026 года  
+Дата подготовки: 13 сентября 2026 года
 Направление: эксплуатационная приёмка (Production Runtime Acceptance)
 
 ---
@@ -61,10 +61,11 @@
    *Критерий:* размер финального образа не превышает целевой диапазон (< 70–90 МБ).
 
 ### 2.3. Обновление с сохранением данных (Update & State Preservation)
-1. Перед обновлением зафиксировать контрольные данные:
+1. Перед обновлением зафиксировать контрольные данные (используя ephemeral-контейнер с sqlite3, так как в минимальном образе mpod CLI-утилита sqlite3 отсутствует):
    ```bash
    docker compose exec mpod ls -la /data
-   docker compose exec mpod sqlite3 /data/mpod.sqlite "SELECT count(*) FROM podcasts; SELECT count(*) FROM playback_queue;"
+   docker run --rm --volumes-from $(docker compose ps -q mpod) alpine sh -c \
+     "apk add --no-cache sqlite >/dev/null && sqlite3 /data/mpod.sqlite 'SELECT count(*) FROM podcasts; SELECT count(*) FROM playlist;'"
    ```
 2. Выполнить сборку нового кандидата и перезапуск:
    ```bash
@@ -73,22 +74,30 @@
    ```
 3. Проверить целостность базы данных и томов:
    - Файл `/data/mpod.sqlite` сохранён, размер не уменьшился.
-   - Записи в таблицах БД не сброшены.
+   - Записи в таблицах `podcasts`, `episodes`, `playlist` не сброшены.
    - Скачанные файлы в `/data/downloads` сохранены.
 
 ### 2.4. Резервное копирование и восстановление (Backup & Restore)
-1. **Backup SQLite базы данных онлайн:**
+Поскольку финальный контейнер `mpod` построен на базе минимального Alpine без предустановленной CLI-утилиты `sqlite3`, а Compose-манифест содержит единственный сервис `mpod` (команда `docker compose run ... alpine` ошибочно воспримет `alpine` как имя сервиса), для сервисных операций с БД и файловой системой тома используется вспомогательный контейнер через `docker run --volumes-from`:
+
+1. **Онлайн-бэкап базы данных (горячая консистентная копия через `VACUUM INTO`):**
    ```bash
-   # Выполнение горячей консистентной резервной копии через vacuum into
-   docker compose exec mpod sqlite3 /data/mpod.sqlite "VACUUM INTO '/data/mpod_backup.sqlite';"
-   docker compose cp mpod:/data/mpod_backup.sqlite ./backup_$(date +%Y%m%d_%H%M%S).sqlite
-   docker compose exec mpod rm /data/mpod_backup.sqlite
+   docker run --rm --volumes-from $(docker compose ps -q mpod) -v $(pwd):/backup alpine sh -c \
+     "apk add --no-cache sqlite >/dev/null && sqlite3 /data/mpod.sqlite \"VACUUM INTO '/backup/backup_\$(date +%Y%m%d_%H%M%S).sqlite';\""
    ```
-2. **Восстановление (Restore):**
+   *Альтернативный оффлайн-бэкап (при остановленном сервисе для сохранения WAL-файлов):*
    ```bash
    docker compose stop mpod
-   docker compose run --rm -v mpod_data:/data alpine cp /data/backup.sqlite /data/mpod.sqlite
-   docker compose run --rm -v mpod_data:/data alpine chown mpod:mpod /data/mpod.sqlite
+   docker run --rm --volumes-from $(docker compose ps -qa mpod) -v $(pwd):/backup alpine sh -c \
+     "cp -a /data/mpod.sqlite* /backup/"
+   docker compose start mpod
+   ```
+
+2. **Восстановление базы данных (Restore):**
+   ```bash
+   docker compose stop mpod
+   docker run --rm --volumes-from $(docker compose ps -qa mpod) -v $(pwd):/backup alpine sh -c \
+     "cp /backup/backup.sqlite /data/mpod.sqlite && chown 1000:1000 /data/mpod.sqlite"
    docker compose start mpod
    ```
 
@@ -124,8 +133,8 @@
 ### 3.2. Проверка работы с базой данных и жизненного цикла
 1. Авторизоваться в приложении (`POST /api/auth/login`).
 2. Добавить тестовую RSS ленту подкаста (`POST /api/podcasts`).
-3. Запустить воспроизведение эпизода (`POST /api/playback/play`).
-4. Выполнить Rescan аудиокниг (`POST /api/audiobooks/scan`).
+3. Запустить воспроизведение эпизода (`POST /api/playback` с телом `{"episodeId": 1, "positionSeconds": 0}`).
+4. Выполнить Rescan аудиокниг (`POST /api/audiobooks/rescan`).
 5. Перезагрузить страницу браузера (`F5`) и убедиться, что позиция воспроизведения, очередь и состояние подписок полностью восстановились из базы данных.
 
 ### 3.3. Мониторинг стабильности процесса
