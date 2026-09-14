@@ -1,3 +1,4 @@
+import React from "react";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -291,5 +292,128 @@ describe("useSubscriptionActions - refreshAll polling", () => {
     });
     expect(statusSpy).toHaveBeenCalledTimes(2);
     expect(result.current.refreshingAll).toBe(false);
+  });
+
+  it("works properly in React StrictMode without breaking state updates", async () => {
+    vi.spyOn(api.podcasts, "refreshAll").mockResolvedValue({
+      success: true,
+      state: "running",
+    });
+    vi.spyOn(api.jobs, "status").mockResolvedValue({
+      scheduler: {
+        state: "completed",
+        lastRunAt: "2026-09-13T10:00:00Z",
+        lastSuccessAt: "2026-09-13T10:00:05Z",
+      },
+    });
+
+    const reloadQueue = vi.fn().mockResolvedValue(undefined);
+    const setPodcasts = vi.fn();
+    const setReloadKey = vi.fn();
+
+    const { result } = renderHook(
+      () =>
+        useSubscriptionActions({
+          podcasts: [],
+          reloadQueue,
+          setPodcasts,
+          setReloadKey,
+          showAll: true,
+        }),
+      { wrapper: React.StrictMode }
+    );
+
+    await act(async () => {
+      await result.current.refreshAllPodcasts();
+    });
+
+    expect(result.current.refreshingAll).toBe(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(REFRESH_ALL_STATUS_POLL_MS);
+    });
+
+    expect(result.current.refreshingAll).toBe(false);
+    expect(result.current.actionError).toBeNull();
+  });
+
+  it("aborts in-flight refreshAll request and surfaces timeout error when network hangs", async () => {
+    let capturedSignal: AbortSignal | undefined;
+    vi.spyOn(api.podcasts, "refreshAll").mockImplementation((options) => {
+      capturedSignal = options?.signal;
+      return new Promise((_, reject) => {
+        if (capturedSignal) {
+          capturedSignal.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }
+      });
+    });
+
+    const { result } = setupHook();
+
+    await act(async () => {
+      void result.current.refreshAllPodcasts();
+    });
+
+    expect(result.current.refreshingAll).toBe(true);
+    expect(capturedSignal?.aborted).toBe(false);
+
+    // Advance to wall-clock timeout
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(REFRESH_ALL_WALL_CLOCK_TIMEOUT_MS);
+    });
+
+    expect(capturedSignal?.aborted).toBe(true);
+    expect(result.current.refreshingAll).toBe(false);
+    expect(result.current.actionError).toBe(
+      "Refresh all timed out. Please try again."
+    );
+  });
+
+  it("aborts in-flight jobs.status request when wall-clock timeout expires during polling", async () => {
+    vi.spyOn(api.podcasts, "refreshAll").mockResolvedValue({
+      success: true,
+      state: "running",
+    });
+
+    let capturedSignal: AbortSignal | undefined;
+    vi.spyOn(api.jobs, "status").mockImplementation((options) => {
+      capturedSignal = options?.signal;
+      return new Promise((_, reject) => {
+        if (capturedSignal) {
+          capturedSignal.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }
+      });
+    });
+
+    const { result } = setupHook();
+
+    await act(async () => {
+      await result.current.refreshAllPodcasts();
+    });
+
+    expect(result.current.refreshingAll).toBe(true);
+
+    // Poll 1 triggers hanging jobs.status
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(REFRESH_ALL_STATUS_POLL_MS);
+    });
+
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal?.aborted).toBe(false);
+
+    // Advance until wall clock timeout expires
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(REFRESH_ALL_WALL_CLOCK_TIMEOUT_MS);
+    });
+
+    expect(capturedSignal?.aborted).toBe(true);
+    expect(result.current.refreshingAll).toBe(false);
+    expect(result.current.actionError).toBe(
+      "Refresh all timed out. Please try again."
+    );
   });
 });

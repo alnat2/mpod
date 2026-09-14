@@ -283,9 +283,10 @@ export const api = {
          `/api/podcasts/${podcastId}/refresh`,
          { method: "POST" }
        ),
-     refreshAll: () =>
+     refreshAll: (options?: { signal?: AbortSignal }) =>
        apiRequest<{ success: true; state: "running" }>("/api/podcasts/refresh-all", {
-         method: "POST"
+         method: "POST",
+         signal: options?.signal,
        }),
      markAllListened: (podcastId: number) =>
        apiRequest<{ success: true; markedEpisodes: number }>(
@@ -441,7 +442,9 @@ export const api = {
       }),
   },
   jobs: {
-    status: () =>
-      apiRequest<{ scheduler: SchedulerStatus }>("/api/jobs/status"),
+    status: (options?: { signal?: AbortSignal }) =>
+      apiRequest<{ scheduler: SchedulerStatus }>("/api/jobs/status", {
+        signal: options?.signal,
+      }),
   },
 };

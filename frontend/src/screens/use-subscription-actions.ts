@@ -61,6 +61,10 @@ export function useSubscriptionActions({
   const refreshAllStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
+  const refreshAllWallClockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const refreshAllAbortControllerRef = useRef<AbortController | null>(null);
   const refreshAllStartTimeRef = useRef<number | null>(null);
   const refreshAllConsecutiveErrorsRef = useRef<number>(0);
   const refreshAllOperationIdRef = useRef<number>(0);
@@ -76,11 +80,20 @@ export function useSubscriptionActions({
       clearTimeout(refreshAllStatusTimeoutRef.current);
       refreshAllStatusTimeoutRef.current = null;
     }
+    if (refreshAllWallClockTimerRef.current !== null) {
+      clearTimeout(refreshAllWallClockTimerRef.current);
+      refreshAllWallClockTimerRef.current = null;
+    }
+    if (refreshAllAbortControllerRef.current !== null) {
+      refreshAllAbortControllerRef.current.abort();
+      refreshAllAbortControllerRef.current = null;
+    }
     refreshAllStartTimeRef.current = null;
     refreshAllConsecutiveErrorsRef.current = 0;
   }
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       cancelRefreshAllPolling();
@@ -163,7 +176,12 @@ export function useSubscriptionActions({
       return;
     }
 
-    if (isRefreshAllTimedOut(refreshAllStartTimeRef.current)) {
+    const controller = refreshAllAbortControllerRef.current;
+    if (controller?.signal.aborted || isRefreshAllTimedOut(refreshAllStartTimeRef.current)) {
+      if (refreshAllWallClockTimerRef.current !== null) {
+        clearTimeout(refreshAllWallClockTimerRef.current);
+        refreshAllWallClockTimerRef.current = null;
+      }
       setRefreshingAll(false);
       setActionError("Refresh all timed out. Please try again.");
       return;
@@ -181,14 +199,19 @@ export function useSubscriptionActions({
       return;
     }
 
-    if (isRefreshAllTimedOut(refreshAllStartTimeRef.current)) {
+    const controller = refreshAllAbortControllerRef.current;
+    if (controller?.signal.aborted || isRefreshAllTimedOut(refreshAllStartTimeRef.current)) {
+      if (refreshAllWallClockTimerRef.current !== null) {
+        clearTimeout(refreshAllWallClockTimerRef.current);
+        refreshAllWallClockTimerRef.current = null;
+      }
       setRefreshingAll(false);
       setActionError("Refresh all timed out. Please try again.");
       return;
     }
 
     try {
-      const { scheduler } = await api.jobs.status();
+      const { scheduler } = await api.jobs.status({ signal: controller?.signal });
       if (!mountedRef.current || refreshAllOperationIdRef.current !== operationId) {
         return;
       }
@@ -198,6 +221,11 @@ export function useSubscriptionActions({
       if (scheduler.state === "running") {
         pollRefreshAllCompletion(operationId);
         return;
+      }
+
+      if (refreshAllWallClockTimerRef.current !== null) {
+        clearTimeout(refreshAllWallClockTimerRef.current);
+        refreshAllWallClockTimerRef.current = null;
       }
 
       if (scheduler.state === "failed") {
@@ -210,11 +238,25 @@ export function useSubscriptionActions({
         return;
       }
 
+      if (controller?.signal.aborted || isRefreshAllTimedOut(refreshAllStartTimeRef.current)) {
+        if (refreshAllWallClockTimerRef.current !== null) {
+          clearTimeout(refreshAllWallClockTimerRef.current);
+          refreshAllWallClockTimerRef.current = null;
+        }
+        setRefreshingAll(false);
+        setActionError("Refresh all timed out. Please try again.");
+        return;
+      }
+
       refreshAllConsecutiveErrorsRef.current += 1;
       if (
         refreshAllConsecutiveErrorsRef.current >=
         REFRESH_ALL_MAX_CONSECUTIVE_ERRORS
       ) {
+        if (refreshAllWallClockTimerRef.current !== null) {
+          clearTimeout(refreshAllWallClockTimerRef.current);
+          refreshAllWallClockTimerRef.current = null;
+        }
         setRefreshingAll(false);
         setActionError(getErrorMessage(caught) || "Failed to check refresh status");
         return;
@@ -227,21 +269,41 @@ export function useSubscriptionActions({
   async function refreshAllPodcasts() {
     cancelRefreshAllPolling();
     const operationId = refreshAllOperationIdRef.current;
+    const controller = new AbortController();
+    refreshAllAbortControllerRef.current = controller;
     refreshAllStartTimeRef.current = Date.now();
     refreshAllConsecutiveErrorsRef.current = 0;
 
     setActionError(null);
     setRefreshingAll(true);
 
+    refreshAllWallClockTimerRef.current = setTimeout(() => {
+      if (refreshAllOperationIdRef.current === operationId) {
+        controller.abort();
+        if (mountedRef.current) {
+          setRefreshingAll(false);
+          setActionError("Refresh all timed out. Please try again.");
+        }
+      }
+    }, REFRESH_ALL_WALL_CLOCK_TIMEOUT_MS);
+
     try {
-      await api.podcasts.refreshAll();
+      await api.podcasts.refreshAll({ signal: controller.signal });
       if (mountedRef.current && refreshAllOperationIdRef.current === operationId) {
         pollRefreshAllCompletion(operationId);
       }
     } catch (caught) {
       if (mountedRef.current && refreshAllOperationIdRef.current === operationId) {
-        setActionError(getErrorMessage(caught));
+        if (controller.signal.aborted || isRefreshAllTimedOut(refreshAllStartTimeRef.current)) {
+          setActionError("Refresh all timed out. Please try again.");
+        } else {
+          setActionError(getErrorMessage(caught));
+        }
         setRefreshingAll(false);
+        if (refreshAllWallClockTimerRef.current !== null) {
+          clearTimeout(refreshAllWallClockTimerRef.current);
+          refreshAllWallClockTimerRef.current = null;
+        }
       }
     }
   }
