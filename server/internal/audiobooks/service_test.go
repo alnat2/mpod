@@ -8,7 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/cross/mpod/server/internal/downloads"
+	"github.com/cross/mpod/server/internal/episodes"
+	"github.com/cross/mpod/server/internal/playback"
+	"github.com/cross/mpod/server/internal/playlist"
 	"github.com/cross/mpod/server/internal/storage"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -285,13 +290,17 @@ func fileSHA256(t *testing.T, path string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func TestRescanAppearanceDisappearanceAndSourceImmutability(t *testing.T) {
+func TestExtendedLibraryAndMixedQueueRegression(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
 	audiobooksDir := t.TempDir()
 	svc := NewService(db, audiobooksDir)
 	ctx := context.Background()
+
+	epActions := episodes.NewActions(db, downloads.NewService(db, nil, t.TempDir()))
+	plService := playlist.NewService(db)
+	pbService := playback.NewService(db, epActions, plService)
 
 	// 1. Setup initial books on filesystem
 	book1Dir := filepath.Join(audiobooksDir, "Author One", "Book One")
@@ -328,7 +337,22 @@ func TestRescanAppearanceDisappearanceAndSourceImmutability(t *testing.T) {
 		t.Fatalf("expected both Book One and Book Two in library")
 	}
 
-	// 3. Add chapter 1 of Book 1 to playlist -> 1 playlist item
+	// 3. Create podcast and episode in DB
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Tech Weekly', 'https://example.com/feed.xml');
+		INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration)
+		VALUES (101, 1, 'ep-101', 'Episode 101', 'https://example.com/101.mp3', 3600);
+	`); err != nil {
+		t.Fatalf("insert podcast and episode: %v", err)
+	}
+
+	// 4. Form a mixed queue:
+	// Add podcast episode first
+	if err := plService.Add(ctx, 101); err != nil {
+		t.Fatalf("add podcast episode to playlist: %v", err)
+	}
+
+	// Add selected chapters of Book One
 	b1Detail, err := svc.Get(ctx, book1.ID)
 	if err != nil || len(b1Detail.Tracks) != 2 {
 		t.Fatalf("expected 2 tracks in Book One, got %+v", b1Detail)
@@ -336,27 +360,100 @@ func TestRescanAppearanceDisappearanceAndSourceImmutability(t *testing.T) {
 	if err := svc.AddTrackToPlaylist(ctx, b1Detail.Tracks[0].ID); err != nil {
 		t.Fatalf("add track 0 to playlist failed: %v", err)
 	}
-
-	// Add chapter 2 to playlist -> still 1 playlist item
 	if err := svc.AddTrackToPlaylist(ctx, b1Detail.Tracks[1].ID); err != nil {
 		t.Fatalf("add track 1 to playlist failed: %v", err)
 	}
 
-	var playlistCount int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_id = ?`, book1.ID).Scan(&playlistCount); err != nil || playlistCount != 1 {
-		t.Fatalf("expected 1 playlist item for Book One, got %d", playlistCount)
+	// Verify mixed queue representation: 2 items (1 podcast, 1 audiobook)
+	queue, err := pbService.ListQueue(ctx)
+	if err != nil {
+		t.Fatalf("list queue failed: %v", err)
+	}
+	if len(queue) != 2 {
+		t.Fatalf("expected 2 items in mixed queue, got %d", len(queue))
+	}
+	if queue[0].Type != "episode" || queue[0].ID != 101 {
+		t.Fatalf("expected first queue item to be podcast episode 101, got %+v", queue[0])
+	}
+	if queue[1].Type != "audiobook" || queue[1].AudiobookID == nil || *queue[1].AudiobookID != book1.ID {
+		t.Fatalf("expected second queue item to be audiobook %d, got %+v", book1.ID, queue[1])
 	}
 
-	// 4. Remove Book Two from disk
+	// 5. Media type transitions and independent progress tracking:
+	// Start podcast playback at position 50s
+	epID := int64(101)
+	activeEp, err := pbService.SetActiveItem(ctx, &epID, nil, nil)
+	if err != nil || activeEp == nil {
+		t.Fatalf("set active podcast episode: %v", err)
+	}
+	now := time.Now().UTC()
+	if _, err := pbService.Update(ctx, playback.UpdateInput{
+		EpisodeID:       101,
+		PositionSeconds: 50,
+		ClientUpdatedAt: &now,
+	}); err != nil {
+		t.Fatalf("update podcast playback: %v", err)
+	}
+
+	// Transition to audiobook playback at position 180s
+	abID := book1.ID
+	trID := b1Detail.Tracks[0].ID
+	activeAb, err := pbService.SetActiveItem(ctx, nil, &abID, &trID)
+	if err != nil || activeAb == nil {
+		t.Fatalf("set active audiobook track: %v", err)
+	}
+	now = time.Now().UTC()
+	if _, err := pbService.Update(ctx, playback.UpdateInput{
+		AudiobookID:     &abID,
+		TrackID:         &trID,
+		PositionSeconds: 180,
+		ClientUpdatedAt: &now,
+	}); err != nil {
+		t.Fatalf("update audiobook playback: %v", err)
+	}
+
+	// Transition back to podcast -> retains position 50s
+	activeEpAgain, err := pbService.SetActiveItem(ctx, &epID, nil, nil)
+	if err != nil || activeEpAgain == nil {
+		t.Fatalf("switch back to podcast episode: %v", err)
+	}
+	epPlayback, err := pbService.GetEpisode(ctx, 101)
+	if err != nil || epPlayback == nil || epPlayback.PositionSeconds != 50 {
+		t.Fatalf("expected podcast position 50s, got %+v (err: %v)", epPlayback, err)
+	}
+
+	// Transition back to audiobook -> retains position 180s
+	activeAbAgain, err := pbService.SetActiveItem(ctx, nil, &abID, &trID)
+	if err != nil || activeAbAgain == nil {
+		t.Fatalf("switch back to audiobook track: %v", err)
+	}
+	abPlayback, err := pbService.GetAudiobook(ctx, abID, &trID)
+	if err != nil || abPlayback == nil || abPlayback.PositionSeconds != 180 {
+		t.Fatalf("expected audiobook position 180s, got %+v (err: %v)", abPlayback, err)
+	}
+
+	// 6. Reload / multi-device simulation:
+	// Fresh playback service instance connects to the same DB
+	pbServiceDevice2 := playback.NewService(db, epActions, plService)
+	activeItemDevice2, err := pbServiceDevice2.GetActive(ctx)
+	if err != nil || activeItemDevice2 == nil {
+		t.Fatalf("second device failed to get active item: %v", err)
+	}
+	if activeItemDevice2.AudiobookID == nil || *activeItemDevice2.AudiobookID != book1.ID || activeItemDevice2.AudiobookTrackID == nil || *activeItemDevice2.AudiobookTrackID != trID {
+		t.Fatalf("second device desynchronized: got %+v", activeItemDevice2)
+	}
+	reloadedQueue, err := pbServiceDevice2.ListQueue(ctx)
+	if err != nil || len(reloadedQueue) != 2 {
+		t.Fatalf("second device got invalid queue length: %v", err)
+	}
+
+	// 7. Rescan disappearance: remove Book Two from disk
 	if err := os.Remove(book2File); err != nil {
 		t.Fatalf("remove book2 file failed: %v", err)
 	}
-
-	// 5. Rescan -> Book Two disappears from library, Book One remains
 	if err := svc.Rescan(ctx); err != nil {
 		t.Fatalf("rescan after removal failed: %v", err)
 	}
-
 	booksAfterRemove, err := svc.List(ctx)
 	if err != nil || len(booksAfterRemove) != 1 {
 		t.Fatalf("expected 1 book after Book Two removal, got %d", len(booksAfterRemove))
@@ -365,27 +462,43 @@ func TestRescanAppearanceDisappearanceAndSourceImmutability(t *testing.T) {
 		t.Fatalf("expected Book One to remain, got %q", booksAfterRemove[0].Title)
 	}
 
-	// Book One selected chapters are preserved
+	// Book One selected chapters are preserved across rescan
 	b1Check, err := svc.Get(ctx, book1.ID)
 	if err != nil || !b1Check.InPlaylist || !b1Check.Tracks[0].InPlaylist || !b1Check.Tracks[1].InPlaylist {
 		t.Fatalf("expected Book One playlist tracks to be preserved across rescan")
 	}
 
-	// 6. Add Book Three to disk
+	// 8. Rescan appearance: add Book Three to disk
 	book3File := filepath.Join(audiobooksDir, "Book Three.mp3")
 	mustCopyFixture(t, "valid.mp3", book3File)
-
-	// Rescan -> Book Three appears
 	if err := svc.Rescan(ctx); err != nil {
 		t.Fatalf("rescan after adding book3 failed: %v", err)
 	}
-
 	booksAfterAdd, err := svc.List(ctx)
 	if err != nil || len(booksAfterAdd) != 2 {
 		t.Fatalf("expected 2 books after Book Three added, got %d", len(booksAfterAdd))
 	}
 
-	// 7. Verify source files are byte-for-byte identical (immutable)
+	// 9. Remove selected book from playlist and verify queue reconciliation
+	if err := plService.RemoveAudiobook(ctx, book1.ID); err != nil {
+		t.Fatalf("remove book from playlist failed: %v", err)
+	}
+	queueAfterRemoval, err := pbService.ListQueue(ctx)
+	if err != nil {
+		t.Fatalf("list queue after removal failed: %v", err)
+	}
+	if len(queueAfterRemoval) != 1 || queueAfterRemoval[0].Type != "episode" {
+		t.Fatalf("expected only podcast episode remaining in queue, got %+v", queueAfterRemoval)
+	}
+
+	// 10. Source file immutability:
+	// Verify source files on disk were never modified or deleted
+	if _, err := os.Stat(filepath.Join(book1Dir, "01.mp3")); err != nil {
+		t.Fatalf("source file 01.mp3 missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(book1Dir, "02.mp3")); err != nil {
+		t.Fatalf("source file 02.mp3 missing: %v", err)
+	}
 	if hash := fileSHA256(t, filepath.Join(book1Dir, "01.mp3")); hash != initialHash1 {
 		t.Fatalf("source file Book One/01.mp3 was modified!")
 	}
@@ -393,4 +506,3 @@ func TestRescanAppearanceDisappearanceAndSourceImmutability(t *testing.T) {
 		t.Fatalf("source file Book One/02.mp3 was modified!")
 	}
 }
-
