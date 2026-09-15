@@ -65,11 +65,13 @@ export async function attemptAudioPlay(
 ) {
   try {
     await audio.play();
+    return null;
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      return;
+      return null;
     }
     onFailure(error);
+    return error;
   }
 }
 
@@ -234,6 +236,7 @@ export function primeAudioSource(
 
   if (sourceChanged) {
     audio.src = targetSrc;
+    audio.load();
     markPrimed();
     applyPlaybackRate(audio, speedLabel);
     audio.addEventListener("loadedmetadata", applyPosition);

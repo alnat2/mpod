@@ -68,7 +68,11 @@ class FakeAudio {
   error: FakeMediaError | null = null;
   private sourceReloading = false;
   private listeners = new Map<string, Set<() => void>>();
+  throwOnPlay = false;
   playImpl = vi.fn(async () => {
+    if (this.throwOnPlay) {
+      throw new DOMException("The element has no supported sources.", "NotSupportedError");
+    }
     this.paused = false;
   });
   pauseImpl = vi.fn(() => {
@@ -76,7 +80,6 @@ class FakeAudio {
   });
   loadImpl = vi.fn(() => {
     this.currentTimeValue = 0;
-    this.readyState = 0;
   });
 
   constructor() {
@@ -126,8 +129,13 @@ class FakeAudio {
   }
 
   load() {
-    this.sourceReloading = true;
     this.loadImpl();
+    if (this.readyState >= 1) {
+      queueMicrotask(() => {
+        this.emit("loadedmetadata");
+        this.emit("canplay");
+      });
+    }
   }
 
   emit(type: string) {
@@ -931,6 +939,7 @@ describe("PlaybackProvider", () => {
     audio.currentTime = 237;
     audio.pauseImpl.mockClear();
     audio.playImpl.mockClear();
+    audio.loadImpl.mockClear();
 
     await act(async () => {
       downloadedEpisodeRequest.resolve({
@@ -951,23 +960,10 @@ describe("PlaybackProvider", () => {
         completed: false,
       })
     );
-    expect(audio.playImpl).not.toHaveBeenCalled();
-
-    act(() => {
-      audio.readyState = 1;
-      audio.emit("loadedmetadata");
-    });
-    expect(audio.currentTime).toBe(237);
-    expect(audio.playImpl).not.toHaveBeenCalled();
-
-    act(() => {
-      audio.readyState = 3;
-      audio.emit("canplay");
-    });
-
     await waitFor(() => {
       expect(audio.playImpl).toHaveBeenCalledTimes(1);
     });
+    expect(audio.currentTime).toBe(237);
     expect(screen.getByTestId("position")).toHaveTextContent("237");
   });
 
@@ -4155,4 +4151,70 @@ describe("PlaybackProvider", () => {
     // State consumer must NOT have re-rendered on the time updates
     expect(onStateRender.mock.calls.length).toBe(stateCountBeforeTicks);
   });
+
+  it("retries play via onReady when locked-screen NotSupportedError occurs at nextPosition=0 during auto-advance", async () => {
+    // Ensure the next track (episode 2) has position 0 BEFORE rendering
+    // so that when auto-advance happens, nextPosition is 0 and playOnce() is called synchronously.
+    playback.set(2, {
+      episodeId: 2,
+      positionSeconds: 0,
+      lastUpdated: "2026-05-22T08:00:00Z",
+    });
+
+    const user = userEvent.setup();
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    // Start playing the first episode so we have a valid playing state
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+
+    const audio = FakeAudio.first;
+    audio.playImpl.mockClear();
+
+    // Prepare for the failure scenario on the NEXT track
+    audio.readyState = 0;
+    audio.throwOnPlay = true; // This will cause attemptAudioPlay to catch NotSupportedError
+
+    // Complete the first episode to trigger auto-advance to episode 2
+    audio.currentTime = 1800;
+    audio.emit("ended");
+
+    // Wait for the UI to switch to the second episode
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent(
+        "Second queued episode"
+      );
+      // Verify position is set to 0 synchronously
+      expect(screen.getByTestId("position")).toHaveTextContent("0");
+    });
+
+    // Verify it attempted to play the new source synchronously but failed
+    await waitFor(() => {
+      expect(audio.src).toContain("/api/episodes/2/audio");
+      // The synchronous attempt was intercepted by throwOnPlay inside playImpl
+      expect(audio.playImpl).toHaveBeenCalledTimes(1);
+      // Because attemptAudioPlay caught NotSupportedError and !isRetry,
+      // it returns early and playing remains "yes" (waiting for retry)
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+
+    // Now simulate the browser finally preparing the source in the background
+    audio.throwOnPlay = false; // The retry should succeed
+    audio.readyState = 1;
+    audio.emit("canplay"); // This triggers onReady and initiates the retry playOnce(true)
+
+    // Verify the retry was successful
+    await waitFor(() => {
+      expect(audio.playImpl).toHaveBeenCalledTimes(2); 
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+  });
+
+
 });
