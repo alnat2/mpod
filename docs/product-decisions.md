@@ -290,6 +290,15 @@ Response:
 #### `GET /api/podcasts/export-opml`
 Response is an OPML file download.
 
+#### `GET /api/podcasts/:id/image`
+
+Proxies and serves podcast artwork. To eliminate redundant CDN requests and protect against unbounded remote reads, responses are cached in memory (TTL 24 hours, max 100 entries with eviction).
+Responses include:
+- `Cache-Control: private, max-age=604800`
+- `ETag` (derived from CRC32 checksum and content length)
+
+Supports conditional `If-None-Match` requests. If the client's ETag matches the cached image, the server returns `304 Not Modified` with an empty body.
+
 ### Episode Endpoints
 
 #### `GET /api/episodes`

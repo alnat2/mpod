@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -378,6 +379,174 @@ func TestPodcastImageProxiesArtwork(t *testing.T) {
 	}
 	if rec.Body.String() != "image-bytes" {
 		t.Fatalf("unexpected image body: %q", rec.Body.String())
+	}
+}
+
+func TestPodcastImageCacheHitsOnSecondRequest(t *testing.T) {
+	var callCount int64
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		atomic.AddInt64(&callCount, 1)
+		return routerBinaryResponse("image/png", []byte("cached-image-bytes")), nil
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, image_url, rss_url) VALUES (1, 'Podcast', 'https://cdn.example.com/artwork.png', 'https://example.com/feed.xml')`)
+
+	// 1. First request: cache miss, external client called once
+	req1 := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/1/image", nil)
+	req1.SetPathValue("id", "1")
+	req1.AddCookie(cookie)
+	rec1 := httptest.NewRecorder()
+	handler.ServeHTTP(rec1, req1)
+
+	if rec1.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec1.Code, rec1.Body.String())
+	}
+	etag1 := rec1.Header().Get("ETag")
+	if etag1 == "" {
+		t.Fatal("expected ETag header on first response")
+	}
+	if rec1.Body.String() != "cached-image-bytes" {
+		t.Fatalf("unexpected body: %q", rec1.Body.String())
+	}
+	if count := atomic.LoadInt64(&callCount); count != 1 {
+		t.Fatalf("expected external client to be called once on first request, got %d", count)
+	}
+
+	// 2. Second request: cache hit, external client NOT called again
+	req2 := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/1/image", nil)
+	req2.SetPathValue("id", "1")
+	req2.AddCookie(cookie)
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req2)
+
+	if rec2.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 on cache hit, got %d body=%s", rec2.Code, rec2.Body.String())
+	}
+	if rec2.Header().Get("ETag") != etag1 {
+		t.Fatalf("expected same ETag on cache hit, got %q want %q", rec2.Header().Get("ETag"), etag1)
+	}
+	if rec2.Body.String() != "cached-image-bytes" {
+		t.Fatalf("unexpected body on cache hit: %q", rec2.Body.String())
+	}
+	if count := atomic.LoadInt64(&callCount); count != 1 {
+		t.Fatalf("expected external client to be called exactly 1 time in total, got %d", count)
+	}
+}
+
+func TestPodcastImageConditionalRequestReturns304(t *testing.T) {
+	var callCount int64
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		atomic.AddInt64(&callCount, 1)
+		return routerBinaryResponse("image/png", []byte("conditional-image-bytes")), nil
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, image_url, rss_url) VALUES (1, 'Podcast', 'https://cdn.example.com/artwork.png', 'https://example.com/feed.xml')`)
+
+	// 1. Initial request to obtain ETag
+	req1 := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/1/image", nil)
+	req1.SetPathValue("id", "1")
+	req1.AddCookie(cookie)
+	rec1 := httptest.NewRecorder()
+	handler.ServeHTTP(rec1, req1)
+
+	if rec1.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d", rec1.Code)
+	}
+	etag := rec1.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("expected non-empty ETag")
+	}
+
+	// 2. Conditional request with matching If-None-Match returns 304
+	req2 := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/1/image", nil)
+	req2.SetPathValue("id", "1")
+	req2.AddCookie(cookie)
+	req2.Header.Set("If-None-Match", etag)
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req2)
+
+	if rec2.Code != nethttp.StatusNotModified {
+		t.Fatalf("expected 304 Not Modified, got %d body=%s", rec2.Code, rec2.Body.String())
+	}
+	if rec2.Body.Len() != 0 {
+		t.Fatalf("expected empty body on 304, got %d bytes", rec2.Body.Len())
+	}
+	if rec2.Header().Get("ETag") != etag {
+		t.Fatalf("expected ETag header on 304 response, got %q", rec2.Header().Get("ETag"))
+	}
+	if rec2.Header().Get("Cache-Control") != "private, max-age=604800" {
+		t.Fatalf("expected Cache-Control on 304 response, got %q", rec2.Header().Get("Cache-Control"))
+	}
+	if count := atomic.LoadInt64(&callCount); count != 1 {
+		t.Fatalf("expected external client to be called exactly 1 time in total, got %d", count)
+	}
+
+	// 3. Conditional request with mismatched If-None-Match returns 200 from cache
+	req3 := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/1/image", nil)
+	req3.SetPathValue("id", "1")
+	req3.AddCookie(cookie)
+	req3.Header.Set("If-None-Match", `"mismatched-etag"`)
+	rec3 := httptest.NewRecorder()
+	handler.ServeHTTP(rec3, req3)
+
+	if rec3.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 OK on mismatched ETag, got %d", rec3.Code)
+	}
+	if rec3.Body.String() != "conditional-image-bytes" {
+		t.Fatalf("unexpected body: %q", rec3.Body.String())
+	}
+	if count := atomic.LoadInt64(&callCount); count != 1 {
+		t.Fatalf("expected external client to still be called exactly 1 time, got %d", count)
+	}
+}
+
+func TestPodcastImageCacheEvictionOnDelete(t *testing.T) {
+	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
+		return routerBinaryResponse("image/png", []byte("eviction-test-bytes")), nil
+	})
+	handler, db := newTestRouterWithClient(t, config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+	}, client)
+	cookie := register(t, handler, "admin", "secret")
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, image_url, rss_url) VALUES (1, 'Podcast', 'https://cdn.example.com/artwork.png', 'https://example.com/feed.xml')`)
+
+	// 1. Fetch image to populate cache
+	req1 := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/1/image", nil)
+	req1.SetPathValue("id", "1")
+	req1.AddCookie(cookie)
+	rec1 := httptest.NewRecorder()
+	handler.ServeHTTP(rec1, req1)
+	if rec1.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d", rec1.Code)
+	}
+
+	// 2. Delete podcast
+	deleteReq := httptest.NewRequest(nethttp.MethodDelete, "/api/podcasts/1", nil)
+	deleteReq.SetPathValue("id", "1")
+	deleteReq.AddCookie(cookie)
+	deleteRec := httptest.NewRecorder()
+	handler.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 on delete, got %d", deleteRec.Code)
+	}
+
+	// 3. Subsequent request must return 404 because cached image was evicted and podcast does not exist
+	req2 := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/1/image", nil)
+	req2.SetPathValue("id", "1")
+	req2.AddCookie(cookie)
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req2)
+	if rec2.Code != nethttp.StatusNotFound {
+		t.Fatalf("expected 404 after eviction, got %d", rec2.Code)
 	}
 }
 

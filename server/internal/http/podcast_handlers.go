@@ -3,10 +3,13 @@ package http
 import (
 	"context"
 	"errors"
+	"fmt"
+	"hash/crc32"
 	"io"
 	nethttp "net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cross/mpod/server/internal/episodes"
 	"github.com/cross/mpod/server/internal/podcasts"
@@ -14,8 +17,17 @@ import (
 )
 
 const (
-	maxPodcastImageBytes = 5 * 1024 * 1024
+	maxPodcastImageBytes      = 5 * 1024 * 1024
+	podcastImageCacheTTL      = 24 * time.Hour
+	maxPodcastImageCacheItems = 100
 )
+
+type cachedImage struct {
+	data        []byte
+	contentType string
+	etag        string
+	fetchedAt   time.Time
+}
 
 func (r *Router) handlePodcastsList(w nethttp.ResponseWriter, req *nethttp.Request) {
 	if _, ok := r.requireUser(w, req); !ok {
@@ -94,6 +106,86 @@ func (r *Router) handlePodcastGet(w nethttp.ResponseWriter, req *nethttp.Request
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{"podcast": podcast})
 }
 
+func (r *Router) getCachedPodcastImage(podcastID int64) (cachedImage, bool) {
+	r.imageMu.RLock()
+	defer r.imageMu.RUnlock()
+
+	img, ok := r.imageCache[podcastID]
+	if !ok {
+		return cachedImage{}, false
+	}
+	if time.Since(img.fetchedAt) >= podcastImageCacheTTL {
+		return cachedImage{}, false
+	}
+	return img, true
+}
+
+func (r *Router) setCachedPodcastImage(podcastID int64, img cachedImage) {
+	r.imageMu.Lock()
+	defer r.imageMu.Unlock()
+
+	if r.imageCache == nil {
+		r.imageCache = make(map[int64]cachedImage)
+	}
+
+	if len(r.imageCache) >= maxPodcastImageCacheItems {
+		now := time.Now()
+		for id, item := range r.imageCache {
+			if now.Sub(item.fetchedAt) >= podcastImageCacheTTL {
+				delete(r.imageCache, id)
+			}
+		}
+	}
+
+	if len(r.imageCache) >= maxPodcastImageCacheItems {
+		var oldestID int64
+		var oldestTime time.Time
+		first := true
+		for id, item := range r.imageCache {
+			if first || item.fetchedAt.Before(oldestTime) {
+				oldestID = id
+				oldestTime = item.fetchedAt
+				first = false
+			}
+		}
+		if !first {
+			delete(r.imageCache, oldestID)
+		}
+	}
+
+	r.imageCache[podcastID] = img
+}
+
+func (r *Router) evictCachedPodcastImage(podcastID int64) {
+	r.imageMu.Lock()
+	defer r.imageMu.Unlock()
+	delete(r.imageCache, podcastID)
+}
+
+func computeImageETag(payload []byte) string {
+	checksum := crc32.ChecksumIEEE(payload)
+	return fmt.Sprintf(`"%08x-%x"`, checksum, len(payload))
+}
+
+func matchETag(ifNoneMatch, etag string) bool {
+	if ifNoneMatch == "" {
+		return false
+	}
+	if ifNoneMatch == "*" {
+		return true
+	}
+	parts := strings.Split(ifNoneMatch, ",")
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		trimmed = strings.TrimPrefix(trimmed, "W/")
+		target := strings.TrimPrefix(etag, "W/")
+		if trimmed == target {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *Router) handlePodcastImage(w nethttp.ResponseWriter, req *nethttp.Request) {
 	if _, ok := r.requireUser(w, req); !ok {
 		return
@@ -101,6 +193,23 @@ func (r *Router) handlePodcastImage(w nethttp.ResponseWriter, req *nethttp.Reque
 
 	podcastID, ok := r.pathInt64(w, req, "id")
 	if !ok {
+		return
+	}
+
+	if img, ok := r.getCachedPodcastImage(podcastID); ok {
+		w.Header().Set("Cache-Control", "private, max-age=604800")
+		w.Header().Set("ETag", img.etag)
+
+		if matchETag(req.Header.Get("If-None-Match"), img.etag) {
+			w.WriteHeader(nethttp.StatusNotModified)
+			return
+		}
+
+		w.Header().Set("Content-Type", img.contentType)
+		w.Header().Set("Content-Length", strconv.Itoa(len(img.data)))
+		if _, err := w.Write(img.data); err != nil {
+			r.logger.Printf("write cached podcast image failed: %v", err)
+		}
 		return
 	}
 
@@ -156,8 +265,23 @@ func (r *Router) handlePodcastImage(w nethttp.ResponseWriter, req *nethttp.Reque
 		return
 	}
 
-	w.Header().Set("Content-Type", contentType)
+	img := cachedImage{
+		data:        payload,
+		contentType: contentType,
+		etag:        computeImageETag(payload),
+		fetchedAt:   time.Now(),
+	}
+	r.setCachedPodcastImage(podcastID, img)
+
 	w.Header().Set("Cache-Control", "private, max-age=604800")
+	w.Header().Set("ETag", img.etag)
+
+	if matchETag(req.Header.Get("If-None-Match"), img.etag) {
+		w.WriteHeader(nethttp.StatusNotModified)
+		return
+	}
+
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
 	if _, err := w.Write(payload); err != nil {
 		r.logger.Printf("write podcast image failed: %v", err)
@@ -184,6 +308,7 @@ func (r *Router) handlePodcastDelete(w nethttp.ResponseWriter, req *nethttp.Requ
 		return
 	}
 
+	r.evictCachedPodcastImage(podcastID)
 	r.writeJSON(w, nethttp.StatusOK, map[string]any{"success": true})
 }
 

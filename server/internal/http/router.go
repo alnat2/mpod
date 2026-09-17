@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cross/mpod/server/internal/audiobooks"
@@ -54,6 +55,8 @@ type Router struct {
 	directAudioClient *nethttp.Client
 	settings          *settings.Service
 	scheduler         *scheduler.Service
+	imageMu           sync.RWMutex
+	imageCache        map[int64]cachedImage
 }
 
 type RouterServices struct {
@@ -199,6 +202,7 @@ func NewRouterWithServices(logger *log.Logger, cfg config.Config, db *sql.DB, sc
 		directAudioClient: services.DirectAudioClient,
 		settings:          services.Settings,
 		scheduler:         schedulerService,
+		imageCache:        make(map[int64]cachedImage),
 	}
 	if r.directAudioClient == nil {
 		r.directAudioClient = r.audioClient
