@@ -292,7 +292,34 @@ Response is an OPML file download.
 
 ### Episode Endpoints
 
+#### `GET /api/episodes`
+
+Returns all library episodes for the authenticated user ordered by podcast and publication date.
+To keep payload size small and avoid expensive HTML sanitization during list rendering, list
+endpoints omit `description` and `showNotes`.
+
+Response:
+```json
+{
+  "episodes": [
+    {
+      "id": 55,
+      "podcastId": 12,
+      "title": "Episode 1",
+      "audioUrl": "https://cdn.example.com/ep1.mp3",
+      "duration": 2400,
+      "downloaded": true,
+      "isListened": false,
+      "publishedAt": "2026-04-20T10:00:00Z"
+    }
+  ]
+}
+```
+
 #### `GET /api/podcasts/:id/episodes`
+
+Returns episodes for a specific podcast. Like `GET /api/episodes`, this list endpoint omits
+`description` and `showNotes`.
 
 Response:
 ```json
@@ -314,6 +341,8 @@ Response:
 
 #### `GET /api/episodes/:id`
 
+Returns full episode details, including `description` and sanitized `showNotes`.
+
 Response:
 ```json
 {
@@ -321,6 +350,8 @@ Response:
     "id": 55,
     "podcastId": 12,
     "title": "Episode 1",
+    "description": "Episode notes and links",
+    "showNotes": "Episode notes and links",
     "audioUrl": "https://cdn.example.com/ep1.mp3",
     "duration": 2400,
     "downloaded": true,

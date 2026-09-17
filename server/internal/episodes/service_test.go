@@ -132,7 +132,7 @@ func TestGetByIDReturnsDownloadedDescriptionAndDuration(t *testing.T) {
 	}
 }
 
-func TestListByPodcastSanitizesDescriptionIntoShowNotes(t *testing.T) {
+func TestGetByIDSanitizesDescriptionIntoShowNotes(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
 
@@ -141,21 +141,57 @@ func TestListByPodcastSanitizesDescriptionIntoShowNotes(t *testing.T) {
 	mustExec(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, description, audio_url, published_at) VALUES (1, 1, 'ep-1', 'Episode', '<p>Hello&nbsp;<a href="https://example.com">world</a></p>', 'https://example.com/1.mp3', ?)`, publishedAt)
 
 	service := NewService(db.SQL)
-	items, err := service.ListByPodcast(context.Background(), 1)
+	item, err := service.GetByID(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("GetByID failed: %v", err)
+	}
+	want := "Hello world (https://example.com)"
+	if item.Description == nil || *item.Description != want {
+		t.Fatalf("expected sanitized description %q, got %+v", want, item.Description)
+	}
+	if item.ShowNotes == nil || *item.ShowNotes != want {
+		t.Fatalf("expected showNotes %q, got %+v", want, item.ShowNotes)
+	}
+}
+
+func TestListAndListByPodcastOmitDescriptionAndShowNotes(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	publishedAt := time.Date(2026, 4, 23, 8, 0, 0, 0, time.UTC)
+	mustExec(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExec(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, description, audio_url, published_at) VALUES (1, 1, 'ep-1', 'Episode', 'Detailed show notes', 'https://example.com/1.mp3', ?)`, publishedAt)
+
+	service := NewService(db.SQL)
+	listItems, err := service.List(context.Background())
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(listItems) != 1 {
+		t.Fatalf("expected 1 episode in List, got %d", len(listItems))
+	}
+	if listItems[0].Description != nil {
+		t.Fatalf("expected Description to be nil in List, got %v", *listItems[0].Description)
+	}
+	if listItems[0].ShowNotes != nil {
+		t.Fatalf("expected ShowNotes to be nil in List, got %v", *listItems[0].ShowNotes)
+	}
+
+	podcastItems, err := service.ListByPodcast(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("ListByPodcast failed: %v", err)
 	}
-	if len(items) != 1 {
-		t.Fatalf("expected 1 episode, got %d", len(items))
+	if len(podcastItems) != 1 {
+		t.Fatalf("expected 1 episode in ListByPodcast, got %d", len(podcastItems))
 	}
-	want := "Hello world (https://example.com)"
-	if items[0].Description == nil || *items[0].Description != want {
-		t.Fatalf("expected sanitized description %q, got %+v", want, items[0].Description)
+	if podcastItems[0].Description != nil {
+		t.Fatalf("expected Description to be nil in ListByPodcast, got %v", *podcastItems[0].Description)
 	}
-	if items[0].ShowNotes == nil || *items[0].ShowNotes != want {
-		t.Fatalf("expected showNotes %q, got %+v", want, items[0].ShowNotes)
+	if podcastItems[0].ShowNotes != nil {
+		t.Fatalf("expected ShowNotes to be nil in ListByPodcast, got %v", *podcastItems[0].ShowNotes)
 	}
 }
+
 
 func newTestDB(t *testing.T) *storage.DB {
 	t.Helper()

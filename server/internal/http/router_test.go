@@ -2806,14 +2806,14 @@ func TestEpisodeGetReturnsStableInternalErrorContractOnUnexpectedFailure(t *test
 	assertAPIError(t, rec, nethttp.StatusInternalServerError, "EPISODE_GET_FAILED")
 }
 
-func TestPodcastEpisodesListIncludesSanitizedShowNotes(t *testing.T) {
+func TestEpisodeGetIncludesSanitizedShowNotes(t *testing.T) {
 	handler, db := newTestRouter(t)
 	cookie := register(t, handler, "admin", "secret")
 	now := time.Date(2026, 4, 23, 12, 0, 0, 0, time.UTC)
 	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast One', 'https://example.com/feed.xml')`)
 	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, description, audio_url, published_at) VALUES (1, 1, 'ep-1', 'Episode 1', '<p>Read <a href="https://example.com/post">more</a></p>', 'https://cdn.example.com/1.mp3', ?)`, now)
 
-	req := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/1/episodes", nil)
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/episodes/1", nil)
 	req.SetPathValue("id", "1")
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
@@ -2823,10 +2823,10 @@ func TestPodcastEpisodesListIncludesSanitizedShowNotes(t *testing.T) {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
 	if !strings.Contains(rec.Body.String(), `"showNotes":"Read more (https://example.com/post)"`) {
-		t.Fatalf("expected sanitized showNotes in podcast episodes payload, got %s", rec.Body.String())
+		t.Fatalf("expected sanitized showNotes in episode payload, got %s", rec.Body.String())
 	}
 	if !strings.Contains(rec.Body.String(), `"description":"Read more (https://example.com/post)"`) {
-		t.Fatalf("expected sanitized description in podcast episodes payload, got %s", rec.Body.String())
+		t.Fatalf("expected sanitized description in episode payload, got %s", rec.Body.String())
 	}
 }
 
@@ -2846,6 +2846,69 @@ func TestEpisodesListReturnsAllEpisodes(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"id":1`) {
 		t.Fatalf("expected episode in payload, got %s", rec.Body.String())
+	}
+}
+
+func TestEpisodesListAndByPodcastOmitDescriptionAndShowNotes(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast One', 'https://example.com/feed.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, description, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', 'Detailed show notes for episode 1', 'https://cdn.example.com/1.mp3')`)
+
+	listReq := httptest.NewRequest(nethttp.MethodGet, "/api/episodes", nil)
+	listReq.AddCookie(cookie)
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, listReq)
+
+	if listRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from GET /api/episodes, got %d body=%s", listRec.Code, listRec.Body.String())
+	}
+	listBody := listRec.Body.String()
+	if !strings.Contains(listBody, `"id":1`) || !strings.Contains(listBody, `"title":"Episode 1"`) {
+		t.Fatalf("expected episode in payload, got %s", listBody)
+	}
+	if strings.Contains(listBody, `"description"`) {
+		t.Fatalf("expected description to be omitted from GET /api/episodes, got %s", listBody)
+	}
+	if strings.Contains(listBody, `"showNotes"`) {
+		t.Fatalf("expected showNotes to be omitted from GET /api/episodes, got %s", listBody)
+	}
+
+	podcastEpisodesReq := httptest.NewRequest(nethttp.MethodGet, "/api/podcasts/1/episodes", nil)
+	podcastEpisodesReq.SetPathValue("id", "1")
+	podcastEpisodesReq.AddCookie(cookie)
+	podcastEpisodesRec := httptest.NewRecorder()
+	handler.ServeHTTP(podcastEpisodesRec, podcastEpisodesReq)
+
+	if podcastEpisodesRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from GET /api/podcasts/1/episodes, got %d body=%s", podcastEpisodesRec.Code, podcastEpisodesRec.Body.String())
+	}
+	podcastEpisodesBody := podcastEpisodesRec.Body.String()
+	if !strings.Contains(podcastEpisodesBody, `"id":1`) || !strings.Contains(podcastEpisodesBody, `"title":"Episode 1"`) {
+		t.Fatalf("expected episode in payload, got %s", podcastEpisodesBody)
+	}
+	if strings.Contains(podcastEpisodesBody, `"description"`) {
+		t.Fatalf("expected description to be omitted from GET /api/podcasts/1/episodes, got %s", podcastEpisodesBody)
+	}
+	if strings.Contains(podcastEpisodesBody, `"showNotes"`) {
+		t.Fatalf("expected showNotes to be omitted from GET /api/podcasts/1/episodes, got %s", podcastEpisodesBody)
+	}
+
+	getReq := httptest.NewRequest(nethttp.MethodGet, "/api/episodes/1", nil)
+	getReq.SetPathValue("id", "1")
+	getReq.AddCookie(cookie)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+
+	if getRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from GET /api/episodes/1, got %d body=%s", getRec.Code, getRec.Body.String())
+	}
+	getBody := getRec.Body.String()
+	if !strings.Contains(getBody, `"description":"Detailed show notes for episode 1"`) {
+		t.Fatalf("expected description to be present in GET /api/episodes/1, got %s", getBody)
+	}
+	if !strings.Contains(getBody, `"showNotes":"Detailed show notes for episode 1"`) {
+		t.Fatalf("expected showNotes to be present in GET /api/episodes/1, got %s", getBody)
 	}
 }
 

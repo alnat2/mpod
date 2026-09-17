@@ -30,7 +30,7 @@ func NewService(db *sql.DB) *Service {
 
 func (s *Service) List(ctx context.Context) ([]Episode, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, podcast_id, title, description, audio_url, duration, downloaded_path, is_listened, published_at
+		SELECT id, podcast_id, title, audio_url, duration, downloaded_path, is_listened, published_at
 		FROM episodes
 		ORDER BY podcast_id ASC, published_at DESC, id DESC
 	`)
@@ -41,7 +41,7 @@ func (s *Service) List(ctx context.Context) ([]Episode, error) {
 
 	items := make([]Episode, 0)
 	for rows.Next() {
-		episode, err := scanEpisode(rows)
+		episode, err := scanEpisodeSummary(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -52,7 +52,7 @@ func (s *Service) List(ctx context.Context) ([]Episode, error) {
 
 func (s *Service) ListByPodcast(ctx context.Context, podcastID int64) ([]Episode, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, podcast_id, title, description, audio_url, duration, downloaded_path, is_listened, published_at
+		SELECT id, podcast_id, title, audio_url, duration, downloaded_path, is_listened, published_at
 		FROM episodes
 		WHERE podcast_id = ?
 		ORDER BY published_at DESC, id DESC
@@ -64,7 +64,7 @@ func (s *Service) ListByPodcast(ctx context.Context, podcastID int64) ([]Episode
 
 	items := make([]Episode, 0)
 	for rows.Next() {
-		episode, err := scanEpisode(rows)
+		episode, err := scanEpisodeSummary(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -113,6 +113,37 @@ func scanEpisode(row scanner) (Episode, error) {
 	if description.Valid {
 		item.ShowNotes = sanitizeShowNotes(description.String)
 		item.Description = item.ShowNotes
+	}
+	item.Downloaded = downloadedPath.Valid && downloadedPath.String != ""
+	if publishedAt.Valid {
+		ts := publishedAt.Time.UTC()
+		item.PublishedAt = &ts
+	}
+
+	return item, nil
+}
+
+func scanEpisodeSummary(row scanner) (Episode, error) {
+	var item Episode
+	var downloadedPath sql.NullString
+	var duration sql.NullInt64
+	var publishedAt sql.NullTime
+
+	if err := row.Scan(
+		&item.ID,
+		&item.PodcastID,
+		&item.Title,
+		&item.AudioURL,
+		&duration,
+		&downloadedPath,
+		&item.IsListened,
+		&publishedAt,
+	); err != nil {
+		return Episode{}, err
+	}
+
+	if duration.Valid {
+		item.Duration = &duration.Int64
 	}
 	item.Downloaded = downloadedPath.Valid && downloadedPath.String != ""
 	if publishedAt.Valid {
