@@ -80,6 +80,7 @@ class FakeAudio {
   });
   loadImpl = vi.fn(() => {
     this.currentTimeValue = 0;
+    this.paused = true;
   });
 
   constructor() {
@@ -4216,5 +4217,127 @@ describe("PlaybackProvider", () => {
     });
   });
 
+  it("retries play on 3rd chapter when onReady fires before NotSupportedError catch", async () => {
+    const ep3: Episode = {
+      id: 3,
+      podcastId: 11,
+      title: "Third queued episode",
+      audioUrl: "/api/episodes/3/audio",
+      duration: 1800,
+      isListened: false,
+      downloaded: false,
+      publishedAt: null,
+    };
+    episodes.set(3, ep3);
+    const playlistWith3 = [
+      ...playlistItems,
+      {
+        episodeId: 3,
+        position: 3,
+        episode: ep3,
+      },
+    ];
+    vi.mocked(api.playlist.list).mockResolvedValue({ items: playlistWith3 });
+    vi.mocked(api.playback.queue).mockImplementation(async () => ({
+      queue: playlistWith3.map((item) => {
+        const ep = episodes.get(item.episodeId)!;
+        return {
+          ...ep,
+          podcastTitle: "First Podcast",
+          podcastImageUrl: null,
+          playback: playback.get(item.episodeId) ?? null,
+        };
+      }),
+      activePlayback:
+        activePlaybackEpisodeId === null
+          ? null
+          : {
+              episodeId: activePlaybackEpisodeId,
+              lastUpdated: "2026-05-22T09:05:00Z",
+            },
+    }));
 
+    playback.set(2, {
+      episodeId: 2,
+      positionSeconds: 0,
+      lastUpdated: "2026-05-22T08:00:00Z",
+    });
+    playback.set(3, {
+      episodeId: 3,
+      positionSeconds: 0,
+      lastUpdated: "2026-05-22T08:00:00Z",
+    });
+
+    const user = userEvent.setup();
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+
+    const audio = FakeAudio.first;
+
+    // Transition 1 -> 2: NotSupportedError followed by canplay
+    audio.readyState = 0;
+    audio.throwOnPlay = true;
+
+    audio.currentTime = 1800;
+    audio.emit("ended");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent(
+        "Second queued episode"
+      );
+      expect(screen.getByTestId("position")).toHaveTextContent("0");
+    });
+
+    audio.throwOnPlay = false;
+    audio.readyState = 1;
+    audio.emit("canplay");
+
+    await waitFor(() => {
+      expect(audio.src).toContain("/api/episodes/2/audio");
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+
+    // Transition 2 -> 3:
+    // Simulate fast canplay/onReady firing before NotSupportedError catch callback
+    let playCallCountForEp3 = 0;
+    audio.readyState = 0;
+    audio.playImpl = vi.fn(async () => {
+      playCallCountForEp3++;
+      if (playCallCountForEp3 === 1) {
+        // First play attempt: trigger canplay before rejection completes
+        audio.readyState = 1;
+        audio.emit("canplay");
+        throw new DOMException(
+          "The element has no supported sources.",
+          "NotSupportedError"
+        );
+      }
+      audio.paused = false;
+    });
+
+    audio.currentTime = 1800;
+    audio.emit("ended");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("current-title")).toHaveTextContent(
+        "Third queued episode"
+      );
+      expect(screen.getByTestId("position")).toHaveTextContent("0");
+    });
+
+    // Verify retry succeeds and playing is maintained on the 3rd chapter
+    await waitFor(() => {
+      expect(playCallCountForEp3).toBe(2);
+      expect(audio.src).toContain("/api/episodes/3/audio");
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+  });
 });

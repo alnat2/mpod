@@ -379,7 +379,6 @@ export function usePlaybackAudio({
       sourceReadyRef.current = false;
 
       let playInitiated = false;
-      let playFailedWithNotSupported = false;
       const playOnce = (isRetry = false) => {
         if (sourceGenerationRef.current !== currentGen) {
           return;
@@ -391,12 +390,7 @@ export function usePlaybackAudio({
         setPlaying(true);
         void attemptAudioPlay(audio, (error) => {
           if (error instanceof DOMException && error.name === "NotSupportedError") {
-            if (!isRetry && !sourceReadyRef.current) {
-              // Note: There is no practical race condition between this asynchronous
-              // rejection and the `onReady` callback. If `onReady` fired synchronously
-              // because the browser was already prepared, `audio.play()` would not have
-              // been rejected with `NotSupportedError` in the first place.
-              playFailedWithNotSupported = true;
+            if (!isRetry) {
               return;
             }
           }
@@ -421,7 +415,7 @@ export function usePlaybackAudio({
           sourceSwitchingRef.current = false;
           sourceReadyRef.current = true;
           updateActiveDuration(currentGen);
-          if (playFailedWithNotSupported) {
+          if (playInitiated && audio.paused && !audio.ended) {
             playOnce(true);
           } else {
             playOnce();
