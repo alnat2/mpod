@@ -3,8 +3,12 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { FakeAudio } from "../test/fake-audio";
+
 import {
   api,
+  type Audiobook,
+  type AudiobookTrack,
   type Episode,
   type PlaybackQueueEpisode,
   type Podcast,
@@ -19,132 +23,13 @@ import {
   usePlaybackState,
 } from "./playback-context";
 
-type FakeMediaError = {
-  code: number;
-  message?: string;
-};
-
-class FakeAudio {
-  static instances: FakeAudio[] = [];
-
-  static get first() {
-    const audio = FakeAudio.instances[0];
-    if (!audio) {
-      throw new Error("Expected an audio instance");
-    }
-    return audio;
-  }
-
-  private srcValue = "";
-  private currentSrcValue = "";
-
-  get src() {
-    return this.srcValue;
-  }
-
-  set src(value: string) {
-    this.srcValue = value;
-    this.currentSrcValue = value;
-    this.duration = 0;
-  }
-
-  get currentSrc() {
-    return this.currentSrcValue || this.srcValue;
-  }
-
-  set currentSrc(value: string) {
-    this.currentSrcValue = value;
-  }
-
-  private currentTimeValue = 0;
-  onCurrentTimeSet: ((value: number) => void) | null = null;
-  throwOnCurrentTimeSet = false;
-  duration = 0;
-  readyState = 1;
-  playbackRate = 1;
-  defaultPlaybackRate = 1;
-  paused = true;
-  ended = false;
-  error: FakeMediaError | null = null;
-  private sourceReloading = false;
-  private listeners = new Map<string, Set<() => void>>();
-  throwOnPlay = false;
-  playImpl = vi.fn(async () => {
-    if (this.throwOnPlay) {
-      throw new DOMException("The element has no supported sources.", "NotSupportedError");
-    }
-    this.paused = false;
+async function emitAudioReady(audio = FakeAudio.first) {
+  await act(async () => {
+    audio.readyState = 1;
+    audio.emit("loadedmetadata");
+    audio.readyState = 4;
+    audio.emit("canplay");
   });
-  pauseImpl = vi.fn(() => {
-    this.paused = true;
-  });
-  loadImpl = vi.fn(() => {
-    this.currentTimeValue = 0;
-    this.paused = true;
-  });
-
-  constructor() {
-    FakeAudio.instances.push(this);
-  }
-
-  get currentTime() {
-    return this.currentTimeValue;
-  }
-
-  set currentTime(value: number) {
-    if (this.throwOnCurrentTimeSet) {
-      throw new DOMException("Seek is not ready", "NotSupportedError");
-    }
-    this.currentTimeValue = value;
-    this.onCurrentTimeSet?.(value);
-  }
-
-  addEventListener(type: string, listener: () => void) {
-    const listeners = this.listeners.get(type) ?? new Set<() => void>();
-    listeners.add(listener);
-    this.listeners.set(type, listeners);
-
-    if (
-      this.readyState >= 1 &&
-      (type === "loadedmetadata" || type === "canplay")
-    ) {
-      queueMicrotask(() => {
-        if (!this.sourceReloading) {
-          listener();
-        }
-      });
-    }
-  }
-
-  removeEventListener(type: string, listener: () => void) {
-    this.listeners.get(type)?.delete(listener);
-  }
-
-  async play() {
-    this.ended = false;
-    return this.playImpl();
-  }
-
-  pause() {
-    this.pauseImpl();
-  }
-
-  load() {
-    this.loadImpl();
-    if (this.readyState >= 1) {
-      queueMicrotask(() => {
-        this.emit("loadedmetadata");
-        this.emit("canplay");
-      });
-    }
-  }
-
-  emit(type: string) {
-    if (type === "loadedmetadata" || type === "canplay") {
-      this.sourceReloading = false;
-    }
-    this.listeners.get(type)?.forEach((listener) => listener());
-  }
 }
 
 class FakeMediaSession {
@@ -400,11 +285,13 @@ function renderPlaybackProvider() {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((promiseResolve) => {
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
     resolve = promiseResolve;
+    reject = promiseReject;
   });
 
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 let dispatchHarnessProfilerCommits = 0;
@@ -705,6 +592,7 @@ describe("PlaybackProvider", () => {
     await user.click(screen.getByRole("button", { name: "Play second" }));
 
     const audio = FakeAudio.first;
+    await emitAudioReady(audio);
     expect(audio).toBeDefined();
     expect(audio.src).toContain("/api/episodes/2/audio");
     expect(audio.currentTime).toBe(42);
@@ -749,6 +637,7 @@ describe("PlaybackProvider", () => {
     await user.click(screen.getByRole("button", { name: "Play queued later" }));
 
     const audio = FakeAudio.first;
+    await emitAudioReady(audio);
     expect(audio.src).toContain("/api/episodes/999/audio");
     expect(screen.getByTestId("playing")).toHaveTextContent("yes");
   });
@@ -788,6 +677,7 @@ describe("PlaybackProvider", () => {
     const audio = FakeAudio.first;
     audio.throwOnCurrentTimeSet = true;
     await user.click(screen.getByRole("button", { name: "Play second" }));
+    await emitAudioReady(audio);
 
     await waitFor(() => {
       expect(screen.getByTestId("playing")).toHaveTextContent("yes");
@@ -808,6 +698,7 @@ describe("PlaybackProvider", () => {
     audio.playImpl.mockRejectedValueOnce(new Error("Playback was blocked"));
 
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
+    await emitAudioReady(audio);
 
     await waitFor(() => {
       expect(screen.getByTestId("playback-error")).toHaveTextContent(
@@ -898,6 +789,7 @@ describe("PlaybackProvider", () => {
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
 
     const audio = FakeAudio.first;
+    await emitAudioReady(audio);
     await waitFor(() => {
       expect(screen.getByTestId("playing")).toHaveTextContent("yes");
     });
@@ -931,6 +823,7 @@ describe("PlaybackProvider", () => {
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
 
     const audio = FakeAudio.first;
+    await emitAudioReady(audio);
     await waitFor(() => {
       expect(screen.getByTestId("playing")).toHaveTextContent("yes");
       expect(episodeSpy).toHaveBeenCalledTimes(1);
@@ -952,6 +845,7 @@ describe("PlaybackProvider", () => {
       expect(audio.pauseImpl).toHaveBeenCalledTimes(1);
       expect(audio.loadImpl).toHaveBeenCalledTimes(1);
     });
+    await emitAudioReady(audio);
     expect(audio.src).toBe(originalSource);
     expect(screen.getByTestId("playing")).toHaveTextContent("yes");
     expect(updateSpy).toHaveBeenCalledWith(
@@ -980,6 +874,7 @@ describe("PlaybackProvider", () => {
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
 
     const audio = FakeAudio.first;
+    await emitAudioReady(audio);
     await waitFor(() => {
       expect(screen.getByTestId("playing")).toHaveTextContent("yes");
       expect(mediaSession.playbackState).toBe("playing");
@@ -1022,6 +917,7 @@ describe("PlaybackProvider", () => {
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
 
     const audio = FakeAudio.first;
+    await emitAudioReady(audio);
     await waitFor(() => {
       expect(screen.getByTestId("playing")).toHaveTextContent("yes");
     });
@@ -1054,6 +950,7 @@ describe("PlaybackProvider", () => {
 
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
     const audio = FakeAudio.first;
+    await emitAudioReady(audio);
     await waitFor(() => {
       expect(screen.getByTestId("playing")).toHaveTextContent("yes");
     });
@@ -1100,6 +997,7 @@ describe("PlaybackProvider", () => {
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
 
     const audio = FakeAudio.first;
+    await emitAudioReady(audio);
     await waitFor(() => {
       expect(audio.currentTime).toBe(333);
     });
@@ -1191,6 +1089,7 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("loading")).toHaveTextContent("no");
     });
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
+    await emitAudioReady();
     await waitFor(() => {
       expect(screen.getByTestId("playing")).toHaveTextContent("yes");
     });
@@ -1245,6 +1144,7 @@ describe("PlaybackProvider", () => {
     expect(audio.playbackRate).toBe(1.3);
 
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
+    await emitAudioReady(audio);
     await waitFor(() => {
       expect(screen.getByTestId("playing")).toHaveTextContent("yes");
     });
@@ -1441,6 +1341,7 @@ describe("PlaybackProvider", () => {
     await user.click(screen.getByRole("button", { name: "Play second" }));
 
     const audio = FakeAudio.first;
+    await emitAudioReady(audio);
     audio.currentTime = 2400;
     audio.emit("ended");
 
@@ -1451,6 +1352,7 @@ describe("PlaybackProvider", () => {
     });
 
     expect(audio.src).toContain("/api/episodes/1/audio");
+    await emitAudioReady(audio);
     expect(audio.currentTime).toBe(15);
     await waitFor(() => {
       expect(screen.getByTestId("playing")).toHaveTextContent("yes");
@@ -1588,6 +1490,7 @@ describe("PlaybackProvider", () => {
       );
 
       const audio = FakeAudio.first;
+      await emitAudioReady(audio);
       audio.playImpl.mockClear();
       audio.currentTime = 60;
       audio.emit("ended");
@@ -1602,6 +1505,7 @@ describe("PlaybackProvider", () => {
           ? `/api/episodes/${target.id}/audio`
           : target.audioUrl
       );
+      await emitAudioReady(audio);
       expect(audio.currentTime).toBe(17);
       await waitFor(() => {
         expect(screen.getByTestId("mixed-playing")).toHaveTextContent("yes");
@@ -1640,6 +1544,7 @@ describe("PlaybackProvider", () => {
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
 
     const audio = FakeAudio.first;
+    await emitAudioReady(audio);
     audio.playImpl.mockClear();
     audio.currentTime = 2400;
     audio.emit("ended");
@@ -1693,6 +1598,7 @@ describe("PlaybackProvider", () => {
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
 
     const audio = FakeAudio.first;
+    await emitAudioReady(audio);
     audio.currentTime = 2400;
     audio.emit("ended");
 
@@ -1723,8 +1629,9 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("current-title")).toHaveTextContent(
         "First queued episode"
       );
-      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
     });
+    await emitAudioReady(audio);
+    expect(screen.getByTestId("playing")).toHaveTextContent("yes");
   });
 
   it("starts a backend fallback from the refreshed queue when the loaded queue is stale", async () => {
@@ -1778,6 +1685,7 @@ describe("PlaybackProvider", () => {
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
 
     const audio = FakeAudio.first;
+    await emitAudioReady(audio);
     audio.currentTime = 2400;
     audio.emit("ended");
 
@@ -1785,8 +1693,9 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("current-title")).toHaveTextContent(
         "First queued episode"
       );
-      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
     });
+    await emitAudioReady(audio);
+    expect(screen.getByTestId("playing")).toHaveTextContent("yes");
     expect(queueSpy).toHaveBeenCalledTimes(2);
     expect(audio.src).toContain("/api/episodes/1/audio");
     expect(audio.currentTime).toBe(15);
@@ -1843,6 +1752,7 @@ describe("PlaybackProvider", () => {
     await user.click(screen.getByRole("button", { name: "Play third" }));
 
     const audio = FakeAudio.first;
+    await emitAudioReady(audio);
     audio.currentTime = 2700;
     audio.emit("ended");
 
@@ -1854,6 +1764,7 @@ describe("PlaybackProvider", () => {
 
     expect(audio.src).toContain("/api/episodes/1/audio");
     expect(audio.src).not.toContain("/api/episodes/2/audio");
+    await emitAudioReady(audio);
     expect(audio.currentTime).toBe(15);
   });
 
@@ -1879,6 +1790,7 @@ describe("PlaybackProvider", () => {
     await user.click(screen.getByRole("button", { name: "Play second" }));
 
     const audio = FakeAudio.first;
+    await emitAudioReady(audio);
     audio.currentTime = 2400;
     audio.emit("ended");
 
@@ -1975,7 +1887,8 @@ describe("PlaybackProvider", () => {
           isListened: false,
           publishedAt: null,
           playback: {
-            episodeId: 100,
+            audiobookId: 100,
+            trackId: 501,
             positionSeconds: 120,
             lastUpdated: "2026-05-22T08:00:00Z",
           },
@@ -2024,6 +1937,7 @@ describe("PlaybackProvider", () => {
 
     const audio = FakeAudio.first;
     expect(audio.src).toContain("/api/audiobooks/100/tracks/501/audio");
+    await emitAudioReady(audio);
     expect(setActiveSpy).toHaveBeenCalledWith({
       audiobookId: 100,
       trackId: 501,
@@ -2634,6 +2548,7 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("track-id")).toHaveTextContent("501")
     );
     await user.click(screen.getByRole("button", { name: "Play audiobook" }));
+    await emitAudioReady();
     await waitFor(() => expect(progressIntervalCallback).not.toBeNull());
 
     const audio = FakeAudio.first;
@@ -2737,6 +2652,7 @@ describe("PlaybackProvider", () => {
       audiobookId: 100,
       trackId: 502,
     });
+    await emitAudioReady(audio);
     await waitFor(() =>
       expect(screen.getByTestId("playing")).toHaveTextContent("yes")
     );
@@ -2930,6 +2846,7 @@ describe("PlaybackProvider", () => {
     await user.click(
       screen.getByRole("button", { name: "Replay rejected audiobook" })
     );
+    await emitAudioReady();
     await waitFor(() => expect(progressIntervalCallback).not.toBeNull());
 
     const audio = FakeAudio.first;
@@ -4178,6 +4095,7 @@ describe("PlaybackProvider", () => {
 
     // Start playing the first episode so we have a valid playing state
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
+    await emitAudioReady();
     await waitFor(() => {
       expect(screen.getByTestId("playing")).toHaveTextContent("yes");
     });
@@ -4214,137 +4132,114 @@ describe("PlaybackProvider", () => {
 
     // Now simulate the browser finally preparing the source in the background
     audio.throwOnPlay = false; // The retry should succeed
-    audio.readyState = 1;
+    audio.readyState = 4;
     audio.emit("canplay"); // This triggers onReady and initiates the retry playOnce(true)
 
     // Verify the retry was successful
     await waitFor(() => {
-      expect(audio.playImpl).toHaveBeenCalledTimes(2); 
+      expect(audio.playImpl).toHaveBeenCalledTimes(2);
+      expect(audio.paused).toBe(false);
       expect(screen.getByTestId("playing")).toHaveTextContent("yes");
     });
   });
 
-  it("retries play on 3rd chapter when onReady fires before NotSupportedError catch", async () => {
-    const ep3: Episode = {
-      id: 3,
-      podcastId: 11,
-      title: "Third queued episode",
-      audioUrl: "/api/episodes/3/audio",
-      duration: 1800,
-      isListened: false,
-      downloaded: false,
-      publishedAt: null,
-    };
-    episodes.set(3, ep3);
-    const playlistWith3 = [
-      ...playlistItems,
-      {
-        episodeId: 3,
-        position: 3,
-        episode: ep3,
-      },
-    ];
-    vi.mocked(api.playlist.list).mockResolvedValue({ items: playlistWith3 });
-    vi.mocked(api.playback.queue).mockImplementation(async () => ({
-      queue: playlistWith3.map((item) => {
-        const ep = episodes.get(item.episodeId)!;
-        return {
-          ...ep,
-          podcastTitle: "First Podcast",
-          podcastImageUrl: null,
-          playback: playback.get(item.episodeId) ?? null,
-        };
-      }),
-      activePlayback:
-        activePlaybackEpisodeId === null
-          ? null
-          : {
-              episodeId: activePlaybackEpisodeId,
-              lastUpdated: "2026-05-22T09:05:00Z",
-            },
+  it("retries the third audiobook chapter after readiness precedes a deferred play rejection", async () => {
+    const tracks: AudiobookTrack[] = [1, 2, 3].map((number) => ({
+      id: 500 + number, audiobookId: 100, trackNumber: number,
+      title: `Chapter ${number}`, relPath: `chapter-${number}.mp3`,
+      filePath: `/books/chapter-${number}.mp3`, duration: 100,
+      isListened: false, inPlaylist: true, positionSeconds: 0,
     }));
-
-    playback.set(2, {
-      episodeId: 2,
-      positionSeconds: 0,
+    const book: Audiobook = {
+      id: 100, title: "Three-chapter audiobook", author: "Author",
+      relPath: "book", hasCover: false, totalDuration: 300, trackCount: 3,
+      listenedCount: 0, isListened: false, inPlaylist: true,
+      positionSeconds: 0, activeTrackId: 501, tracks,
+      createdAt: "2026-05-22T08:00:00Z", updatedAt: "2026-05-22T08:00:00Z",
+    };
+    let activeTrack = tracks[0]!;
+    const savedState = (track: AudiobookTrack) => ({
+      audiobookId: book.id, trackId: track.id, positionSeconds: track.positionSeconds,
       lastUpdated: "2026-05-22T08:00:00Z",
     });
-    playback.set(3, {
-      episodeId: 3,
-      positionSeconds: 0,
-      lastUpdated: "2026-05-22T08:00:00Z",
+    vi.spyOn(api.audiobooks, "get").mockResolvedValue({ audiobook: book });
+    vi.mocked(api.playback.get).mockImplementation(async () => ({ playback: savedState(activeTrack) }));
+    vi.mocked(api.playback.setActive).mockImplementation(async (target) => {
+      activeTrack = tracks.find((track) => track.id === (typeof target === "number" ? undefined : target.trackId)) ?? activeTrack;
+      return { activePlayback: {
+        audiobookId: book.id, trackId: activeTrack.id, lastUpdated: "2026-05-22T08:00:00Z",
+      } };
     });
-
+    vi.mocked(api.playback.queue).mockImplementation(async () => ({
+      queue: [{
+        id: book.id, podcastId: 0, type: "audiobook", audiobookId: book.id,
+        trackId: activeTrack.id, trackNumber: activeTrack.trackNumber, trackCount: 3,
+        title: book.title, description: "", podcastTitle: book.author,
+        author: book.author, audioUrl: `/api/audiobooks/100/tracks/${activeTrack.id}/audio`,
+        duration: activeTrack.duration, downloaded: true, isListened: false,
+        publishedAt: null, playback: savedState(activeTrack),
+      }],
+      activePlayback: { audiobookId: book.id, trackId: activeTrack.id, lastUpdated: "2026-05-22T08:00:00Z" },
+    }));
+    const update = vi.mocked(api.playback.update).mockImplementation(async (payload) => {
+      const finishedTrack = tracks.find((track) => track.id === payload.trackId)!;
+      const next = payload.completed ? tracks[finishedTrack.trackNumber] : undefined;
+      if (payload.completed) finishedTrack.isListened = true;
+      if (next) activeTrack = next;
+      return {
+        playback: { ...savedState(finishedTrack), positionSeconds: payload.positionSeconds },
+        nextEpisodeId: null, nextTrackId: next?.id ?? null,
+        nextTarget: next ? { type: "audiobook", audiobookId: book.id, trackId: next.id } : null,
+      };
+    });
     const user = userEvent.setup();
     renderPlaybackProvider();
-
-    await waitFor(() => {
-      expect(screen.getByTestId("loading")).toHaveTextContent("no");
-    });
-
+    await waitFor(() => expect(screen.getByTestId("loading")).toHaveTextContent("no"));
     await user.click(screen.getByRole("button", { name: "Toggle play" }));
-    await waitFor(() => {
-      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
-    });
-
     const audio = FakeAudio.first;
+    await emitAudioReady(audio);
+    await waitFor(() => expect(audio.paused).toBe(false));
 
-    // Transition 1 -> 2: NotSupportedError followed by canplay
-    audio.readyState = 0;
+    audio.playImpl.mockClear();
     audio.throwOnPlay = true;
-
-    audio.currentTime = 1800;
-    audio.emit("ended");
-
-    await waitFor(() => {
-      expect(screen.getByTestId("current-title")).toHaveTextContent(
-        "Second queued episode"
-      );
-      expect(screen.getByTestId("position")).toHaveTextContent("0");
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true;
+      audio.emit("ended");
     });
-
+    await waitFor(() => {
+      expect(audio.src).toContain("/tracks/502/audio");
+      expect(audio.playImpl).toHaveBeenCalledTimes(1);
+    });
     audio.throwOnPlay = false;
-    audio.readyState = 1;
-    audio.emit("canplay");
-
+    await emitAudioReady(audio);
     await waitFor(() => {
-      expect(audio.src).toContain("/api/episodes/2/audio");
-      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+      expect(audio.playImpl).toHaveBeenCalledTimes(2);
+      expect(audio.paused).toBe(false);
     });
 
-    // Transition 2 -> 3:
-    // Simulate fast canplay/onReady firing before NotSupportedError catch callback
-    let playCallCountForEp3 = 0;
-    audio.readyState = 0;
-    audio.playImpl = vi.fn(async () => {
-      playCallCountForEp3++;
-      if (playCallCountForEp3 === 1) {
-        // First play attempt: trigger canplay before rejection completes
-        audio.readyState = 1;
-        audio.emit("canplay");
-        throw new DOMException(
-          "The element has no supported sources.",
-          "NotSupportedError"
-        );
-      }
-      audio.paused = false;
+    // canplay arrives while the third chapter's play() is still pending.
+    const pendingPlay = deferred<void>();
+    audio.playImpl.mockClear();
+    audio.playImpl.mockImplementationOnce(() => pendingPlay.promise);
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true;
+      audio.emit("ended");
     });
-
-    audio.currentTime = 1800;
-    audio.emit("ended");
-
     await waitFor(() => {
-      expect(screen.getByTestId("current-title")).toHaveTextContent(
-        "Third queued episode"
-      );
-      expect(screen.getByTestId("position")).toHaveTextContent("0");
+      expect(audio.src).toContain("/tracks/503/audio");
+      expect(audio.playImpl).toHaveBeenCalledTimes(1);
     });
-
-    // Verify retry succeeds and playing is maintained on the 3rd chapter
+    await emitAudioReady(audio);
+    await act(async () => {
+      pendingPlay.reject(new DOMException("Unsupported source", "NotSupportedError"));
+    });
     await waitFor(() => {
-      expect(playCallCountForEp3).toBe(2);
-      expect(audio.src).toContain("/api/episodes/3/audio");
-      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+      expect(audio.playImpl).toHaveBeenCalledTimes(2);
+      expect(audio.paused).toBe(false);
+      expect(screen.getByTestId("queue-size")).toHaveTextContent("1");
     });
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      audiobookId: 100, trackId: 502, completed: true,
+    }));
   });
 });

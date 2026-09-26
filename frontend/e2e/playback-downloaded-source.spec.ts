@@ -13,7 +13,7 @@ test("reloads a completed download at the current playback position", async ({
       private source = "";
       currentTime = 0;
       duration = 600;
-      readyState = HTMLMediaElement.HAVE_METADATA;
+      readyState = HTMLMediaElement.HAVE_NOTHING;
       playbackRate = 1;
       defaultPlaybackRate = 1;
       paused = true;
@@ -39,28 +39,11 @@ test("reloads a completed download at the current playback position", async ({
           return;
         }
         this.readyState = HTMLMediaElement.HAVE_NOTHING;
-        queueMicrotask(() => {
-          this.readyState = HTMLMediaElement.HAVE_METADATA;
-          this.dispatchEvent(new Event("loadedmetadata"));
-          queueMicrotask(() => {
-            this.readyState = HTMLMediaElement.HAVE_FUTURE_DATA;
-            this.dispatchEvent(new Event("canplay"));
-          });
-        });
-      }
-
-      override addEventListener(
-        type: string,
-        callback: EventListenerOrEventListenerObject | null,
-        options?: boolean | AddEventListenerOptions
-      ) {
-        super.addEventListener(type, callback, options);
       }
 
       async play() {
         this.playPositions.push(this.currentTime);
         this.paused = false;
-        this.dispatchEvent(new Event("playing"));
       }
 
       pause() {
@@ -76,14 +59,6 @@ test("reloads a completed download at the current playback position", async ({
         this.loadCalls += 1;
         this.currentTime = 0;
         this.readyState = HTMLMediaElement.HAVE_NOTHING;
-        queueMicrotask(() => {
-          this.readyState = HTMLMediaElement.HAVE_METADATA;
-          this.dispatchEvent(new Event("loadedmetadata"));
-          queueMicrotask(() => {
-            this.readyState = HTMLMediaElement.HAVE_FUTURE_DATA;
-            this.dispatchEvent(new Event("canplay"));
-          });
-        });
       }
     }
 
@@ -200,6 +175,18 @@ test("reloads a completed download at the current playback position", async ({
   ).toBeVisible();
   await page.getByRole("button", { name: "Play" }).first().click();
 
+  await page.evaluate(() => {
+    const audio = (globalThis as typeof globalThis & {
+      __mpodTestAudio?: { readyState: number; dispatchEvent: (event: Event) => boolean };
+    }).__mpodTestAudio;
+    if (!audio) throw new Error("Expected test audio instance");
+    audio.readyState = HTMLMediaElement.HAVE_METADATA;
+    audio.dispatchEvent(new Event("loadedmetadata"));
+    audio.readyState = HTMLMediaElement.HAVE_FUTURE_DATA;
+    audio.dispatchEvent(new Event("canplay"));
+    audio.dispatchEvent(new Event("playing"));
+  });
+
   await expect.poll(() => downloadedCheckStarted).toBe(true);
   const beforeRelease = await page.evaluate(() => {
     const audio = (
@@ -226,6 +213,20 @@ test("reloads a completed download at the current playback position", async ({
     };
   });
   releaseDownloadedCheck();
+  await expect.poll(() => page.evaluate(() =>
+    (globalThis as typeof globalThis & { __mpodTestAudio?: { loadCalls: number } }).__mpodTestAudio?.loadCalls
+  )).toBe(beforeRelease.loadCalls + 1);
+  await page.evaluate(() => {
+    const audio = (globalThis as typeof globalThis & {
+      __mpodTestAudio?: { readyState: number; dispatchEvent: (event: Event) => boolean };
+    }).__mpodTestAudio;
+    if (!audio) throw new Error("Expected test audio instance");
+    audio.readyState = HTMLMediaElement.HAVE_METADATA;
+    audio.dispatchEvent(new Event("loadedmetadata"));
+    audio.readyState = HTMLMediaElement.HAVE_FUTURE_DATA;
+    audio.dispatchEvent(new Event("canplay"));
+    audio.dispatchEvent(new Event("playing"));
+  });
 
   await expect
     .poll(() =>

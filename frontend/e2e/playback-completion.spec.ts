@@ -13,7 +13,8 @@ test("starts the topmost fallback after the last episode really ends", async ({
       src = "";
       currentTime = 0;
       duration = 600;
-      readyState = HTMLMediaElement.HAVE_METADATA;
+      readyState = HTMLMediaElement.HAVE_NOTHING;
+      ended = false;
       playbackRate = 1;
       defaultPlaybackRate = 1;
       paused = true;
@@ -27,25 +28,16 @@ test("starts the topmost fallback after the last episode really ends", async ({
         ).__mpodTestAudio = this;
       }
 
-      override addEventListener(
-        type: string,
-        callback: EventListenerOrEventListenerObject | null,
-        options?: boolean | AddEventListenerOptions
-      ) {
-        super.addEventListener(type, callback, options);
-        if (type === "loadedmetadata" || type === "canplay") {
-          queueMicrotask(() => this.dispatchEvent(new Event(type)));
-        }
+      load() {
+        this.currentTime = 0;
+        this.readyState = HTMLMediaElement.HAVE_NOTHING;
+        this.paused = true;
+        this.ended = false;
       }
 
       async play() {
         this.playCalls += 1;
         this.paused = false;
-        this.dispatchEvent(new Event("playing"));
-      }
-
-      load() {
-        // No-op for fake audio
       }
 
       pause() {
@@ -201,11 +193,24 @@ test("starts the topmost fallback after the last episode really ends", async ({
     .toContain("/api/episodes/2/audio");
 
   await page.evaluate(() => {
+    const audio = (globalThis as typeof globalThis & {
+      __mpodTestAudio?: { readyState: number; dispatchEvent: (event: Event) => boolean };
+    }).__mpodTestAudio;
+    if (!audio) throw new Error("Expected test audio instance");
+    audio.readyState = HTMLMediaElement.HAVE_METADATA;
+    audio.dispatchEvent(new Event("loadedmetadata"));
+    audio.readyState = HTMLMediaElement.HAVE_FUTURE_DATA;
+    audio.dispatchEvent(new Event("canplay"));
+    audio.dispatchEvent(new Event("playing"));
+  });
+
+  await page.evaluate(() => {
     const audio = (
       globalThis as typeof globalThis & {
         __mpodTestAudio?: {
           currentTime: number;
           paused: boolean;
+          ended: boolean;
           dispatchEvent: (event: Event) => boolean;
         };
       }
@@ -214,6 +219,7 @@ test("starts the topmost fallback after the last episode really ends", async ({
       throw new Error("Expected test audio instance");
     }
     audio.currentTime = 600;
+    audio.ended = true;
     audio.paused = true;
     audio.dispatchEvent(new Event("ended"));
   });
@@ -222,6 +228,21 @@ test("starts the topmost fallback after the last episode really ends", async ({
     completed: true,
     episodeId: 2,
   });
+  await expect.poll(() => page.evaluate(() =>
+    (globalThis as typeof globalThis & { __mpodTestAudio?: { src: string } }).__mpodTestAudio?.src
+  )).toContain("/api/episodes/1/audio");
+  await page.evaluate(() => {
+    const audio = (globalThis as typeof globalThis & {
+      __mpodTestAudio?: { readyState: number; dispatchEvent: (event: Event) => boolean };
+    }).__mpodTestAudio;
+    if (!audio) throw new Error("Expected test audio instance");
+    audio.readyState = HTMLMediaElement.HAVE_METADATA;
+    audio.dispatchEvent(new Event("loadedmetadata"));
+    audio.readyState = HTMLMediaElement.HAVE_FUTURE_DATA;
+    audio.dispatchEvent(new Event("canplay"));
+    audio.dispatchEvent(new Event("playing"));
+  });
+
   await expect
     .poll(() =>
       page.evaluate(
