@@ -90,7 +90,10 @@ type UsePlaybackAudioOptions = {
       isActive?: () => boolean;
     }
   ) => Promise<QueueEpisode>;
-  loadQueue: () => Promise<{
+  loadQueue: (options?: {
+    preserveActiveItemKey?: boolean;
+    shouldApply?: () => boolean;
+  }) => Promise<{
     queue: QueueEpisode[];
     activePlayback?: ActivePlaybackState | null;
   } | null>;
@@ -203,7 +206,7 @@ export function usePlaybackAudio({
   const sourceSwitchingRef = useRef(false);
   const sourceReloadCleanupRef = useRef<(() => void) | null>(null);
   const sourcePrimeCleanupRef = useRef<(() => void) | null>(null);
-  const completionInProgressEpisodeIdRef = useRef<QueueItemKey | null>(null);
+  const completionGenerationRef = useRef<number | null>(null);
   const completedAudioSourceRef = useRef<string | null>(null);
   // Track the source that is actually loaded, independently from fresher queue data.
   const sourceDownloadStateRef = useRef<{
@@ -449,16 +452,24 @@ export function usePlaybackAudio({
     };
 
     const startAfterCompletion = async (
-      completedItemKey: QueueItemKey,
+      completedGeneration: number,
       completedItem: QueueEpisode,
       queuedNextItem: QueueEpisode | null,
       response: PlaybackUpdateResponse | null
     ) => {
-      if (completionInProgressEpisodeIdRef.current !== completedItemKey) {
+      if (sourceGenerationRef.current !== completedGeneration) {
         return;
       }
 
-      const refreshedQueue = await loadQueue();
+      const refreshedQueue = await loadQueue({
+        preserveActiveItemKey: true,
+        shouldApply: () => sourceGenerationRef.current === completedGeneration,
+      });
+
+      if (sourceGenerationRef.current !== completedGeneration) {
+        return;
+      }
+
       const availableQueue = refreshedQueue?.queue ?? queueRef.current;
       const nextTarget = response?.nextTarget;
       let nextItem =
@@ -516,11 +527,6 @@ export function usePlaybackAudio({
             lastUpdated: new Date().toISOString(),
           },
         };
-        setQueue((current) =>
-          current.map((episode) =>
-            sameQueueItem(episode, completedItem) ? nextItem! : episode
-          )
-        );
       }
 
       if (!nextItem) {
@@ -529,8 +535,12 @@ export function usePlaybackAudio({
         return;
       }
 
-      if (completionInProgressEpisodeIdRef.current !== completedItemKey) {
-        return;
+      if (sameQueueItem(nextItem, completedItem)) {
+        setQueue((current) =>
+          current.map((episode) =>
+            sameQueueItem(episode, completedItem) ? nextItem! : episode
+          )
+        );
       }
 
       startQueuedEpisode(nextItem);
@@ -548,6 +558,13 @@ export function usePlaybackAudio({
       ) {
         return;
       }
+      const completionGeneration = sourceGenerationRef.current;
+      if (
+        completionGenerationRef.current != null &&
+        completionGenerationRef.current === completionGeneration
+      ) {
+        return;
+      }
       const finishedPosition = audio.currentTime;
       const finishedDuration = getPositiveDuration(
         readAudioDuration(audio),
@@ -560,16 +577,29 @@ export function usePlaybackAudio({
       );
       const nextQueueItem =
         currentIndex >= 0 ? (currentQueue[currentIndex + 1] ?? null) : null;
+      const bookId = finishedEpisode.audiobookId ?? finishedEpisode.id;
+      const hasKnownTracks =
+        isAudiobookQueueItem(finishedEpisode) &&
+        bookId != null &&
+        audiobookTracksCacheRef.current.has(bookId);
+      const nextAudiobookChapter = hasKnownTracks
+        ? getNextAudiobookChapter(
+            finishedEpisode,
+            audiobookTracksCacheRef.current,
+            nextQueueItem
+          )
+        : null;
 
       const hasPotentialNext =
         nextQueueItem != null ||
-        isAudiobookQueueItem(finishedEpisode);
+        (isAudiobookQueueItem(finishedEpisode) &&
+          (!hasKnownTracks || nextAudiobookChapter != null));
 
       if (!hasPotentialNext) {
         playingRef.current = false;
         setPlaying(false);
       }
-      completionInProgressEpisodeIdRef.current = finishedItemKey;
+      completionGenerationRef.current = completionGeneration;
       completedAudioSourceRef.current = finishedSource;
 
       // Synchronous auto-advance for seamless transition on mobile / locked screen.
@@ -578,11 +608,13 @@ export function usePlaybackAudio({
       // Starting the next item immediately in memory retains media continuation privileges.
       let synchronousNextItem: QueueEpisode | null = null;
       if (isAudiobookQueueItem(finishedEpisode)) {
-        synchronousNextItem = getNextAudiobookChapter(
-          finishedEpisode,
-          audiobookTracksCacheRef.current,
-          nextQueueItem
-        );
+        synchronousNextItem =
+          nextAudiobookChapter ??
+          getNextAudiobookChapter(
+            finishedEpisode,
+            audiobookTracksCacheRef.current,
+            nextQueueItem
+          );
       } else if (nextQueueItem) {
         synchronousNextItem = nextQueueItem;
       }
@@ -603,6 +635,7 @@ export function usePlaybackAudio({
         }
 
         startQueuedEpisode(synchronousNextItem);
+        const nextGen = sourceGenerationRef.current;
 
         void commitPlayback(finishedPosition, {
           completed: true,
@@ -610,12 +643,18 @@ export function usePlaybackAudio({
           target: finishedEpisode,
         })
           .then(async () => {
-            await loadQueue();
+            await loadQueue({
+              preserveActiveItemKey: true,
+              shouldApply: () => sourceGenerationRef.current === nextGen,
+            });
           })
           .catch(() => {})
           .finally(() => {
-            if (completionInProgressEpisodeIdRef.current === finishedItemKey) {
-              completionInProgressEpisodeIdRef.current = null;
+            if (
+              completionGenerationRef.current != null &&
+              completionGenerationRef.current === completionGeneration
+            ) {
+              completionGenerationRef.current = null;
             }
           });
         return;
@@ -628,7 +667,7 @@ export function usePlaybackAudio({
       })
         .then(async (response) => {
           await startAfterCompletion(
-            finishedItemKey,
+            completionGeneration,
             finishedEpisode,
             nextQueueItem,
             response
@@ -636,15 +675,18 @@ export function usePlaybackAudio({
         })
         .catch(() => {
           void startAfterCompletion(
-            finishedItemKey,
+            completionGeneration,
             finishedEpisode,
             nextQueueItem,
             null
           );
         })
         .finally(() => {
-          if (completionInProgressEpisodeIdRef.current === finishedItemKey) {
-            completionInProgressEpisodeIdRef.current = null;
+          if (
+            completionGenerationRef.current != null &&
+            completionGenerationRef.current === completionGeneration
+          ) {
+            completionGenerationRef.current = null;
           }
         });
     };
@@ -1047,7 +1089,7 @@ export function usePlaybackAudio({
 
     if (
       currentEpisode &&
-      completionInProgressEpisodeIdRef.current === queueItemKey(currentEpisode)
+      completionGenerationRef.current === sourceGenerationRef.current
     ) {
       return;
     }
@@ -1129,7 +1171,7 @@ export function usePlaybackAudio({
   const playEpisode = useCallback(
     (episodeId: number) => {
       const currentGen = prepareSourceSwitch();
-      completionInProgressEpisodeIdRef.current = null;
+      completionGenerationRef.current = null;
       completedAudioSourceRef.current = null;
       setPlaybackError(null);
       userInitiatedPlayRef.current = true;
@@ -1238,7 +1280,7 @@ export function usePlaybackAudio({
       }
 
       const currentGen = prepareSourceSwitch();
-      completionInProgressEpisodeIdRef.current = null;
+      completionGenerationRef.current = null;
       completedAudioSourceRef.current = null;
       allowPlaybackProgress(item);
       setPlaybackError(null);
@@ -1336,7 +1378,7 @@ export function usePlaybackAudio({
 
       allowPlaybackProgress({ ...queuedBook, trackId: track.id });
       const currentGen = prepareSourceSwitch();
-      completionInProgressEpisodeIdRef.current = null;
+      completionGenerationRef.current = null;
       completedAudioSourceRef.current = null;
       setPlaybackError(null);
       userInitiatedPlayRef.current = true;

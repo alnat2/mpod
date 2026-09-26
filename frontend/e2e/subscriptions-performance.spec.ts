@@ -137,7 +137,7 @@ test("keeps a large subscription view bounded and visible during revalidation", 
 
   const podcastCallsBeforeRevalidation = podcastCalls;
   blockRevalidation = true;
-  await page.getByRole("link", { name: "Subscriptions" }).click();
+  await page.getByRole("link", { name: "Podcasts" }).click();
   await expect.poll(() => podcastCalls).toBeGreaterThan(
     podcastCallsBeforeRevalidation
   );

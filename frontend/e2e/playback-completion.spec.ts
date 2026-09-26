@@ -44,6 +44,10 @@ test("starts the topmost fallback after the last episode really ends", async ({
         this.dispatchEvent(new Event("playing"));
       }
 
+      load() {
+        // No-op for fake audio
+      }
+
       pause() {
         if (this.paused) {
           return;

@@ -65,7 +65,8 @@ test("keeps playlist order stable when playing and persists drag reorder", async
   });
 
   await page.route("**/api/playlist/reorder", async (route) => {
-    reorderPayload = (route.request().postDataJSON() as { episodeIds: number[] }).episodeIds;
+    const payloadItems = (route.request().postDataJSON() as { items: { id: number; type: string }[] }).items;
+    reorderPayload = payloadItems.map((i) => i.id);
     queueOrder = [...reorderPayload];
 
     await route.fulfill({

@@ -386,33 +386,59 @@ export function usePlaybackSync({
     }
   }, [setAudiobookSpeedLabel, setSpeedLabel, settingsRequests]);
 
-  const loadQueue = useCallback(async () => {
-    const requestGeneration = queueRequests.beginRequest();
-    try {
-      const response = await api.playback.queue();
-      if (!queueRequests.isLatestRequest(requestGeneration)) {
+  const loadQueue = useCallback(
+    async (options?: {
+      preserveActiveItemKey?: boolean;
+      shouldApply?: () => boolean;
+    }) => {
+      const requestGeneration = queueRequests.beginRequest();
+      try {
+        const response = await api.playback.queue();
+        if (!queueRequests.isLatestRequest(requestGeneration)) {
+          return null;
+        }
+        if (options?.shouldApply && !options.shouldApply()) {
+          return null;
+        }
+        if (options?.preserveActiveItemKey && currentEpisodeRef.current) {
+          const activeKey = queueItemKey(currentEpisodeRef.current);
+          setQueue((current) =>
+            response.queue.map((item) =>
+              queueItemKey(item) === activeKey
+                ? current.find((c) => queueItemKey(c) === activeKey) ?? item
+                : item
+            )
+          );
+        } else {
+          setQueue(response.queue);
+          const nextActiveItemKey = activePlaybackKey(response.activePlayback);
+          setActiveItemKey(
+            nextActiveItemKey !== null &&
+              response.queue.some(
+                (episode) => queueItemKey(episode) === nextActiveItemKey
+              )
+              ? nextActiveItemKey
+              : null
+          );
+        }
+        return response;
+      } catch (error) {
+        console.error("Failed to load playback queue", error);
         return null;
+      } finally {
+        if (queueRequests.isLatestRequest(requestGeneration)) {
+          setLoading(false);
+        }
       }
-      setQueue(response.queue);
-      const nextActiveItemKey = activePlaybackKey(response.activePlayback);
-      setActiveItemKey(
-        nextActiveItemKey !== null &&
-          response.queue.some(
-            (episode) => queueItemKey(episode) === nextActiveItemKey
-          )
-          ? nextActiveItemKey
-          : null
-      );
-      return response;
-    } catch (error) {
-      console.error("Failed to load playback queue", error);
-      return null;
-    } finally {
-      if (queueRequests.isLatestRequest(requestGeneration)) {
-        setLoading(false);
-      }
-    }
-  }, [queueRequests, setActiveItemKey, setLoading, setQueue]);
+    },
+    [
+      currentEpisodeRef,
+      queueRequests,
+      setActiveItemKey,
+      setLoading,
+      setQueue,
+    ]
+  );
 
   const reloadQueue = useCallback(async () => {
     await loadQueue();

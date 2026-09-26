@@ -201,17 +201,29 @@ test("reloads a completed download at the current playback position", async ({
   await page.getByRole("button", { name: "Play" }).first().click();
 
   await expect.poll(() => downloadedCheckStarted).toBe(true);
-  const originalSource = await page.evaluate(() => {
+  const beforeRelease = await page.evaluate(() => {
     const audio = (
       globalThis as typeof globalThis & {
-        __mpodTestAudio?: { currentTime: number; src: string };
+        __mpodTestAudio?: {
+          currentTime: number;
+          loadCalls: number;
+          pauseCalls: number;
+          playPositions: number[];
+          src: string;
+        };
       }
     ).__mpodTestAudio;
     if (!audio) {
       throw new Error("Expected test audio instance");
     }
     audio.currentTime = 237;
-    return audio.src;
+    return {
+      currentTime: audio.currentTime,
+      loadCalls: audio.loadCalls,
+      pauseCalls: audio.pauseCalls,
+      playPositions: [...audio.playPositions],
+      src: audio.src,
+    };
   });
   releaseDownloadedCheck();
 
@@ -242,10 +254,10 @@ test("reloads a completed download at the current playback position", async ({
     )
     .toEqual({
       currentTime: 237,
-      loadCalls: 1,
-      pauseCalls: 1,
-      playPositions: [15, 237],
-      src: originalSource,
+      loadCalls: beforeRelease.loadCalls + 1,
+      pauseCalls: beforeRelease.pauseCalls + 1,
+      playPositions: [...beforeRelease.playPositions, 237],
+      src: beforeRelease.src,
     });
   await expect.poll(() => savedProgress).toMatchObject({
     positionSeconds: 237,
