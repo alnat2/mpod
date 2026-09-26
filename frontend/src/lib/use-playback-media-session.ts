@@ -12,6 +12,7 @@ type UsePlaybackMediaSessionOptions = {
   commitCurrentPlayback: () => void;
   setPlaying: (playing: boolean) => void;
   playToggle: () => void;
+  cancelAutoAdvance: () => void;
 };
 
 export function usePlaybackMediaSession({
@@ -24,6 +25,7 @@ export function usePlaybackMediaSession({
   commitCurrentPlayback,
   setPlaying,
   playToggle,
+  cancelAutoAdvance,
 }: UsePlaybackMediaSessionOptions) {
   const handlePlayRef = useRef<(() => void) | null>(null);
   const handlePauseRef = useRef<(() => void) | null>(null);
@@ -52,11 +54,13 @@ export function usePlaybackMediaSession({
       }
 
       const wasPlaying = playingRef.current || !audio.paused;
+      cancelAutoAdvance();
+      userInitiatedPlayRef.current = false;
+      playingRef.current = false;
+      setPlaying(false);
       audio.pause();
-      if (wasPlaying && playingRef.current) {
+      if (wasPlaying && !audio.ended) {
         commitCurrentPlayback();
-        playingRef.current = false;
-        setPlaying(false);
       }
     };
   }, [
@@ -67,6 +71,7 @@ export function usePlaybackMediaSession({
     setPlaying,
     userInitiatedPlayRef,
     playToggle,
+    cancelAutoAdvance,
   ]);
 
   useEffect(() => {

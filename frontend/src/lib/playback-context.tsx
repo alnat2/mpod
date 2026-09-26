@@ -155,6 +155,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   }, [queue]);
 
 	const {
+	  cancelAutoAdvance,
 	  playToggle,
 	  playEpisode,
 	  playQueueItem,
@@ -227,6 +228,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     commitCurrentPlayback,
     setPlaying,
     playToggle,
+    cancelAutoAdvance,
   });
 
   const stateValue = useMemo(
