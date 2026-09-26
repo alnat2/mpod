@@ -331,10 +331,6 @@ export function usePlaybackSync({
           }
         }
 
-        if (!isMountedRef.current || (options.isActive && !options.isActive())) {
-          return episode;
-        }
-
         writePlaybackState(itemKey, nextPlayback);
 
         if (current && queueItemKey(current) === itemKey && nextPlayback) {

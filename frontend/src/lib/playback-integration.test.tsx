@@ -2,9 +2,10 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { api, type AudiobookTrack, type PlaybackQueueResponse, type PlaybackUpdateResponse } from "./api";
+import { api, type AudiobookTrack, type PlaybackQueueResponse, type PlaybackUpdateResponse, type PlaybackState } from "./api";
 import { PlaybackProvider, usePlayback } from "./playback-context";
 import type { QueueEpisode } from "./playback-context-types";
+import { FakeAudio } from "../test/fake-audio";
 
 const stamp = "2026-09-25T10:00:00Z";
 
@@ -13,8 +14,6 @@ function deferred<T>() {
   const promise = new Promise<T>((res) => { resolve = res; });
   return { promise, resolve };
 }
-
-import { FakeAudio } from "../test/fake-audio";
 
 const track = (id: number, options: Partial<AudiobookTrack> = {}): AudiobookTrack => ({
   id,
@@ -111,6 +110,110 @@ describe("combined playback integration", () => {
     await waitFor(() => expect(audio.playImpl).toHaveBeenCalled());
     return { user, audio };
   }
+
+  it("stops after three rejected auto plays and ignores further readiness", async () => {
+    const { audio } = await startBook();
+    const completion = deferred<PlaybackUpdateResponse>();
+    vi.mocked(api.playback.update).mockImplementation(async (payload) =>
+      payload.completed ? completion.promise : {
+        playback: { audiobookId: 10, trackId: payload.trackId, positionSeconds: payload.positionSeconds, lastUpdated: stamp },
+        nextEpisodeId: null,
+      }
+    );
+    audio.playImpl.mockClear();
+    audio.playImpl.mockRejectedValue(new DOMException("Unsupported", "NotSupportedError"));
+    await act(async () => { audio.ended = true; audio.paused = true; audio.currentTime = 100; audio.emit("ended"); });
+    await waitFor(() => expect(audio.playImpl).toHaveBeenCalledTimes(1));
+    await ready(audio);
+    await waitFor(() => {
+      expect(audio.playImpl).toHaveBeenCalledTimes(3);
+      expect(screen.getByTestId("playing")).toHaveTextContent("false");
+      expect(screen.getByTestId("error")).toHaveTextContent("NotSupportedError");
+    });
+    await ready(audio);
+    expect(audio.playImpl).toHaveBeenCalledTimes(3);
+    expect(audio.paused).toBe(true);
+  });
+
+  it("clears the pending retry timeout when the user chooses C", async () => {
+    const { user, audio } = await startBook();
+    const completion = deferred<PlaybackUpdateResponse>();
+    vi.mocked(api.playback.update).mockReturnValue(completion.promise);
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    audio.playImpl.mockRejectedValueOnce(new DOMException("Unsupported", "NotSupportedError"));
+    await act(async () => { audio.ended = true; audio.paused = true; audio.currentTime = 100; audio.emit("ended"); });
+    await waitFor(() => expect(setTimeoutSpy.mock.calls.some(([, delay]) => delay === 5000)).toBe(true));
+    const timeoutIndex = setTimeoutSpy.mock.calls.findIndex(([, delay]) => delay === 5000);
+    const timeout = setTimeoutSpy.mock.results[timeoutIndex]!.value;
+    const callback = setTimeoutSpy.mock.calls[timeoutIndex]![0];
+    const lateRetry = audio.captureEvent("canplay");
+    await user.click(screen.getByRole("button", { name: "Choose C" }));
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeout);
+    await waitFor(() => expect(audio.src).toContain("/tracks/3/audio"));
+    await ready(audio);
+    const playsAtC = audio.playImpl.mock.calls.length;
+    await act(async () => {
+      lateRetry();
+      if (typeof callback === "function") callback();
+    });
+    expect(audio.playImpl).toHaveBeenCalledTimes(playsAtC);
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+    expect(audio.currentTime).toBe(31);
+  });
+
+  it.each(["resolve", "reject"] as const)("ignores a stale completion playback.get that later %ss", async (result) => {
+    const { user, audio } = await startBook();
+    const pendingGet = deferred<{ playback: PlaybackState | null }>();
+    let rejectGet!: (error: Error) => void;
+    const failedGet = new Promise<{ playback: PlaybackState | null }>((_, reject) => { rejectGet = reject; });
+    const get = vi.mocked(api.playback.get);
+    const defaultGet = get.getMockImplementation()!;
+    get.mockImplementation((target) =>
+      typeof target !== "number" && "audiobookId" in target && target.trackId === 2
+        ? result === "resolve" ? pendingGet.promise : failedGet
+        : defaultGet(target)
+    );
+    await act(async () => { audio.ended = true; audio.paused = true; audio.currentTime = 100; audio.emit("ended"); });
+    await waitFor(() => expect(get).toHaveBeenCalledWith({ audiobookId: 10, trackId: 2 }));
+    await user.click(screen.getByRole("button", { name: "Choose C" }));
+    await waitFor(() => expect(audio.src).toContain("/tracks/3/audio"));
+    await ready(audio);
+    const loadsAtC = audio.loadImpl.mock.calls.length;
+    const playsAtC = audio.playImpl.mock.calls.length;
+    const activeAtC = vi.mocked(api.playback.setActive).mock.calls.length;
+    await act(async () => {
+      if (result === "resolve") pendingGet.resolve({ playback: { audiobookId: 10, trackId: 2, positionSeconds: 47, lastUpdated: stamp } });
+      else rejectGet(new Error("Network unavailable"));
+    });
+    expect(screen.getByTestId("source")).toHaveTextContent("3");
+    expect(screen.getByTestId("queue-track")).toHaveTextContent("3");
+    expect(audio.src).toContain("/tracks/3/audio");
+    expect(audio.currentTime).toBe(31);
+    expect(audio.paused).toBe(false);
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loadsAtC);
+    expect(audio.playImpl).toHaveBeenCalledTimes(playsAtC);
+    expect(api.playback.setActive).toHaveBeenCalledTimes(activeAtC);
+  });
+
+  it("reports rejected completion, releases its lock and allows manual Play", async () => {
+    tracks = [track(1)];
+    const { user, audio } = await startBook();
+    const update = vi.mocked(api.playback.update).mockRejectedValue(new Error("Network unavailable"));
+    await act(async () => { audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended"); });
+    await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent("Could not confirm playback completion."));
+    expect(screen.getByTestId("playing")).toHaveTextContent("false");
+    expect(update.mock.calls.filter(([payload]) => payload.completed)).toHaveLength(1);
+    const playsBeforeRecovery = audio.playImpl.mock.calls.length;
+    await user.click(screen.getByRole("button", { name: "Toggle" }));
+    await ready(audio);
+    await waitFor(() => {
+      expect(audio.playImpl).toHaveBeenCalledTimes(playsBeforeRecovery + 1);
+      expect(audio.paused).toBe(false);
+    });
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+  });
 
   it.each(["completion", "queue"] as const)(
     "keeps C after B recovery and late A %s / B play responses", async (delayStage) => {
