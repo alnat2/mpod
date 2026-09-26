@@ -103,6 +103,14 @@ export function usePlaybackSync({
   setSpeedLabel,
   setAudiobookSpeedLabel,
 }: UsePlaybackSyncOptions) {
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const queueRequests = useLatestRequest();
   const settingsRequests = useLatestRequest();
   const completedPlaybackTargetsRef = useRef(new Set<string>());
@@ -275,7 +283,10 @@ export function usePlaybackSync({
   const refreshPlaybackState = useCallback(
     async (
       episode: QueueEpisode,
-      options: { applyEvenIfNotNewer?: boolean } = {}
+      options: {
+        applyEvenIfNotNewer?: boolean;
+        isActive?: () => boolean;
+      } = {}
     ) => {
       try {
         const audiobook = isAudiobookQueueItem(episode);
@@ -291,6 +302,11 @@ export function usePlaybackSync({
               }
             : { episodeId: episode.id }
         );
+
+        if (!isMountedRef.current || (options.isActive && !options.isActive())) {
+          return episode;
+        }
+
         const nextPlayback = response.playback;
         const shouldApply =
           options.applyEvenIfNotNewer ||
@@ -301,10 +317,26 @@ export function usePlaybackSync({
         }
 
         const itemKey = queueItemKey(episode);
+        const current = currentEpisodeRef.current;
+
+        // Protection against stale operations for audiobooks (e.g., track changed while refresh was pending)
+        if (current && queueItemKey(current) === itemKey) {
+          const isSameTrack = audiobook ? current.trackId === trackId : true;
+          if (!isSameTrack) {
+            return episode;
+          }
+        }
+
+        if (!isMountedRef.current || (options.isActive && !options.isActive())) {
+          return episode;
+        }
+
         writePlaybackState(itemKey, nextPlayback);
 
-        const current = currentEpisodeRef.current;
         if (current && queueItemKey(current) === itemKey && nextPlayback) {
+          if (!isMountedRef.current || (options.isActive && !options.isActive())) {
+            return episode;
+          }
           const nextPosition = clampPosition(
             nextPlayback.positionSeconds,
             playbackDurationSeconds(current, activeMediaDurationRef)

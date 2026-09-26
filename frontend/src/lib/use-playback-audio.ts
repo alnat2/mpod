@@ -85,7 +85,10 @@ type UsePlaybackAudioOptions = {
   commitActivePlayback: (episode: QueueEpisode) => Promise<void>;
   refreshPlaybackState: (
     episode: QueueEpisode,
-    options?: { applyEvenIfNotNewer?: boolean }
+    options?: {
+      applyEvenIfNotNewer?: boolean;
+      isActive?: () => boolean;
+    }
   ) => Promise<QueueEpisode>;
   loadQueue: () => Promise<{
     queue: QueueEpisode[];
@@ -199,6 +202,7 @@ export function usePlaybackAudio({
 }: UsePlaybackAudioOptions) {
   const sourceSwitchingRef = useRef(false);
   const sourceReloadCleanupRef = useRef<(() => void) | null>(null);
+  const sourcePrimeCleanupRef = useRef<(() => void) | null>(null);
   const completionInProgressEpisodeIdRef = useRef<QueueItemKey | null>(null);
   const completedAudioSourceRef = useRef<string | null>(null);
   // Track the source that is actually loaded, independently from fresher queue data.
@@ -334,6 +338,8 @@ export function usePlaybackAudio({
         });
       }
     }
+    sourcePrimeCleanupRef.current?.();
+    sourcePrimeCleanupRef.current = null;
     sourceSwitchingRef.current = true;
     playingRef.current = false;
     setPlaying(false);
@@ -399,7 +405,8 @@ export function usePlaybackAudio({
         });
       };
 
-      primeAudioSource(
+      sourcePrimeCleanupRef.current?.();
+      sourcePrimeCleanupRef.current = primeAudioSource(
         audio,
         episode,
         speedLabelRef.current,
@@ -409,6 +416,7 @@ export function usePlaybackAudio({
           sourcePrimedRef.current = true;
         },
         () => {
+          sourcePrimeCleanupRef.current = null;
           if (sourceGenerationRef.current !== currentGen) {
             return;
           }
@@ -420,7 +428,16 @@ export function usePlaybackAudio({
           } else {
             playOnce();
           }
-        }
+        },
+        () => {
+          sourcePrimeCleanupRef.current = null;
+          if (sourceGenerationRef.current !== currentGen) return;
+          sourceSwitchingRef.current = false;
+          sourceReadyRef.current = false;
+          setPlaying(false);
+          setPlaybackError(describeMediaError(audio.error));
+        },
+        () => sourceGenerationRef.current === currentGen
       );
 
       if (nextPosition === 0) {
@@ -705,6 +722,9 @@ export function usePlaybackAudio({
       audio.src = "";
       sourceReloadCleanupRef.current?.();
       sourceReloadCleanupRef.current = null;
+      sourcePrimeCleanupRef.current?.();
+      sourcePrimeCleanupRef.current = null;
+      sourceGenerationRef.current += 1;
       sourceSwitchingRef.current = false;
       sourcePrimedRef.current = false;
       sourceReadyRef.current = false;
@@ -894,6 +914,8 @@ export function usePlaybackAudio({
         return;
       }
 
+      sourcePrimeCleanupRef.current?.();
+      sourcePrimeCleanupRef.current = null;
       audio.pause();
       audio.src = "";
       sourcePrimedRef.current = false;
@@ -906,12 +928,17 @@ export function usePlaybackAudio({
       return;
     }
 
+    if (sourceSwitchingRef.current) {
+      return;
+    }
+
     const targetSrc = getAudioSourceUrl(currentEpisode);
     const currentSrc = audio.src;
     const shouldPrimeSource =
       pendingEpisodeId !== null || playing || sourcePrimedRef.current;
 
     if (!currentSrc.includes(targetSrc)) {
+      const currentGen = sourceGenerationRef.current;
       const initialPos = clampPosition(
         currentEpisode.playback?.positionSeconds ?? 0,
         currentEpisodeDuration
@@ -923,7 +950,8 @@ export function usePlaybackAudio({
       }
 
       sourceReadyRef.current = false;
-      primeAudioSource(
+      sourcePrimeCleanupRef.current?.();
+      sourcePrimeCleanupRef.current = primeAudioSource(
         audio,
         currentEpisode,
         speedLabelRef.current,
@@ -933,16 +961,38 @@ export function usePlaybackAudio({
           sourcePrimedRef.current = true;
         },
         () => {
+          sourcePrimeCleanupRef.current = null;
           sourceReadyRef.current = true;
           if (playingRef.current) {
-            void attemptAudioPlay(audio, (error) => {
-              setPlaying(false);
-              setPlaybackError(describeAudioError(error));
-            });
+            void attemptAudioPlay(
+              audio,
+              (error) => {
+                setPlaying(false);
+                setPlaybackError(describeAudioError(error));
+              },
+              () => sourceGenerationRef.current === currentGen
+            );
           }
-        }
+        },
+        () => {
+          sourcePrimeCleanupRef.current = null;
+          sourceReadyRef.current = false;
+          if (playingRef.current) {
+            playingRef.current = false;
+            setPlaying(false);
+          }
+          if (userInitiatedPlayRef.current) {
+            userInitiatedPlayRef.current = false;
+          }
+          setPlaybackError(describeMediaError(audio.error));
+        },
+        () => sourceGenerationRef.current === currentGen
       );
-    } else if (!playing && !userInitiatedPlayRef.current) {
+    } else if (
+      sourceReadyRef.current &&
+      !playing &&
+      !userInitiatedPlayRef.current
+    ) {
       const initialPos = clampPosition(
         currentEpisode.playback?.positionSeconds ?? 0,
         currentEpisodeDuration
@@ -1005,13 +1055,20 @@ export function usePlaybackAudio({
     if (audio && currentEpisode) {
       completedAudioSourceRef.current = null;
       allowPlaybackProgress(currentEpisode);
+      sourcePrimeCleanupRef.current?.();
+      sourcePrimeCleanupRef.current = null;
+      sourceGenerationRef.current += 1;
+      const currentGen = sourceGenerationRef.current;
       void (async () => {
-        const syncedEpisode = await refreshPlaybackState(currentEpisode);
+        const syncedEpisode = await refreshPlaybackState(currentEpisode, {
+          isActive: () => sourceGenerationRef.current === currentGen,
+        });
+        if (sourceGenerationRef.current !== currentGen) return;
         void commitActivePlayback(syncedEpisode);
         const nextPosition =
           syncedEpisode.playback?.positionSeconds ?? positionSecondsRef.current ?? 0;
         sourceReadyRef.current = false;
-        primeAudioSource(
+        sourcePrimeCleanupRef.current = primeAudioSource(
           audio,
           syncedEpisode,
           speedLabel,
@@ -1021,14 +1078,29 @@ export function usePlaybackAudio({
             sourcePrimedRef.current = true;
           },
           () => {
+            sourcePrimeCleanupRef.current = null;
+            if (sourceGenerationRef.current !== currentGen) return;
             sourceReadyRef.current = true;
             updateActiveDuration(sourceGenerationRef.current);
             setPlaying(true);
-            void attemptAudioPlay(audio, (error) => {
-              setPlaying(false);
-              setPlaybackError(describeAudioError(error));
-            });
-          }
+            void attemptAudioPlay(
+              audio,
+              (error) => {
+                if (sourceGenerationRef.current !== currentGen) return;
+                setPlaying(false);
+                setPlaybackError(describeAudioError(error));
+              },
+              () => sourceGenerationRef.current === currentGen
+            );
+          },
+          () => {
+            sourcePrimeCleanupRef.current = null;
+            if (sourceGenerationRef.current !== currentGen) return;
+            sourceReadyRef.current = false;
+            setPlaying(false);
+            setPlaybackError(describeMediaError(audio.error));
+          },
+          () => sourceGenerationRef.current === currentGen
         );
       })();
       return;
@@ -1071,7 +1143,9 @@ export function usePlaybackAudio({
       }
       void (async () => {
         const syncedEpisode = queuedEpisode
-          ? await refreshPlaybackState(queuedEpisode)
+          ? await refreshPlaybackState(queuedEpisode, {
+              isActive: () => sourceGenerationRef.current === currentGen,
+            })
           : null;
         if (sourceGenerationRef.current !== currentGen) {
           return;
@@ -1094,7 +1168,8 @@ export function usePlaybackAudio({
 
         const initialPos = syncedEpisode?.playback?.positionSeconds ?? 0;
         sourceReadyRef.current = false;
-        primeAudioSource(
+        sourcePrimeCleanupRef.current?.();
+        sourcePrimeCleanupRef.current = primeAudioSource(
           audio,
           syncedEpisode ?? queuedEpisode ?? { id: episodeId },
           speedLabel,
@@ -1104,6 +1179,7 @@ export function usePlaybackAudio({
             sourcePrimedRef.current = true;
           },
           () => {
+            sourcePrimeCleanupRef.current = null;
             if (sourceGenerationRef.current !== currentGen) {
               return;
             }
@@ -1111,11 +1187,25 @@ export function usePlaybackAudio({
             sourceReadyRef.current = true;
             updateActiveDuration(currentGen);
             setPlaying(true);
-            void attemptAudioPlay(audio, (error) => {
-              setPlaying(false);
-              setPlaybackError(describeAudioError(error));
-            });
-          }
+            void attemptAudioPlay(
+              audio,
+              (error) => {
+                if (sourceGenerationRef.current !== currentGen) return;
+                setPlaying(false);
+                setPlaybackError(describeAudioError(error));
+              },
+              () => sourceGenerationRef.current === currentGen
+            );
+          },
+          () => {
+            sourcePrimeCleanupRef.current = null;
+            if (sourceGenerationRef.current !== currentGen) return;
+            sourceSwitchingRef.current = false;
+            sourceReadyRef.current = false;
+            setPlaying(false);
+            setPlaybackError(describeMediaError(audio.error));
+          },
+          () => sourceGenerationRef.current === currentGen
         );
       })();
     },
@@ -1154,7 +1244,9 @@ export function usePlaybackAudio({
       setPlaybackError(null);
       userInitiatedPlayRef.current = true;
       void (async () => {
-        const syncedItem = await refreshPlaybackState(item);
+        const syncedItem = await refreshPlaybackState(item, {
+          isActive: () => sourceGenerationRef.current === currentGen,
+        });
         if (sourceGenerationRef.current !== currentGen) {
           return;
         }
@@ -1170,7 +1262,8 @@ export function usePlaybackAudio({
 
         const initialPosition = syncedItem.playback?.positionSeconds ?? 0;
         sourceReadyRef.current = false;
-        primeAudioSource(
+        sourcePrimeCleanupRef.current?.();
+        sourcePrimeCleanupRef.current = primeAudioSource(
           audio,
           syncedItem,
           speedLabel,
@@ -1180,6 +1273,7 @@ export function usePlaybackAudio({
             sourcePrimedRef.current = true;
           },
           () => {
+            sourcePrimeCleanupRef.current = null;
             if (sourceGenerationRef.current !== currentGen) {
               return;
             }
@@ -1187,11 +1281,25 @@ export function usePlaybackAudio({
             sourceReadyRef.current = true;
             updateActiveDuration(currentGen);
             setPlaying(true);
-            void attemptAudioPlay(audio, (error) => {
-              setPlaying(false);
-              setPlaybackError(describeAudioError(error));
-            });
-          }
+            void attemptAudioPlay(
+              audio,
+              (error) => {
+                if (sourceGenerationRef.current !== currentGen) return;
+                setPlaying(false);
+                setPlaybackError(describeAudioError(error));
+              },
+              () => sourceGenerationRef.current === currentGen
+            );
+          },
+          () => {
+            sourcePrimeCleanupRef.current = null;
+            if (sourceGenerationRef.current !== currentGen) return;
+            sourceSwitchingRef.current = false;
+            sourceReadyRef.current = false;
+            setPlaying(false);
+            setPlaybackError(describeMediaError(audio.error));
+          },
+          () => sourceGenerationRef.current === currentGen
         );
       })();
     },
@@ -1302,7 +1410,8 @@ export function usePlaybackAudio({
         return;
       }
       sourceReadyRef.current = false;
-      primeAudioSource(
+      sourcePrimeCleanupRef.current?.();
+      sourcePrimeCleanupRef.current = primeAudioSource(
         audio,
         nextEpisode,
         speedLabel,
@@ -1312,6 +1421,7 @@ export function usePlaybackAudio({
           sourcePrimedRef.current = true;
         },
         () => {
+          sourcePrimeCleanupRef.current = null;
           if (sourceGenerationRef.current !== currentGen) {
             return;
           }
@@ -1319,11 +1429,25 @@ export function usePlaybackAudio({
           sourceReadyRef.current = true;
           updateActiveDuration(currentGen);
           setPlaying(true);
-          void attemptAudioPlay(audio, (error) => {
-            setPlaying(false);
-            setPlaybackError(describeAudioError(error));
-          });
-        }
+          void attemptAudioPlay(
+            audio,
+            (error) => {
+              if (sourceGenerationRef.current !== currentGen) return;
+              setPlaying(false);
+              setPlaybackError(describeAudioError(error));
+            },
+            () => sourceGenerationRef.current === currentGen
+          );
+        },
+        () => {
+          sourcePrimeCleanupRef.current = null;
+          if (sourceGenerationRef.current !== currentGen) return;
+          sourceSwitchingRef.current = false;
+          sourceReadyRef.current = false;
+          setPlaying(false);
+          setPlaybackError(describeMediaError(audio.error));
+        },
+        () => sourceGenerationRef.current === currentGen
       );
     },
     [

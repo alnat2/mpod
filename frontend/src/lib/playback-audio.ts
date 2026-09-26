@@ -61,12 +61,19 @@ export function readAudioDuration(audio: HTMLAudioElement) {
 
 export async function attemptAudioPlay(
   audio: HTMLAudioElement,
-  onFailure: (error: unknown) => void
+  onFailure: (error: unknown) => void,
+  isActive?: () => boolean
 ) {
   try {
     await audio.play();
+    if (isActive && !isActive()) {
+      return null;
+    }
     return null;
   } catch (error) {
+    if (isActive && !isActive()) {
+      return null;
+    }
     if (error instanceof DOMException && error.name === "AbortError") {
       return null;
     }
@@ -210,20 +217,46 @@ export function primeAudioSource(
   positionSeconds: number,
   setPositionSeconds: (positionSeconds: number) => void,
   markPrimed: () => void,
-  onReady: () => void
+  onReady: () => void,
+  onFailure: () => void,
+  isActive?: () => boolean
 ) {
   const targetSrc = getAudioSourceUrl(episode);
   const sourceChanged = !audio.src.includes(targetSrc);
+  const hasError = audio.error !== null;
+  const needsLoad = sourceChanged || hasError;
   let settled = false;
 
   const cleanup = () => {
     audio.removeEventListener("loadedmetadata", applyPosition);
     audio.removeEventListener("canplay", applyPosition);
-    audio.removeEventListener("error", cleanup);
+    audio.removeEventListener("error", handleError);
+  };
+
+  const cancel = () => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+  };
+
+  const handleError = () => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    if (isActive && !isActive()) {
+      return;
+    }
+    onFailure();
   };
 
   const applyPosition = () => {
-    if (settled || !audio.src.includes(targetSrc)) {
+    if (settled) return;
+    if (isActive && !isActive()) {
+      cancel();
+      return;
+    }
+    if (!audio.src.includes(targetSrc)) {
+      cancel();
       return;
     }
 
@@ -234,25 +267,28 @@ export function primeAudioSource(
     onReady();
   };
 
-  if (sourceChanged) {
-    audio.src = targetSrc;
+  if (needsLoad) {
+    if (sourceChanged) {
+      audio.src = targetSrc;
+    }
     audio.load();
     markPrimed();
     applyPlaybackRate(audio, speedLabel);
     audio.addEventListener("loadedmetadata", applyPosition);
     audio.addEventListener("canplay", applyPosition);
-    audio.addEventListener("error", cleanup);
-    return;
+    audio.addEventListener("error", handleError);
+    return cancel;
   }
 
   applyPlaybackRate(audio, speedLabel);
 
   if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
     applyPosition();
-    return;
+    return cancel;
   }
 
   audio.addEventListener("loadedmetadata", applyPosition);
   audio.addEventListener("canplay", applyPosition);
-  audio.addEventListener("error", cleanup);
+  audio.addEventListener("error", handleError);
+  return cancel;
 }
