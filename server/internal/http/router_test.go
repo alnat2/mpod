@@ -2237,6 +2237,54 @@ func TestPlaybackActiveEndpointSetsActiveEpisode(t *testing.T) {
 	}
 }
 
+func TestPlaybackPostAudiobookProgressDoesNotOverrideExplicitActive(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+	seedEpisode(t, db, 1, 1)
+	mustExecHTTP(t, db, `INSERT INTO audiobooks (id, title, author, rel_path) VALUES (2, 'Book', 'Author', 'Book')`)
+	mustExecHTTP(t, db, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (20, 2, 1, 'Chapter', 'Book/1.mp3', '/Book/1.mp3', 600)`)
+	mustExecHTTP(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1)`)
+	mustExecHTTP(t, db, `INSERT INTO playlist (audiobook_id, position) VALUES (2, 2)`)
+	mustExecHTTP(t, db, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (2, 20)`)
+
+	request := func(method, path, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != nethttp.StatusOK {
+			t.Fatalf("%s %s returned %d: %s", method, path, rec.Code, rec.Body.String())
+		}
+		return rec
+	}
+
+	request(nethttp.MethodPut, "/api/playback/active", `{"audiobookId":2,"trackId":20}`)
+	request(nethttp.MethodPut, "/api/playback/active", `{"episodeId":1}`)
+	progress := request(nethttp.MethodPost, "/api/playback", `{"audiobookId":2,"trackId":20,"positionSeconds":120,"completed":false}`)
+	var update struct {
+		Playback playback.State `json:"playback"`
+	}
+	if err := json.Unmarshal(progress.Body.Bytes(), &update); err != nil || update.Playback.PositionSeconds != 120 {
+		t.Fatalf("book progress was not saved: %+v, %v", update, err)
+	}
+
+	queueResponse := request(nethttp.MethodGet, "/api/playback/queue", "")
+	var queue struct {
+		ActivePlayback *playback.ActiveState   `json:"activePlayback"`
+		Queue          []playback.QueueEpisode `json:"queue"`
+	}
+	if err := json.Unmarshal(queueResponse.Body.Bytes(), &queue); err != nil {
+		t.Fatalf("decode queue: %v", err)
+	}
+	if queue.ActivePlayback == nil || queue.ActivePlayback.EpisodeID == nil || *queue.ActivePlayback.EpisodeID != 1 {
+		t.Fatalf("late book progress replaced podcast selection: %+v", queue.ActivePlayback)
+	}
+	if len(queue.Queue) != 2 || queue.Queue[1].Playback == nil || queue.Queue[1].Playback.PositionSeconds != 120 {
+		t.Fatalf("queue did not reflect saved book progress: %+v", queue.Queue)
+	}
+}
+
 func TestPlaybackActiveEndpointRejectsUnknownEpisode(t *testing.T) {
 	handler, cookie := newAuthedRouter(t)
 
@@ -4613,4 +4661,3 @@ func routerTextResponse(body string) *nethttp.Response {
 	resp.Header.Set("Content-Type", "text/plain")
 	return resp
 }
-

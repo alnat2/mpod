@@ -776,21 +776,6 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 			return UpdateResult{}, fmt.Errorf("save audiobook playback: %w", err)
 		}
 
-		var inPlaylist int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM playlist WHERE audiobook_id = ?`, abID).Scan(&inPlaylist); err == nil && inPlaylist > 0 {
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO active_playback (singleton_id, episode_id, audiobook_id, audiobook_track_id, last_updated)
-				VALUES (1, NULL, ?, ?, ?)
-				ON CONFLICT (singleton_id) DO UPDATE SET
-					episode_id = NULL,
-					audiobook_id = excluded.audiobook_id,
-					audiobook_track_id = excluded.audiobook_track_id,
-					last_updated = excluded.last_updated
-			`, abID, *input.TrackID, now); err != nil {
-				return UpdateResult{}, fmt.Errorf("save active audiobook playback: %w", err)
-			}
-		}
-
 		if err := tx.Commit(); err != nil {
 			return UpdateResult{}, fmt.Errorf("commit audiobook playback: %w", err)
 		}

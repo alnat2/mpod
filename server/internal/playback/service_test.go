@@ -1279,7 +1279,7 @@ func TestAudiobookTrackPlaybackSyncDirectTrackQuery(t *testing.T) {
 	}
 }
 
-func TestAudiobookPlaybackUpdatesActivePlaybackAndResolvesTrack(t *testing.T) {
+func TestAudiobookPlaybackResolvesTrackFromExplicitActiveSelection(t *testing.T) {
 	db := newTestDB(t)
 	downloadsService := downloads.NewService(db.SQL, nil, t.TempDir())
 	episodeActions := episodes.NewActions(db.SQL, downloadsService)
@@ -1300,6 +1300,9 @@ func TestAudiobookPlaybackUpdatesActivePlaybackAndResolvesTrack(t *testing.T) {
 
 	abID := int64(1)
 	trID := int64(11)
+	if _, err := service.SetActiveItem(context.Background(), nil, &abID, &trID); err != nil {
+		t.Fatalf("SetActiveItem track 11 error: %v", err)
+	}
 
 	// Update track 11 position to 350 seconds
 	res, err := service.Update(context.Background(), UpdateInput{
@@ -1316,13 +1319,13 @@ func TestAudiobookPlaybackUpdatesActivePlaybackAndResolvesTrack(t *testing.T) {
 		t.Fatalf("expected position 350, got %d", res.Playback.PositionSeconds)
 	}
 
-	// Verify active_playback was updated to track 11
+	// Verify ordinary progress leaves the explicit track selection in place.
 	active, err := service.GetActive(context.Background())
 	if err != nil {
 		t.Fatalf("GetActive error: %v", err)
 	}
 	if active == nil {
-		t.Fatal("expected active_playback to be present after audiobook update")
+		t.Fatal("expected explicit active playback to remain set")
 	}
 	if active.AudiobookID == nil || *active.AudiobookID != 1 {
 		t.Fatalf("expected active AudiobookID 1, got %v", active.AudiobookID)
