@@ -2589,7 +2589,14 @@ describe("PlaybackProvider", () => {
             payload.completed && payload.trackId === firstTrack.id
               ? secondTrack.id
               : null,
-          nextEpisodeId: null,
+          nextTarget:
+            payload.completed && payload.trackId === secondTrack.id
+              ? { type: "episode" as const, episodeId: followingEpisode.id }
+              : undefined,
+          nextEpisodeId:
+            payload.completed && payload.trackId === secondTrack.id
+              ? followingEpisode.id
+              : null,
         };
         if (payload.completed && payload.trackId === firstTrack.id) {
           return firstCompletion.promise;

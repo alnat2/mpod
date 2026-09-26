@@ -67,6 +67,8 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const sourceReadyRef = useRef(false);
   const userInitiatedPlayRef = useRef(false);
   const queueRef = useRef<QueueEpisode[]>([]);
+  const queueRevisionRef = useRef(0);
+  const selectionGenerationRef = useRef(0);
   const playingRef = useRef(false);
   const currentEpisodeRef = useRef<QueueEpisode | null>(null);
   const currentEpisodeDurationRef = useRef(0);
@@ -124,6 +126,8 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     sourcePrimedRef,
     sourceReadyRef,
     currentEpisodeRef,
+    queueRevisionRef,
+    selectionGenerationRef,
     activeMediaDurationRef,
     playingRef,
     playing,
@@ -170,6 +174,8 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       sourceReadyRef,
       userInitiatedPlayRef,
       queueRef,
+      queueRevisionRef,
+      selectionGenerationRef,
       playingRef,
       currentEpisodeRef,
       pendingPlayEpisodeIdRef,

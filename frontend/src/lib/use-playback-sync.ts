@@ -34,6 +34,8 @@ type UsePlaybackSyncOptions = {
   sourcePrimedRef: RefObject<boolean>;
   sourceReadyRef: RefObject<boolean>;
   currentEpisodeRef: RefObject<QueueEpisode | null>;
+  queueRevisionRef: RefObject<number>;
+  selectionGenerationRef: RefObject<number>;
   activeMediaDurationRef: RefObject<{
     sourceKey: string;
     durationSeconds: number;
@@ -92,6 +94,8 @@ export function usePlaybackSync({
   sourcePrimedRef,
   sourceReadyRef,
   currentEpisodeRef,
+  queueRevisionRef,
+  selectionGenerationRef,
   activeMediaDurationRef,
   playingRef,
   playing,
@@ -386,59 +390,44 @@ export function usePlaybackSync({
     }
   }, [setAudiobookSpeedLabel, setSpeedLabel, settingsRequests]);
 
-  const loadQueue = useCallback(
-    async (options?: {
-      preserveActiveItemKey?: boolean;
-      shouldApply?: () => boolean;
-    }) => {
-      const requestGeneration = queueRequests.beginRequest();
-      try {
-        const response = await api.playback.queue();
-        if (!queueRequests.isLatestRequest(requestGeneration)) {
-          return null;
-        }
-        if (options?.shouldApply && !options.shouldApply()) {
-          return null;
-        }
-        if (options?.preserveActiveItemKey && currentEpisodeRef.current) {
+  const loadQueue = useCallback(async (options: {
+    apply?: boolean;
+    preserveActiveItemKey?: boolean;
+    shouldApply?: () => boolean;
+  } = {}) => {
+    const requestGeneration = queueRequests.beginRequest();
+    const selectionGeneration = selectionGenerationRef.current;
+    if (options.apply !== false) queueRevisionRef.current += 1;
+    try {
+      const response = await api.playback.queue();
+      if (!queueRequests.isLatestRequest(requestGeneration) ||
+          selectionGenerationRef.current !== selectionGeneration ||
+          (options.shouldApply && !options.shouldApply())) return null;
+      if (options.apply !== false) {
+        if (options.preserveActiveItemKey && currentEpisodeRef.current) {
           const activeKey = queueItemKey(currentEpisodeRef.current);
-          setQueue((current) =>
-            response.queue.map((item) =>
-              queueItemKey(item) === activeKey
-                ? current.find((c) => queueItemKey(c) === activeKey) ?? item
-                : item
-            )
-          );
+          setQueue((current) => response.queue.map((item) =>
+            queueItemKey(item) === activeKey
+              ? current.find((candidate) => queueItemKey(candidate) === activeKey) ?? item
+              : item
+          ));
         } else {
           setQueue(response.queue);
           const nextActiveItemKey = activePlaybackKey(response.activePlayback);
-          setActiveItemKey(
-            nextActiveItemKey !== null &&
-              response.queue.some(
-                (episode) => queueItemKey(episode) === nextActiveItemKey
-              )
-              ? nextActiveItemKey
-              : null
-          );
-        }
-        return response;
-      } catch (error) {
-        console.error("Failed to load playback queue", error);
-        return null;
-      } finally {
-        if (queueRequests.isLatestRequest(requestGeneration)) {
-          setLoading(false);
+          setActiveItemKey(nextActiveItemKey !== null && response.queue.some(
+            (episode) => queueItemKey(episode) === nextActiveItemKey
+          ) ? nextActiveItemKey : null);
         }
       }
-    },
-    [
-      currentEpisodeRef,
-      queueRequests,
-      setActiveItemKey,
-      setLoading,
-      setQueue,
-    ]
-  );
+      return response;
+    } catch (error) {
+      console.error("Failed to load playback queue", error);
+      return null;
+    } finally {
+      if (queueRequests.isLatestRequest(requestGeneration)) setLoading(false);
+    }
+  }, [currentEpisodeRef, queueRequests, queueRevisionRef, selectionGenerationRef,
+    setActiveItemKey, setLoading, setQueue]);
 
   const reloadQueue = useCallback(async () => {
     await loadQueue();
