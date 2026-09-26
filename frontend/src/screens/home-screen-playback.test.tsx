@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type PlaybackQueueResponse } from "@/lib/api";
 import { PlaybackProvider } from "@/lib/playback-context";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { FakeAudio } from "@/test/fake-audio";
 import { HomeScreen } from "./home-screen";
 
 vi.unmock("@/lib/playback-context");
@@ -70,103 +71,14 @@ vi.mock("@/components/mpod/modal-screen", () => ({
   ),
 }));
 
-type FakeMediaError = {
-  code: number;
-  message?: string;
-};
-
-class FakeAudio {
-  static instances: FakeAudio[] = [];
-
-  static get first() {
-    const audio = FakeAudio.instances[0];
-    if (!audio) {
-      throw new Error("Expected an audio instance");
-    }
-    return audio;
-  }
-
-  src = "";
-  private currentTimeValue = 0;
-  onCurrentTimeSet: ((value: number) => void) | null = null;
-  throwOnCurrentTimeSet = false;
-  duration = 0;
-  readyState = 1;
-  playbackRate = 1;
-  defaultPlaybackRate = 1;
-  paused = true;
-  ended = false;
-  error: FakeMediaError | null = null;
-  private sourceReloading = false;
-  private listeners = new Map<string, Set<() => void>>();
-  playImpl = vi.fn(async () => {
-    this.paused = false;
+async function emitAudioReady(audio = FakeAudio.first) {
+  await waitFor(() => expect(audio.src).toContain("/audio"));
+  await act(async () => {
+    audio.readyState = 1;
+    audio.emit("loadedmetadata");
+    audio.readyState = 4;
+    audio.emit("canplay");
   });
-  pauseImpl = vi.fn(() => {
-    this.paused = true;
-  });
-  loadImpl = vi.fn(() => {
-    this.currentTimeValue = 0;
-    this.readyState = 0;
-  });
-
-  constructor() {
-    FakeAudio.instances.push(this);
-  }
-
-  get currentTime() {
-    return this.currentTimeValue;
-  }
-
-  set currentTime(value: number) {
-    if (this.throwOnCurrentTimeSet) {
-      throw new DOMException("Seek is not ready", "NotSupportedError");
-    }
-    this.currentTimeValue = value;
-    this.onCurrentTimeSet?.(value);
-  }
-
-  addEventListener(type: string, listener: () => void) {
-    const listeners = this.listeners.get(type) ?? new Set<() => void>();
-    listeners.add(listener);
-    this.listeners.set(type, listeners);
-
-    if (
-      this.readyState >= 1 &&
-      (type === "loadedmetadata" || type === "canplay")
-    ) {
-      queueMicrotask(() => {
-        if (!this.sourceReloading) {
-          listener();
-        }
-      });
-    }
-  }
-
-  removeEventListener(type: string, listener: () => void) {
-    this.listeners.get(type)?.delete(listener);
-  }
-
-  async play() {
-    this.ended = false;
-    return this.playImpl();
-  }
-
-  pause() {
-    this.pauseImpl();
-  }
-
-  load() {
-    this.sourceReloading = true;
-    this.loadImpl();
-  }
-
-  emit(type: string) {
-    if (type === "loadedmetadata" || type === "canplay") {
-      this.sourceReloading = false;
-    }
-    this.listeners.get(type)?.forEach((listener) => listener());
-  }
 }
 
 class FakeMediaSession {
@@ -362,6 +274,7 @@ describe("HomeScreen Playback Integration", () => {
     const desktopControls = document.querySelector<HTMLElement>('[data-player-controls="desktop"]')!;
     const playButton = within(desktopControls).getByRole("button", { name: "Play" });
     fireEvent.click(playButton);
+    await emitAudioReady(audio);
 
     await waitFor(() => {
       expect(audio.paused).toBe(false);
@@ -443,6 +356,7 @@ describe("HomeScreen Playback Integration", () => {
     const mobileControls = document.querySelector<HTMLElement>('[data-player-controls="mobile"]')!;
     const playButton = within(mobileControls).getByRole("button", { name: "Play" });
     fireEvent.click(playButton);
+    await emitAudioReady(audio);
 
     await waitFor(() => {
       expect(audio.paused).toBe(false);
@@ -663,6 +577,7 @@ describe("HomeScreen Playback Integration", () => {
       const desktopControls = document.querySelector<HTMLElement>('[data-player-controls="desktop"]')!;
       const playButton = within(desktopControls).getByRole("button", { name: "Play" });
       fireEvent.click(playButton);
+      await emitAudioReady(audio);
 
       await waitFor(() => {
         expect(audio.paused).toBe(false);
@@ -750,6 +665,7 @@ describe("HomeScreen Playback Integration", () => {
 
       const playButton = within(desktopControls).getByRole("button", { name: "Play" });
       fireEvent.click(playButton);
+      await emitAudioReady(audio);
 
       await waitFor(() => {
         expect(audio.paused).toBe(false);
@@ -789,6 +705,7 @@ describe("HomeScreen Playback Integration", () => {
       const desktopControls = document.querySelector<HTMLElement>('[data-player-controls="desktop"]')!;
       const playButton = within(desktopControls).getByRole("button", { name: "Play" });
       fireEvent.click(playButton);
+      await emitAudioReady(audio);
 
       await waitFor(() => {
         expect(audio.paused).toBe(false);

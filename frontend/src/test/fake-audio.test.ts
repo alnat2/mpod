@@ -74,4 +74,17 @@ describe("controlled FakeAudio contract", () => {
     audio.emit("playing");
     expect(playing).toHaveBeenCalledTimes(1);
   });
+  it("can deliver a captured old callback without invoking new source listeners", () => {
+    const audio = new FakeAudio();
+    const oldReady = vi.fn();
+    const newReady = vi.fn();
+    audio.addEventListener("canplay", oldReady);
+    const delayed = audio.captureEvent("canplay");
+    audio.removeEventListener("canplay", oldReady);
+    audio.addEventListener("canplay", newReady);
+    delayed();
+    expect(oldReady).toHaveBeenCalledTimes(1);
+    expect(newReady).not.toHaveBeenCalled();
+  });
+
 });

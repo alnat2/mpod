@@ -126,6 +126,7 @@ const bookTracks: AudiobookTrack[] = [
     trackNumber: 1,
     duration: 100,
     isListened: false,
+    inPlaylist: true,
     positionSeconds: 0,
   },
   {
@@ -137,6 +138,7 @@ const bookTracks: AudiobookTrack[] = [
     trackNumber: 2,
     duration: 200,
     isListened: false,
+    inPlaylist: true,
     positionSeconds: 0,
   },
   {
@@ -148,6 +150,7 @@ const bookTracks: AudiobookTrack[] = [
     trackNumber: 3,
     duration: 300,
     isListened: false,
+    inPlaylist: true,
     positionSeconds: 0,
   },
   {
@@ -159,6 +162,7 @@ const bookTracks: AudiobookTrack[] = [
     trackNumber: 5,
     duration: 500,
     isListened: false,
+    inPlaylist: true,
     positionSeconds: 0,
   },
 ];
@@ -293,6 +297,7 @@ function TestHarness() {
             trackNumber: 1,
             duration: 1500,
             isListened: false,
+            inPlaylist: true,
             positionSeconds: 0,
           };
           void playAudiobookTrack(202, track1);
@@ -338,6 +343,7 @@ describe("PB-02: Completion lock and selected track protection", () => {
             trackCount: 1,
             listenedCount: 0,
             isListened: false,
+            inPlaylist: true,
             positionSeconds: 0,
             createdAt: "2026-09-24T10:00:00Z",
             updatedAt: "2026-09-24T10:00:00Z",
@@ -351,6 +357,7 @@ describe("PB-02: Completion lock and selected track protection", () => {
                 trackNumber: 1,
                 duration: 1500,
                 isListened: false,
+                inPlaylist: true,
                 positionSeconds: 0,
               },
             ],
@@ -368,6 +375,7 @@ describe("PB-02: Completion lock and selected track protection", () => {
           trackCount: 4,
           listenedCount: 0,
           isListened: false,
+          inPlaylist: true,
           positionSeconds: 0,
           createdAt: "2026-09-24T10:00:00Z",
           updatedAt: "2026-09-24T10:00:00Z",
@@ -595,6 +603,7 @@ describe("PB-02: Completion lock and selected track protection", () => {
         trackNumber: 1,
         duration: 100,
         isListened: false,
+        inPlaylist: true,
         positionSeconds: 0,
       },
       {
@@ -606,6 +615,7 @@ describe("PB-02: Completion lock and selected track protection", () => {
         trackNumber: 2,
         duration: 200,
         isListened: false,
+        inPlaylist: true,
         positionSeconds: 0,
       },
     ];
@@ -627,6 +637,7 @@ describe("PB-02: Completion lock and selected track protection", () => {
         trackCount: 2,
         listenedCount: 0,
         isListened: false,
+        inPlaylist: true,
         positionSeconds: 0,
         createdAt: "2026-09-24T10:00:00Z",
         updatedAt: "2026-09-24T10:00:00Z",
@@ -920,6 +931,7 @@ describe("PB-02: Completion lock and selected track protection", () => {
         trackCount: 4,
         listenedCount: 0,
         isListened: false,
+        inPlaylist: true,
         positionSeconds: 0,
         createdAt: "2026-09-24T10:00:00Z",
         updatedAt: "2026-09-24T10:00:00Z",
@@ -1020,6 +1032,7 @@ describe("PB-02: Completion lock and selected track protection", () => {
         trackCount: 4,
         listenedCount: 0,
         isListened: false,
+        inPlaylist: true,
         positionSeconds: 0,
         createdAt: "2026-09-24T10:00:00Z",
         updatedAt: "2026-09-24T10:00:00Z",

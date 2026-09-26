@@ -1292,13 +1292,16 @@ describe("PlaybackProvider", () => {
 
   it("auto-advances to the next queue item when the current episode ends", async () => {
     const updateSpy = vi.spyOn(api.playback, "update");
+    const user = userEvent.setup();
     renderPlaybackProvider();
 
     await waitFor(() => {
       expect(screen.getByTestId("loading")).toHaveTextContent("no");
     });
 
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
     const audio = FakeAudio.first;
+    await emitAudioReady(audio);
     audio.currentTime = 1800;
     audio.emit("ended");
 
@@ -1309,7 +1312,9 @@ describe("PlaybackProvider", () => {
     });
 
     expect(audio.src).toContain("/api/episodes/2/audio");
+    await emitAudioReady(audio);
     expect(audio.currentTime).toBe(42);
+    expect(audio.paused).toBe(false);
     expect(updateSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         episodeId: 1,

@@ -396,6 +396,7 @@ export function usePlaybackAudio({
       const currentGen = sourceGenerationRef.current;
       resetActiveDuration();
       const nextPosition = episode.playback?.positionSeconds ?? 0;
+      setPlaying(playingRef.current);
       currentEpisodeRef.current = episode;
       const key = queueItemKey(episode);
       setActiveItemKey(key);
@@ -697,6 +698,17 @@ export function usePlaybackAudio({
         isAudiobookQueueItem(finishedEpisode) &&
         bookId != null &&
         audiobookTracksCacheRef.current.has(bookId);
+      // Keep completed tracks out of local predictions while their API response is pending.
+      if (hasKnownTracks) {
+        audiobookTracksCacheRef.current.set(
+          bookId,
+          audiobookTracksCacheRef.current.get(bookId)!.map((track) =>
+            track.id === finishedEpisode.trackId
+              ? { ...track, isListened: true }
+              : track
+          )
+        );
+      }
       const nextAudiobookChapter = hasKnownTracks
         ? getNextAudiobookChapter(
             finishedEpisode,
@@ -1208,7 +1220,7 @@ export function usePlaybackAudio({
 
     userInitiatedPlayRef.current = true;
     if (audio && currentEpisode) {
-        completedAudioSourceRef.current = null;
+      completedAudioSourceRef.current = null;
       allowPlaybackProgress(currentEpisode);
       sourcePrimeCleanupRef.current?.();
       sourcePrimeCleanupRef.current = null;

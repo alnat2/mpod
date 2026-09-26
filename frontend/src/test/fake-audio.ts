@@ -106,8 +106,13 @@ export class FakeAudio {
     this.readyState = 0;
   }
 
+  // Freeze handlers to simulate an already queued callback from an older source.
+  captureEvent(type: string) {
+    const listeners = [...(this.listeners.get(type) ?? [])];
+    return () => listeners.forEach((listener) => listener());
+  }
+
   emit(type: string) {
     this.listeners.get(type)?.forEach((listener) => listener());
   }
 }
-
