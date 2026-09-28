@@ -252,6 +252,95 @@ describe("combined playback integration", () => {
     ]));
   });
 
+  it("recovers an unreceived completion request and keeps the predicted chapter playing", async () => {
+    const { audio } = await startBook();
+    let rejectFirst!: (error: Error) => void;
+    const firstRequest = new Promise<PlaybackUpdateResponse>((_, reject) => { rejectFirst = reject; });
+    const update = vi.mocked(api.playback.update);
+    const ordinaryUpdate = update.getMockImplementation()!;
+    let completions = 0;
+    update.mockImplementation((payload) => {
+      if (!payload.completed) return ordinaryUpdate(payload);
+      completions += 1;
+      return completions === 1 ? firstRequest : Promise.resolve({
+        playback: { audiobookId: 10, trackId: 1, positionSeconds: 100, lastUpdated: stamp },
+        nextTarget: { type: "audiobook", audiobookId: 10, trackId: 2 },
+        nextTrackId: 2,
+        nextEpisodeId: null,
+      });
+    });
+
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    await waitFor(() => expect(audio.src).toContain("/tracks/2/audio"));
+    await ready(audio);
+    await waitFor(() => expect(audio.paused).toBe(false));
+    await act(async () => { rejectFirst(new TypeError("Failed to fetch")); });
+
+    await waitFor(() => expect(completions).toBe(2));
+    expect(audio.src).toContain("/tracks/2/audio");
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+  });
+
+  it("does not complete twice when the server committed but Chrome lost the response", async () => {
+    const { audio } = await startBook();
+    let rejectFirst!: (error: Error) => void;
+    const firstRequest = new Promise<PlaybackUpdateResponse>((_, reject) => { rejectFirst = reject; });
+    const update = vi.mocked(api.playback.update);
+    const ordinaryUpdate = update.getMockImplementation()!;
+    let completions = 0;
+    update.mockImplementation((payload) => {
+      if (!payload.completed) return ordinaryUpdate(payload);
+      completions += 1;
+      return firstRequest;
+    });
+
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    await waitFor(() => expect(audio.src).toContain("/tracks/2/audio"));
+    await ready(audio);
+    await waitFor(() => expect(audio.paused).toBe(false));
+    const bookReadsBeforeRecovery = vi.mocked(api.audiobooks.get).mock.calls.length;
+    tracks = tracks.map((item) => item.id === 1 ? { ...item, isListened: true } : item);
+    queue = [{ ...book, trackId: 2, trackNumber: 2, audioUrl: "/api/audiobooks/10/tracks/2/audio" }];
+    await act(async () => { rejectFirst(new TypeError("Response lost")); });
+
+    await waitFor(() => expect(vi.mocked(api.audiobooks.get).mock.calls.length).toBeGreaterThan(bookReadsBeforeRecovery));
+    expect(completions).toBe(1);
+    expect(audio.src).toContain("/tracks/2/audio");
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+  });
+
+  it("recovers MEDIA_ERROR_4 on the predicted chapter after completion succeeds", async () => {
+    const { audio } = await startBook();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    await waitFor(() => expect(audio.src).toContain("/tracks/2/audio"));
+    await ready(audio);
+    await waitFor(() => expect(audio.paused).toBe(false));
+    const loadsBeforeError = audio.loadImpl.mock.calls.length;
+    const playsBeforeError = audio.playImpl.mock.calls.length;
+
+    await act(async () => {
+      audio.error = { code: 4 };
+      audio.paused = true;
+      audio.emit("error");
+    });
+    await waitFor(() => expect(audio.loadImpl.mock.calls.length).toBeGreaterThan(loadsBeforeError));
+    audio.error = null;
+    await ready(audio);
+    await waitFor(() => expect(audio.playImpl.mock.calls.length).toBe(playsBeforeError + 1));
+    expect(audio.src).toContain("/tracks/2/audio");
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+    expect(vi.mocked(api.playback.update).mock.calls.filter(([payload]) => payload.completed)).toHaveLength(1);
+  });
+
   it.each(["completion", "queue"] as const)(
     "keeps C after B recovery and late A %s / B play responses", async (delayStage) => {
       const completionA = deferred<PlaybackUpdateResponse>();
