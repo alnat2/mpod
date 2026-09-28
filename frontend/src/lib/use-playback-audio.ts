@@ -350,6 +350,8 @@ export function usePlaybackAudio({
       completionTraceRef.current = null;
     }
     retryCleanupRef.current?.();
+    sourceReloadCleanupRef.current?.();
+    sourceReloadCleanupRef.current = null;
     autoAdvanceIntentRef.current = false;
     selectionGenerationRef.current += 1;
     const previousTarget = currentEpisodeRef.current;
@@ -752,18 +754,35 @@ export function usePlaybackAudio({
           if (episode.isListened) {
             const refreshed = await loadQueue({ apply: false });
             if (!isCurrent() || !refreshed) return null;
-            const next = refreshed.queue.find((item) =>
-              !isAudiobookQueueItem(item) &&
-              item.id === refreshed.activePlayback?.episodeId
+            const finishedIndex = refreshed.queue.findIndex((item) =>
+              !isAudiobookQueueItem(item) && item.id === finishedEpisode.id
             );
+            // The server only supplies a fallback target when the completed
+            // episode was last in the playlist. Otherwise the queued next item
+            // is selected by startAfterCompletion.
+            const fallback = finishedIndex === refreshed.queue.length - 1
+              ? refreshed.queue.slice(0, finishedIndex).find((item) =>
+                  isAudiobookQueueItem(item)
+                    ? item.trackId != null
+                    : !item.isListened && Boolean(item.audioUrl)
+                )
+              : null;
+            const nextTarget = fallback
+              ? isAudiobookQueueItem(fallback)
+                ? { type: "audiobook" as const,
+                    audiobookId: fallback.audiobookId ?? fallback.id,
+                    trackId: fallback.trackId! }
+                : { type: "episode" as const, episodeId: fallback.id }
+              : null;
             return {
               playback: {
                 episodeId: finishedEpisode.id,
                 positionSeconds: finishedPosition,
                 lastUpdated: new Date().toISOString(),
               },
-              nextTarget: next ? { type: "episode", episodeId: next.id } : null,
-              nextEpisodeId: next?.id ?? null,
+              nextTarget,
+              nextEpisodeId: nextTarget?.type === "episode" ? nextTarget.episodeId : null,
+              nextTrackId: nextTarget?.type === "audiobook" ? nextTarget.trackId : null,
             };
           }
         }
