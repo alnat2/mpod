@@ -257,6 +257,129 @@ func TestRefreshUpsertsEpisodesWithoutDuplicates(t *testing.T) {
 	}
 }
 
+func TestRefreshPreservesSavedDurationWhenFeedLacksDuration(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	responseBody := testRSSFeed("Test Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")
+	service := NewService(db.SQL, newPodcastTestClient(func(r *http.Request) (*http.Response, error) {
+		return xmlResponse(responseBody), nil
+	}))
+	podcast, err := service.CreateFromFeed(context.Background(), "https://example.com/feed.xml")
+	if err != nil {
+		t.Fatalf("CreateFromFeed failed: %v", err)
+	}
+
+	const savedDuration = int64(1800)
+	mustExecPodcast(t, db.SQL, `
+		UPDATE episodes
+		SET duration = ?
+		WHERE podcast_id = ? AND external_episode_key = 'guid-1'
+	`, savedDuration, podcast.ID)
+
+	responseBody = testRSSFeed("Test Podcast", "Episode One Updated", "guid-1", "https://cdn.example.com/1-new.mp3")
+	if _, _, err := service.Refresh(context.Background(), podcast.ID); err != nil {
+		t.Fatalf("Refresh failed: %v", err)
+	}
+
+	var duration sql.NullInt64
+	if err := db.SQL.QueryRow(`
+		SELECT duration
+		FROM episodes
+		WHERE podcast_id = ? AND external_episode_key = 'guid-1'
+	`, podcast.ID).Scan(&duration); err != nil {
+		t.Fatalf("query episode duration: %v", err)
+	}
+	if !duration.Valid {
+		t.Fatalf("expected saved duration to be preserved, got NULL")
+	}
+	if duration.Int64 != savedDuration {
+		t.Fatalf("expected duration %d, got %d", savedDuration, duration.Int64)
+	}
+}
+
+func TestRefreshReplacesDurationWithNewNonZeroDuration(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	responseBody := testRSSFeedWithItemDuration("Test Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3", "1800")
+	service := NewService(db.SQL, newPodcastTestClient(func(r *http.Request) (*http.Response, error) {
+		return xmlResponse(responseBody), nil
+	}))
+	podcast, err := service.CreateFromFeed(context.Background(), "https://example.com/feed.xml")
+	if err != nil {
+		t.Fatalf("CreateFromFeed failed: %v", err)
+	}
+
+	var initialDuration sql.NullInt64
+	if err := db.SQL.QueryRow(`
+		SELECT duration
+		FROM episodes
+		WHERE podcast_id = ? AND external_episode_key = 'guid-1'
+	`, podcast.ID).Scan(&initialDuration); err != nil {
+		t.Fatalf("query initial duration: %v", err)
+	}
+	if !initialDuration.Valid || initialDuration.Int64 != 1800 {
+		t.Fatalf("expected initial duration 1800, got %+v", initialDuration)
+	}
+
+	const updatedDuration = int64(3600)
+	responseBody = testRSSFeedWithItemDuration("Test Podcast", "Episode One Updated", "guid-1", "https://cdn.example.com/1-new.mp3", "3600")
+	if _, _, err := service.Refresh(context.Background(), podcast.ID); err != nil {
+		t.Fatalf("Refresh failed: %v", err)
+	}
+
+	var duration sql.NullInt64
+	if err := db.SQL.QueryRow(`
+		SELECT duration
+		FROM episodes
+		WHERE podcast_id = ? AND external_episode_key = 'guid-1'
+	`, podcast.ID).Scan(&duration); err != nil {
+		t.Fatalf("query episode duration: %v", err)
+	}
+	if !duration.Valid {
+		t.Fatalf("expected new duration from RSS, got NULL")
+	}
+	if duration.Int64 != updatedDuration {
+		t.Fatalf("expected updated duration %d, got %d", updatedDuration, duration.Int64)
+	}
+}
+
+func TestRefreshLeavesDurationNullForNewEpisodeWithoutDuration(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	responseBody := testRSSFeed("Test Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")
+	service := NewService(db.SQL, newPodcastTestClient(func(r *http.Request) (*http.Response, error) {
+		return xmlResponse(responseBody), nil
+	}))
+	podcast, err := service.CreateFromFeed(context.Background(), "https://example.com/feed.xml")
+	if err != nil {
+		t.Fatalf("CreateFromFeed failed: %v", err)
+	}
+
+	responseBody = testRSSFeedWithTwoEpisodes("Test Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3", "Episode Two", "guid-2", "https://cdn.example.com/2.mp3")
+	newEpisodes, _, err := service.Refresh(context.Background(), podcast.ID)
+	if err != nil {
+		t.Fatalf("Refresh failed: %v", err)
+	}
+	if newEpisodes != 1 {
+		t.Fatalf("expected 1 new episode, got %d", newEpisodes)
+	}
+
+	var duration sql.NullInt64
+	if err := db.SQL.QueryRow(`
+		SELECT duration
+		FROM episodes
+		WHERE podcast_id = ? AND external_episode_key = 'guid-2'
+	`, podcast.ID).Scan(&duration); err != nil {
+		t.Fatalf("query episode duration: %v", err)
+	}
+	if duration.Valid {
+		t.Fatalf("expected duration to be NULL for new episode without duration, got %d", duration.Int64)
+	}
+}
+
 func mustExecPodcast(t *testing.T, db *sql.DB, query string, args ...any) {
 	t.Helper()
 	if _, err := db.Exec(query, args...); err != nil {
@@ -792,6 +915,24 @@ func testRSSFeedWithTwoEpisodes(title, firstTitle, firstGUID, firstAudioURL, sec
   </channel>
 </rss>`)
 	return builder.String()
+}
+
+func testRSSFeedWithItemDuration(title, episodeTitle, guid, audioURL, duration string) string {
+	durationTag := ""
+	if duration != "" {
+		durationTag = "\n      <itunes:duration>" + duration + "</itunes:duration>"
+	}
+	return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>` + title + `</title>
+    <item>
+      <title>` + episodeTitle + `</title>
+      <guid>` + guid + `</guid>
+      <enclosure url="` + audioURL + `" type="audio/mpeg"/>` + durationTag + `
+    </item>
+  </channel>
+</rss>`
 }
 
 func newPodcastTestClient(fn func(*http.Request) (*http.Response, error)) *http.Client {

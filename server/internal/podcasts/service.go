@@ -784,7 +784,7 @@ func upsertFeedEpisodes(ctx context.Context, tx *sql.Tx, podcastID int64, items 
 				description = excluded.description,
 				guid = excluded.guid,
 				audio_url = excluded.audio_url,
-				duration = excluded.duration,
+				duration = COALESCE(excluded.duration, episodes.duration),
 				published_at = excluded.published_at
 			`, podcastID, episode.ExternalKey, episode.Title, episode.Description, episode.GUID, episode.AudioURL, episode.Duration, episode.PublishedAt); err != nil {
 			return 0, fmt.Errorf("insert episode: %w", err)
