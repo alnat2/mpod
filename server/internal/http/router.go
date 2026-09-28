@@ -87,16 +87,19 @@ type errorResponse struct {
 type trackedResponseWriter struct {
 	nethttp.ResponseWriter
 	wroteHeader bool
+	statusCode  int
 }
 
 func (w *trackedResponseWriter) WriteHeader(statusCode int) {
 	w.wroteHeader = true
+	w.statusCode = statusCode
 	w.ResponseWriter.WriteHeader(statusCode)
 }
 
 func (w *trackedResponseWriter) Write(p []byte) (int, error) {
 	if !w.wroteHeader {
 		w.wroteHeader = true
+		w.statusCode = nethttp.StatusOK
 	}
 	return w.ResponseWriter.Write(p)
 }
@@ -230,6 +233,7 @@ func NewRouterWithServices(logger *log.Logger, cfg config.Config, db *sql.DB, sc
 	mux.HandleFunc("PUT /api/playback/active", r.handlePlaybackActivePut)
 	mux.HandleFunc("GET /api/playback", r.handlePlaybackGet)
 	mux.HandleFunc("POST /api/playback", r.handlePlaybackPost)
+	mux.HandleFunc("POST /api/playback/diagnostics", r.handlePlaybackDiagnostics)
 	mux.HandleFunc("GET /api/playlist", r.handlePlaylistList)
 	mux.HandleFunc("POST /api/playlist", r.handlePlaylistAdd)
 	mux.HandleFunc("DELETE /api/playlist/{episodeId}", r.handlePlaylistRemove)
@@ -287,6 +291,16 @@ func (r *Router) recoverAndLog(next nethttp.Handler) nethttp.Handler {
 				}
 			}
 			r.logger.Printf("%s %s %s", req.Method, req.URL.Path, time.Since(start))
+			if req.Method == nethttp.MethodPost && req.URL.Path == "/api/playback" {
+				traceID := req.Header.Get("X-Playback-Trace-ID")
+				if validPlaybackTraceID(traceID) {
+					status := trackedWriter.statusCode
+					if status == 0 {
+						status = nethttp.StatusOK
+					}
+					r.logger.Printf("playback_trace server trace=%q status=%d duration=%s", traceID, status, time.Since(start))
+				}
+			}
 		}()
 		next.ServeHTTP(trackedWriter, req)
 	})

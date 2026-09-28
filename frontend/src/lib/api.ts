@@ -367,9 +367,10 @@ export const api = {
       completed?: boolean;
       didSeek?: boolean;
       clientUpdatedAt?: string;
-    }) =>
+    }, traceId?: string) =>
       apiRequest<PlaybackUpdateResponse>("/api/playback", {
         method: "POST",
+        ...(traceId ? { headers: { "X-Playback-Trace-ID": traceId } } : {}),
         body: {
           durationSeconds: 0,
           completed: false,

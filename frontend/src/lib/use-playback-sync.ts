@@ -13,7 +13,7 @@ import {
   isPlaybackSpeedLabel,
   type PlaybackSpeedLabel,
 } from "@/components/mpod/playback";
-import { api, type PlaybackState } from "./api";
+import { api, ApiError, type PlaybackState } from "./api";
 import {
   clampPosition,
   getPositiveDuration,
@@ -28,6 +28,7 @@ import {
   type QueueItemKey,
 } from "./playback-queue";
 import { useLatestRequest } from "./use-latest-request";
+import { recordPlaybackDiagnostic } from "./playback-diagnostics";
 
 type UsePlaybackSyncOptions = {
   audioRef: RefObject<HTMLAudioElement | null>;
@@ -140,6 +141,7 @@ export function usePlaybackSync({
         didSeek?: boolean;
         durationSeconds?: number;
         target?: QueueEpisode;
+        diagnosticTraceId?: string;
       } = {}
     ) => {
       const episode = options.target ?? currentEpisodeRef.current;
@@ -161,6 +163,11 @@ export function usePlaybackSync({
         completedPlaybackTargetsRef.current.add(targetKey);
       }
 
+      const traceId = options.diagnosticTraceId;
+      const traceTarget = isAudiobook
+        ? { audiobookId: mediaID, trackId }
+        : { episodeId: mediaID };
+
       try {
         const durationSeconds =
           options.durationSeconds ??
@@ -168,7 +175,10 @@ export function usePlaybackSync({
             episode,
             activeMediaDurationRef
           );
-        const response = await api.playback.update({
+        if (traceId) {
+          recordPlaybackDiagnostic(traceId, "completion_request", traceTarget);
+        }
+        const payload = {
           ...(isAudiobook
             ? { audiobookId: mediaID, trackId }
             : { episodeId: mediaID }),
@@ -179,9 +189,35 @@ export function usePlaybackSync({
           completed,
           didSeek: options.didSeek ?? false,
           clientUpdatedAt: new Date().toISOString(),
-        });
+        };
+        const response = traceId
+          ? await api.playback.update(payload, traceId)
+          : await api.playback.update(payload);
+        if (traceId) {
+          const next = response.nextTarget;
+          recordPlaybackDiagnostic(traceId, "completion_response", {
+            ...traceTarget,
+            ...(next?.type === "audiobook"
+              ? { nextAudiobookId: next.audiobookId, nextTrackId: next.trackId }
+              : next?.type === "episode"
+                ? { nextEpisodeId: next.episodeId }
+                : {}),
+          });
+        }
         return response;
-      } catch {
+      } catch (error) {
+        if (traceId) {
+          recordPlaybackDiagnostic(traceId, "completion_error", {
+            ...traceTarget,
+            ...(error instanceof ApiError
+              ? {
+                  status: error.status,
+                  code: /^[A-Z0-9_]{1,64}$/.test(error.code) ? error.code : "HTTP_ERROR",
+                }
+              : { code: error instanceof DOMException && error.name === "AbortError"
+                ? "ABORTED" : "NETWORK_OR_CLIENT_ERROR" }),
+          });
+        }
         // Silently fail for background sync.
         return null;
       }

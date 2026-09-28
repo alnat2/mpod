@@ -29,6 +29,11 @@ import {
 } from "./playback-audio";
 import type { QueueEpisode } from "./playback-context-types";
 import {
+  createPlaybackTraceId,
+  initializePlaybackDiagnostics,
+  recordPlaybackDiagnostic,
+} from "./playback-diagnostics";
+import {
   isAudiobookQueueItem,
   playbackMediaSourceKey,
   queueItemKey,
@@ -43,6 +48,7 @@ type CommitPlayback = (
     didSeek?: boolean;
     durationSeconds?: number;
     target?: QueueEpisode;
+    diagnosticTraceId?: string;
   }
 ) => Promise<PlaybackUpdateResponse | null>;
 
@@ -210,6 +216,7 @@ export function usePlaybackAudio({
   const sourceReloadCleanupRef = useRef<(() => void) | null>(null);
   const sourcePrimeCleanupRef = useRef<(() => void) | null>(null);
   const completionGenerationRef = useRef<number | null>(null);
+  const completionTraceRef = useRef<string | null>(null);
   const retryCleanupRef = useRef<(() => void) | null>(null);
   const autoAdvanceIntentRef = useRef(false);
   const completedAudioSourceRef = useRef<string | null>(null);
@@ -332,6 +339,13 @@ export function usePlaybackAudio({
   }, [activeMediaDurationRef, currentEpisodeRef]);
 
   const prepareSourceSwitch = useCallback(() => {
+    if (completionTraceRef.current) {
+      recordPlaybackDiagnostic(completionTraceRef.current, "selection_changed", {
+        sourceGeneration: sourceGenerationRef.current,
+        selectionGeneration: selectionGenerationRef.current + 1,
+      });
+      completionTraceRef.current = null;
+    }
     retryCleanupRef.current?.();
     autoAdvanceIntentRef.current = false;
     selectionGenerationRef.current += 1;
@@ -372,12 +386,18 @@ export function usePlaybackAudio({
   }, [positionSeconds]);
 
   useEffect(() => {
+    initializePlaybackDiagnostics();
     const audio = new Audio();
     audioRef.current = audio;
     sourcePrimedRef.current = false;
     sourceReadyRef.current = false;
 
     const onPlaying = () => {
+      if (completionTraceRef.current) {
+        recordPlaybackDiagnostic(completionTraceRef.current, "audio_playing", {
+          sourceGeneration: sourceGenerationRef.current,
+        });
+      }
       if (!playingRef.current && !userInitiatedPlayRef.current) {
         audioRef.current?.pause();
         return;
@@ -558,17 +578,23 @@ export function usePlaybackAudio({
       queuedNextItem: QueueEpisode | null,
       response: PlaybackUpdateResponse | null,
       predictedSourceKey: string | null,
-      selectionGeneration: number
+      selectionGeneration: number,
+      traceId: string
     ) => {
       const isCurrentCompletion = () =>
         sourceGenerationRef.current === expectedSourceGeneration &&
         selectionGenerationRef.current === selectionGeneration;
       if (!isCurrentCompletion()) {
+        recordPlaybackDiagnostic(traceId, "stale_completion");
         return;
       }
 
       const refreshedQueue = await loadQueue({ apply: false });
+      recordPlaybackDiagnostic(traceId, "queue_refreshed", {
+        code: refreshedQueue ? "OK" : "UNAVAILABLE",
+      });
       if (!isCurrentCompletion()) {
+        recordPlaybackDiagnostic(traceId, "stale_completion");
         return;
       }
       const availableQueue = refreshedQueue?.queue ?? queueRef.current;
@@ -627,9 +653,13 @@ export function usePlaybackAudio({
       }
 
       if (!isCurrentCompletion()) {
+        recordPlaybackDiagnostic(traceId, "stale_completion");
         return;
       }
       if (!nextItem) {
+        recordPlaybackDiagnostic(traceId, "transition_stopped", {
+          code: response === null ? "UNCONFIRMED" : "NO_NEXT_TARGET",
+        });
         autoAdvanceIntentRef.current = false;
         if (predictedSourceKey !== null) {
           audio.pause();
@@ -648,6 +678,11 @@ export function usePlaybackAudio({
         return;
       }
 
+      recordPlaybackDiagnostic(traceId, "transition_continued", {
+        ...(isAudiobookQueueItem(nextItem)
+          ? { nextAudiobookId: nextItem.audiobookId ?? nextItem.id, nextTrackId: nextItem.trackId }
+          : { nextEpisodeId: nextItem.id }),
+      });
       playingRef.current = autoAdvanceIntentRef.current;
       if (refreshedQueue) {
         queueRevisionRef.current += 1;
@@ -681,6 +716,8 @@ export function usePlaybackAudio({
       ) {
         return;
       }
+      const traceId = createPlaybackTraceId();
+      completionTraceRef.current = traceId;
       const finishedPosition = audio.currentTime;
       const finishedDuration = getPositiveDuration(
         readAudioDuration(audio),
@@ -766,12 +803,27 @@ export function usePlaybackAudio({
         startQueuedEpisode(synchronousNextItem);
       }
 
+      recordPlaybackDiagnostic(traceId, "ended", {
+        ...(isAudiobookQueueItem(finishedEpisode)
+          ? { audiobookId: finishedEpisode.audiobookId ?? finishedEpisode.id, trackId: finishedEpisode.trackId }
+          : { episodeId: finishedEpisode.id }),
+        sourceGeneration: completionGeneration,
+      });
+      if (synchronousNextItem) {
+        recordPlaybackDiagnostic(traceId, "predicted_next", {
+          ...(isAudiobookQueueItem(synchronousNextItem)
+            ? { nextAudiobookId: synchronousNextItem.audiobookId ?? synchronousNextItem.id, nextTrackId: synchronousNextItem.trackId }
+            : { nextEpisodeId: synchronousNextItem.id }),
+        });
+      }
+
       const selectionGeneration = selectionGenerationRef.current;
       const expectedSourceGeneration = sourceGenerationRef.current;
       void commitPlayback(finishedPosition, {
         completed: true,
         durationSeconds: finishedDuration,
         target: finishedEpisode,
+        diagnosticTraceId: traceId,
       })
         .then(async (response) => {
           await startAfterCompletion(
@@ -782,10 +834,13 @@ export function usePlaybackAudio({
             synchronousNextItem
               ? playbackMediaSourceKey(synchronousNextItem)
               : null,
-            selectionGeneration
+            selectionGeneration,
+            traceId
           );
         })
-        .catch(() => {})
+        .catch(() => {
+          recordPlaybackDiagnostic(traceId, "completion_error", { code: "UNEXPECTED_CLIENT_ERROR" });
+        })
         .finally(() => {
           if (
             completionGenerationRef.current != null &&
@@ -834,6 +889,12 @@ export function usePlaybackAudio({
     };
 
     const onError = () => {
+      if (completionTraceRef.current) {
+        recordPlaybackDiagnostic(completionTraceRef.current, "audio_error", {
+          code: `MEDIA_ERROR_${audio.error?.code ?? 0}`,
+          sourceGeneration: sourceGenerationRef.current,
+        });
+      }
       autoAdvanceIntentRef.current = false;
       sourceSwitchingRef.current = false;
       sourceReadyRef.current = false;
@@ -1202,6 +1263,9 @@ export function usePlaybackAudio({
     const audio = audioRef.current;
 
     if (playing) {
+      if (completionTraceRef.current) {
+        recordPlaybackDiagnostic(completionTraceRef.current, "manual_pause");
+      }
       userInitiatedPlayRef.current = false;
       autoAdvanceIntentRef.current = false;
       playingRef.current = false;
@@ -1218,6 +1282,9 @@ export function usePlaybackAudio({
       return;
     }
 
+    if (completionTraceRef.current) {
+      recordPlaybackDiagnostic(completionTraceRef.current, "manual_play");
+    }
     userInitiatedPlayRef.current = true;
     if (audio && currentEpisode) {
       completedAudioSourceRef.current = null;

@@ -215,6 +215,43 @@ describe("combined playback integration", () => {
     expect(screen.getByTestId("error")).toHaveTextContent("none");
   });
 
+  it("records one trace when the next chapter starts before completion confirmation fails", async () => {
+    const { audio } = await startBook();
+    let rejectCompletion!: (error: Error) => void;
+    const pendingCompletion = new Promise<PlaybackUpdateResponse>((_, reject) => {
+      rejectCompletion = reject;
+    });
+    const update = vi.mocked(api.playback.update);
+    const ordinaryUpdate = update.getMockImplementation()!;
+    update.mockImplementation((payload) =>
+      payload.completed ? pendingCompletion : ordinaryUpdate(payload)
+    );
+
+    await act(async () => {
+      audio.ended = true;
+      audio.paused = true;
+      audio.currentTime = 100;
+      audio.emit("ended");
+    });
+    await waitFor(() => expect(audio.src).toContain("/tracks/2/audio"));
+    await ready(audio);
+    await waitFor(() => expect(audio.paused).toBe(false));
+    await act(async () => { rejectCompletion(new Error("Network unavailable")); });
+    await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent("Could not confirm playback completion."));
+
+    const stored = JSON.parse(localStorage.getItem("mpod:temporary-playback-diagnostics") ?? "[]") as
+      Array<{ traceId: string; event: string; code?: string; trackId?: number; nextTrackId?: number }>;
+    const ended = stored.filter((event) => event.event === "ended" && event.trackId === 1).at(-1);
+    expect(ended).toBeDefined();
+    const transition = stored.filter((event) => event.traceId === ended?.traceId);
+    expect(transition).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event: "predicted_next", nextTrackId: 2 }),
+      expect.objectContaining({ event: "completion_request", trackId: 1 }),
+      expect.objectContaining({ event: "completion_error", code: "NETWORK_OR_CLIENT_ERROR" }),
+      expect.objectContaining({ event: "transition_stopped", code: "UNCONFIRMED" }),
+    ]));
+  });
+
   it.each(["completion", "queue"] as const)(
     "keeps C after B recovery and late A %s / B play responses", async (delayStage) => {
       const completionA = deferred<PlaybackUpdateResponse>();

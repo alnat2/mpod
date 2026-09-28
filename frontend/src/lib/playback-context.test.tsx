@@ -1319,7 +1319,8 @@ describe("PlaybackProvider", () => {
       expect.objectContaining({
         episodeId: 1,
         completed: true,
-      })
+      }),
+      expect.any(String)
     );
   });
 
@@ -1366,7 +1367,8 @@ describe("PlaybackProvider", () => {
       expect.objectContaining({
         episodeId: 2,
         completed: true,
-      })
+      }),
+      expect.any(String)
     );
   });
 
@@ -1609,7 +1611,8 @@ describe("PlaybackProvider", () => {
 
     await waitFor(() => {
       expect(api.playback.update).toHaveBeenCalledWith(
-        expect.objectContaining({ episodeId: 2, completed: true })
+        expect.objectContaining({ episodeId: 2, completed: true }),
+        expect.any(String)
       );
       expect(screen.getByTestId("playing")).toHaveTextContent("no");
     });
@@ -2170,7 +2173,7 @@ describe("PlaybackProvider", () => {
 
     await waitFor(() => expect(screen.getByTestId("track-id")).toHaveTextContent("502"));
     expect(audio.src).toContain("/api/audiobooks/100/tracks/502/audio");
-    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({ audiobookId: 100, trackId: 501, completed: true }));
+    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({ audiobookId: 100, trackId: 501, completed: true }), expect.any(String));
     expect(queueSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -2304,7 +2307,8 @@ describe("PlaybackProvider", () => {
     });
 
     expect(updateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ audiobookId: 150, trackId: 701, completed: true })
+      expect.objectContaining({ audiobookId: 150, trackId: 701, completed: true }),
+      expect.any(String)
     );
 
     resolveUpdate!({
@@ -2608,7 +2612,8 @@ describe("PlaybackProvider", () => {
         positionSeconds: 103,
         durationSeconds: 103,
         completed: true,
-      })
+      }),
+      expect.any(String)
     );
     const firstCompletionCallIndex = updateSpy.mock.calls.findIndex(
       ([payload]) =>
@@ -2738,7 +2743,8 @@ describe("PlaybackProvider", () => {
         positionSeconds: 107,
         durationSeconds: 107,
         completed: true,
-      })
+      }),
+      expect.any(String)
     );
     expect(
       updateSpy.mock.calls.filter(
@@ -4245,6 +4251,6 @@ describe("PlaybackProvider", () => {
     });
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
       audiobookId: 100, trackId: 502, completed: true,
-    }));
+    }), expect.any(String));
   });
 });
