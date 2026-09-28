@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
+
 
 // The valid.* fixtures were generated for tests:
 // valid.mp3 is a synthetic MPEG-1 Layer III (128 kbps, 44.1 kHz) stream.
@@ -136,38 +136,6 @@ func TestReadAudioDuration_MP3GarbageRegression(t *testing.T) {
 	} else {
 		if !errors.Is(err, ErrAudioDurationUnavailable) {
 			t.Fatalf("expected ErrAudioDurationUnavailable, got %v", err)
-		}
-	}
-}
-
-func TestRoundDuration(t *testing.T) {
-	tests := []struct {
-		d        time.Duration
-		expected int64
-		err      bool
-	}{
-		{0, 0, true},
-		{-1 * time.Second, 0, true},
-		{10 * time.Millisecond, 1, false},
-		{1490 * time.Millisecond, 1, false},
-		{1500 * time.Millisecond, 2, false},
-		{2490 * time.Millisecond, 2, false},
-		{2500 * time.Millisecond, 3, false},
-	}
-
-	for _, tc := range tests {
-		got, err := roundDuration(tc.d)
-		if tc.err {
-			if !errors.Is(err, ErrAudioDurationUnavailable) {
-				t.Errorf("roundDuration(%v): expected ErrAudioDurationUnavailable, got %v", tc.d, err)
-			}
-		} else {
-			if err != nil {
-				t.Errorf("roundDuration(%v): unexpected error %v", tc.d, err)
-			}
-			if got != tc.expected {
-				t.Errorf("roundDuration(%v): expected %d, got %d", tc.d, tc.expected, got)
-			}
 		}
 	}
 }

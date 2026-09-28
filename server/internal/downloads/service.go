@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cross/mpod/server/internal/audiometa"
 	"github.com/cross/mpod/server/internal/media"
 )
 
@@ -169,6 +171,20 @@ func (s *Service) download(ctx context.Context, episodeID int64) (EpisodeDownloa
 	if _, err := s.db.ExecContext(ctx, `UPDATE episodes SET downloaded_path = ? WHERE id = ?`, targetPath, episodeID); err != nil {
 		_ = os.Remove(targetPath)
 		return EpisodeDownload{}, fmt.Errorf("save downloaded_path: %w", err)
+	}
+
+	// Best-effort: read audio duration from the local file and persist it only
+	// when no duration is stored yet (NULL). An existing non-zero value from the
+	// RSS feed is authoritative and must not be overwritten.
+	if dur, readErr := audiometa.ReadAudioDuration(targetPath); readErr == nil && dur > 0 {
+		if _, dbErr := s.db.ExecContext(ctx,
+			`UPDATE episodes SET duration = ? WHERE id = ? AND duration IS NULL`,
+			dur, episodeID,
+		); dbErr != nil {
+			log.Printf("downloads: save measured duration for episode %d: %v", episodeID, dbErr)
+		}
+	} else if readErr != nil && !errors.Is(readErr, audiometa.ErrAudioDurationUnavailable) {
+		log.Printf("downloads: read duration for episode %d: %v", episodeID, readErr)
 	}
 
 	return EpisodeDownload{ID: episodeID, Downloaded: true}, nil

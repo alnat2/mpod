@@ -1172,6 +1172,37 @@ The app should not overwrite local user state such as:
 - The app should prefer resilient import over strict rejection.
 - Stable identity and duplicate prevention are more important than perfectly preserving all feed quirks.
 
+## Episode Duration from Local File
+
+### Decision
+When a podcast episode is downloaded and a valid local audio file is confirmed, the backend
+may read the file's duration from its audio metadata and write it into `episodes.duration`
+if the column is currently NULL. This extends the existing `audiobooks` metadata parser
+to cover downloaded podcast episodes and requires no new service or queue.
+
+### Rules
+- After the local file has been atomically published to disk (rename from `.tmp`), the backend
+  attempts to read its duration using the shared `audiobooks.ReadAudioDuration` helper.
+- The duration is written to `episodes.duration` **only when the current value is NULL**.
+- If `episodes.duration` already contains a non-zero value (from the RSS feed or a previous
+  measurement), it is **not overwritten**. The feed-provided value is the authoritative source
+  and takes precedence. Replacing an existing duration requires an explicit decision outside
+  this flow.
+- If `ReadAudioDuration` returns an error (unsupported extension, corrupt file, tag library
+  failure) or returns 0, no duration is written and no fabricated value is stored.
+- The duration read attempt is a best-effort enrichment. Any error is logged but must not
+  fail the download or corrupt `downloaded_path`. The episode is still marked as downloaded.
+- This logic reuses `audiobooks.ReadAudioDuration` without modification; no new service,
+  worker, queue, or background goroutine is introduced.
+- Audiobook source files are unaffected; this rule applies only to podcast episode downloads.
+
+### Notes
+- The discrepancy between a feed-declared duration and the file-measured duration is resolved
+  in favour of the feed value: existing non-NULL feed duration is not replaced.
+- A future explicit decision may introduce a policy to prefer measured duration over declared
+  duration (e.g. for feeds that consistently report wrong values). That decision is out of
+  scope here.
+
 ## Docker / Runtime Defaults
 
 ### Decision

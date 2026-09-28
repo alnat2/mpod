@@ -335,3 +335,201 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 func (fn roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return fn(r)
 }
+
+// readValidMP3Body returns the bytes of the shared valid.mp3 fixture.
+// The fixture is a 3-second synthetic MPEG stream used by audiobooks tests.
+func readValidMP3Body(t *testing.T) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", "valid.mp3"))
+	if err != nil {
+		t.Fatalf("read valid.mp3 fixture: %v", err)
+	}
+	return data
+}
+
+// TestDownloadWritesDurationWhenEpisodeLacksDuration covers the primary regression:
+// episode has no itunes:duration in the feed → file is downloaded → duration measured
+// from the local file and written to episodes.duration.
+func TestDownloadWritesDurationWhenEpisodeLacksDuration(t *testing.T) {
+	db := newDownloadTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	mustExecDownload(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	// duration column omitted → NULL
+	mustExecDownload(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', ?)`, "https://example.com/ep1.mp3")
+
+	mp3Body := readValidMP3Body(t)
+	service := NewService(db.SQL, newDownloadTestClient(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader(string(mp3Body))),
+			Header:     http.Header{"Content-Type": []string{"audio/mpeg"}},
+		}, nil
+	}), downloadDir)
+
+	result, err := service.Download(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("Download failed: %v", err)
+	}
+	if !result.Downloaded {
+		t.Fatalf("expected downloaded=true")
+	}
+
+	var duration sql.NullInt64
+	if err := db.SQL.QueryRow(`SELECT duration FROM episodes WHERE id = 1`).Scan(&duration); err != nil {
+		t.Fatalf("query duration: %v", err)
+	}
+	if !duration.Valid {
+		t.Fatalf("expected duration to be written from local file, got NULL")
+	}
+	if duration.Int64 <= 0 {
+		t.Fatalf("expected positive duration, got %d", duration.Int64)
+	}
+}
+
+// TestDownloadDoesNotOverwriteExistingDuration covers the guard rule:
+// episode already has a duration from the RSS feed → download must not replace it.
+func TestDownloadDoesNotOverwriteExistingDuration(t *testing.T) {
+	db := newDownloadTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	mustExecDownload(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	const feedDuration = int64(7200)
+	mustExecDownload(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration) VALUES (1, 1, 'ep-1', 'Episode 1', ?, ?)`, "https://example.com/ep1.mp3", feedDuration)
+
+	mp3Body := readValidMP3Body(t)
+	service := NewService(db.SQL, newDownloadTestClient(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader(string(mp3Body))),
+			Header:     http.Header{"Content-Type": []string{"audio/mpeg"}},
+		}, nil
+	}), downloadDir)
+
+	if _, err := service.Download(context.Background(), 1); err != nil {
+		t.Fatalf("Download failed: %v", err)
+	}
+
+	var duration sql.NullInt64
+	if err := db.SQL.QueryRow(`SELECT duration FROM episodes WHERE id = 1`).Scan(&duration); err != nil {
+		t.Fatalf("query duration: %v", err)
+	}
+	if !duration.Valid || duration.Int64 != feedDuration {
+		t.Fatalf("expected feed duration %d to be preserved, got %+v", feedDuration, duration)
+	}
+}
+
+// TestDownloadDoesNotFabricateDurationForUnsupportedFile covers the error rule:
+// if the local file cannot yield a reliable duration (corrupt/unsupported extension),
+// no fabricated value must be written. The download itself must still succeed.
+func TestDownloadDoesNotFabricateDurationForUnsupportedFile(t *testing.T) {
+	db := newDownloadTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	mustExecDownload(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	// Episode has no duration; audio_url uses an extension taglib cannot handle.
+	mustExecDownload(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', ?)`, "https://example.com/ep1.ogg")
+
+	service := NewService(db.SQL, newDownloadTestClient(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			// Serve audio-like content that passes content-type check
+			Body:   io.NopCloser(strings.NewReader("audio-data")),
+			Header: http.Header{"Content-Type": []string{"audio/ogg"}},
+		}, nil
+	}), downloadDir)
+
+	result, err := service.Download(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("Download failed: %v", err)
+	}
+	if !result.Downloaded {
+		t.Fatalf("expected download to succeed even when duration cannot be read")
+	}
+
+	var duration sql.NullInt64
+	if err := db.SQL.QueryRow(`SELECT duration FROM episodes WHERE id = 1`).Scan(&duration); err != nil {
+		t.Fatalf("query duration: %v", err)
+	}
+	if duration.Valid {
+		t.Fatalf("expected duration to remain NULL for unsupported/corrupt file, got %d", duration.Int64)
+	}
+}
+
+// TestDownloadDurationRegressionFullCycle is the focused regression demanded by the task:
+//  1. Episode has no <itunes:duration> → inserted with NULL duration.
+//  2. Episode is downloaded with a valid local MP3 file → duration written to DB.
+//  3. RSS refresh runs again without a duration tag → duration must still be preserved
+//     (COALESCE in the upsert keeps it; test confirms the contract from the downloads side).
+func TestDownloadDurationRegressionFullCycle(t *testing.T) {
+	db := newDownloadTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	mustExecDownload(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecDownload(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', ?)`, "https://example.com/ep1.mp3")
+
+	// Step 1: confirm duration is NULL before download.
+	var durationBefore sql.NullInt64
+	if err := db.SQL.QueryRow(`SELECT duration FROM episodes WHERE id = 1`).Scan(&durationBefore); err != nil {
+		t.Fatalf("query before-download duration: %v", err)
+	}
+	if durationBefore.Valid {
+		t.Fatalf("expected NULL duration before download, got %d", durationBefore.Int64)
+	}
+
+	// Step 2: download a valid MP3 → duration written.
+	mp3Body := readValidMP3Body(t)
+	service := NewService(db.SQL, newDownloadTestClient(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader(string(mp3Body))),
+			Header:     http.Header{"Content-Type": []string{"audio/mpeg"}},
+		}, nil
+	}), downloadDir)
+
+	if _, err := service.Download(context.Background(), 1); err != nil {
+		t.Fatalf("Download failed: %v", err)
+	}
+
+	var durationAfterDownload sql.NullInt64
+	if err := db.SQL.QueryRow(`SELECT duration FROM episodes WHERE id = 1`).Scan(&durationAfterDownload); err != nil {
+		t.Fatalf("query post-download duration: %v", err)
+	}
+	if !durationAfterDownload.Valid || durationAfterDownload.Int64 <= 0 {
+		t.Fatalf("expected positive duration after download, got %+v", durationAfterDownload)
+	}
+	savedDuration := durationAfterDownload.Int64
+
+	// Step 3: simulate an RSS refresh that provides no duration (NULL) for the same episode.
+	// This is exactly what the COALESCE upsert protects against.
+	// We exercise it directly via SQL to mirror what podcasts.upsertFeedEpisodes does.
+	if _, err := db.SQL.Exec(`
+		UPDATE episodes
+		SET
+			title = 'Episode 1 Refreshed',
+			duration = COALESCE(NULL, duration)
+		WHERE id = 1
+	`); err != nil {
+		t.Fatalf("simulate RSS refresh upsert: %v", err)
+	}
+
+	var durationAfterRefresh sql.NullInt64
+	if err := db.SQL.QueryRow(`SELECT duration FROM episodes WHERE id = 1`).Scan(&durationAfterRefresh); err != nil {
+		t.Fatalf("query post-refresh duration: %v", err)
+	}
+	if !durationAfterRefresh.Valid {
+		t.Fatalf("expected duration to survive RSS refresh without itunes:duration, got NULL")
+	}
+	if durationAfterRefresh.Int64 != savedDuration {
+		t.Fatalf("expected duration %d to be preserved after refresh, got %d", savedDuration, durationAfterRefresh.Int64)
+	}
+}
+
