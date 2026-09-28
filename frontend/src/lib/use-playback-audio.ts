@@ -49,6 +49,7 @@ type CommitPlayback = (
     durationSeconds?: number;
     target?: QueueEpisode;
     diagnosticTraceId?: string;
+    onError?: (error: unknown) => void;
   }
 ) => Promise<PlaybackUpdateResponse | null>;
 
@@ -217,6 +218,8 @@ export function usePlaybackAudio({
   const sourcePrimeCleanupRef = useRef<(() => void) | null>(null);
   const completionGenerationRef = useRef<number | null>(null);
   const completionTraceRef = useRef<string | null>(null);
+  const confirmedTransitionRef = useRef<{ generation: number; sourceKey: string } | null>(null);
+  const mediaRecoveryRef = useRef<{ generation: number; attempts: number } | null>(null);
   const retryCleanupRef = useRef<(() => void) | null>(null);
   const autoAdvanceIntentRef = useRef(false);
   const completedAudioSourceRef = useRef<string | null>(null);
@@ -678,6 +681,13 @@ export function usePlaybackAudio({
         return;
       }
 
+      if (response && predictedSourceKey === playbackMediaSourceKey(nextItem)) {
+        confirmedTransitionRef.current = {
+          generation: expectedSourceGeneration,
+          sourceKey: predictedSourceKey,
+        };
+      }
+
       recordPlaybackDiagnostic(traceId, "transition_continued", {
         ...(isAudiobookQueueItem(nextItem)
           ? { nextAudiobookId: nextItem.audiobookId ?? nextItem.id, nextTrackId: nextItem.trackId }
@@ -694,6 +704,78 @@ export function usePlaybackAudio({
         startQueuedEpisode(nextItem);
       } else {
         setActiveItemKey(queueItemKey(nextItem));
+      }
+    };
+
+    const reconcileFailedCompletion = async (
+      finishedEpisode: QueueEpisode,
+      finishedPosition: number,
+      finishedDuration: number,
+      expectedSourceGeneration: number,
+      selectionGeneration: number,
+      traceId: string
+    ): Promise<PlaybackUpdateResponse | null> => {
+      const isCurrent = () =>
+        sourceGenerationRef.current === expectedSourceGeneration &&
+        selectionGenerationRef.current === selectionGeneration;
+      if (!isCurrent()) return null;
+
+      try {
+        if (isAudiobookQueueItem(finishedEpisode)) {
+          const bookId = finishedEpisode.audiobookId ?? finishedEpisode.id;
+          const { audiobook } = await api.audiobooks.get(bookId);
+          if (!isCurrent()) return null;
+          const finishedTrack = audiobook.tracks?.find((track) => track.id === finishedEpisode.trackId);
+          if (!finishedTrack) return null;
+          if (finishedTrack.isListened) {
+            const next = getNextAudiobookChapter(
+              finishedEpisode,
+              new Map([[bookId, audiobook.tracks ?? []]])
+            );
+            return {
+              playback: {
+                audiobookId: bookId,
+                trackId: finishedTrack.id,
+                positionSeconds: finishedPosition,
+                lastUpdated: finishedTrack.lastUpdated ?? new Date().toISOString(),
+              },
+              nextTarget: next?.trackId != null
+                ? { type: "audiobook", audiobookId: bookId, trackId: next.trackId }
+                : null,
+              nextTrackId: next?.trackId ?? null,
+              nextEpisodeId: null,
+            };
+          }
+        } else {
+          const { episode } = await api.episodes.get(finishedEpisode.id);
+          if (!isCurrent()) return null;
+          if (episode.isListened) {
+            const refreshed = await loadQueue({ apply: false });
+            if (!isCurrent() || !refreshed) return null;
+            const next = refreshed.queue.find((item) =>
+              !isAudiobookQueueItem(item) &&
+              item.id === refreshed.activePlayback?.episodeId
+            );
+            return {
+              playback: {
+                episodeId: finishedEpisode.id,
+                positionSeconds: finishedPosition,
+                lastUpdated: new Date().toISOString(),
+              },
+              nextTarget: next ? { type: "episode", episodeId: next.id } : null,
+              nextEpisodeId: next?.id ?? null,
+            };
+          }
+        }
+        if (!isCurrent()) return null;
+        return await commitPlayback(finishedPosition, {
+          completed: true,
+          durationSeconds: finishedDuration,
+          target: finishedEpisode,
+          diagnosticTraceId: traceId,
+        });
+      } catch {
+        return null;
       }
     };
 
@@ -819,13 +901,48 @@ export function usePlaybackAudio({
 
       const selectionGeneration = selectionGenerationRef.current;
       const expectedSourceGeneration = sourceGenerationRef.current;
+      let transportFailure = false;
       void commitPlayback(finishedPosition, {
         completed: true,
         durationSeconds: finishedDuration,
         target: finishedEpisode,
         diagnosticTraceId: traceId,
+        onError: (error) => {
+          transportFailure = error instanceof TypeError ||
+            (error instanceof DOMException && error.name === "AbortError");
+        },
       })
         .then(async (response) => {
+          if (!response && transportFailure) {
+            response = await reconcileFailedCompletion(
+              finishedEpisode,
+              finishedPosition,
+              finishedDuration,
+              expectedSourceGeneration,
+              selectionGeneration,
+              traceId
+            );
+          }
+          if (response && synchronousNextItem) {
+            const target = response.nextTarget;
+            const matchesPrediction = target?.type === "audiobook"
+              ? isAudiobookQueueItem(synchronousNextItem) &&
+                (synchronousNextItem.audiobookId ?? synchronousNextItem.id) === target.audiobookId &&
+                synchronousNextItem.trackId === target.trackId
+              : target?.type === "episode"
+                ? !isAudiobookQueueItem(synchronousNextItem) && synchronousNextItem.id === target.episodeId
+                : false;
+            if (
+              matchesPrediction &&
+              sourceGenerationRef.current === expectedSourceGeneration &&
+              selectionGenerationRef.current === selectionGeneration
+            ) {
+              confirmedTransitionRef.current = {
+                generation: expectedSourceGeneration,
+                sourceKey: playbackMediaSourceKey(synchronousNextItem),
+              };
+            }
+          }
           await startAfterCompletion(
             expectedSourceGeneration,
             finishedEpisode,
@@ -894,6 +1011,59 @@ export function usePlaybackAudio({
           code: `MEDIA_ERROR_${audio.error?.code ?? 0}`,
           sourceGeneration: sourceGenerationRef.current,
         });
+      }
+      const current = currentEpisodeRef.current;
+      const generation = sourceGenerationRef.current;
+      const confirmed = confirmedTransitionRef.current;
+      const previousRecovery = mediaRecoveryRef.current;
+      if (
+        audio.error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED &&
+        current &&
+        confirmed?.generation === generation &&
+        confirmed.sourceKey === playbackMediaSourceKey(current) &&
+        autoAdvanceIntentRef.current &&
+        playingRef.current &&
+        (previousRecovery?.generation !== generation || previousRecovery.attempts < 1)
+      ) {
+        mediaRecoveryRef.current = { generation, attempts: 1 };
+        const savedPosition = audio.currentTime;
+        sourceSwitchingRef.current = true;
+        sourceReadyRef.current = false;
+        sourceReloadCleanupRef.current?.();
+        // Register the reload listener after this error event has finished
+        // dispatching; otherwise it observes the same error and fails at once.
+        queueMicrotask(() => {
+          if (sourceGenerationRef.current !== generation || !playingRef.current) return;
+          sourceReloadCleanupRef.current = reloadAudioSourceAtPosition(
+            audio,
+            savedPosition,
+            setPositionSeconds,
+            () => {
+              sourceReloadCleanupRef.current = null;
+              if (sourceGenerationRef.current !== generation) return;
+              sourceSwitchingRef.current = false;
+              if (!playingRef.current) return;
+              sourceReadyRef.current = true;
+              updateActiveDuration(generation);
+              void attemptAudioPlay(audio, (error) => {
+                if (sourceGenerationRef.current !== generation) return;
+                playingRef.current = false;
+                setPlaying(false);
+                setPlaybackError(describeAudioError(error));
+              }, () => sourceGenerationRef.current === generation && playingRef.current);
+            },
+            () => {
+              sourceReloadCleanupRef.current = null;
+              if (sourceGenerationRef.current !== generation) return;
+              sourceSwitchingRef.current = false;
+              sourceReadyRef.current = false;
+              playingRef.current = false;
+              setPlaying(false);
+              setPlaybackError(describeMediaError(audio.error));
+            }
+          );
+        });
+        return;
       }
       autoAdvanceIntentRef.current = false;
       sourceSwitchingRef.current = false;

@@ -142,6 +142,7 @@ export function usePlaybackSync({
         durationSeconds?: number;
         target?: QueueEpisode;
         diagnosticTraceId?: string;
+        onError?: (error: unknown) => void;
       } = {}
     ) => {
       const episode = options.target ?? currentEpisodeRef.current;
@@ -206,6 +207,7 @@ export function usePlaybackSync({
         }
         return response;
       } catch (error) {
+        options.onError?.(error);
         if (traceId) {
           recordPlaybackDiagnostic(traceId, "completion_error", {
             ...traceTarget,

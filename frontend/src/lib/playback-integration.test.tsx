@@ -341,6 +341,44 @@ describe("combined playback integration", () => {
     expect(vi.mocked(api.playback.update).mock.calls.filter(([payload]) => payload.completed)).toHaveLength(1);
   });
 
+  it("does not resume after Pause while the failed chapter reloads", async () => {
+    const { user, audio } = await startBook();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    await waitFor(() => expect(audio.src).toContain("/tracks/2/audio"));
+    await ready(audio);
+    await waitFor(() => expect(screen.getByTestId("playing")).toHaveTextContent("true"));
+    await waitFor(() => expect(screen.getByTestId("queue-track")).toHaveTextContent("2"));
+    await act(async () => {
+      audio.error = { code: 4 }; audio.paused = true; audio.emit("error");
+    });
+    const playsBeforePause = audio.playImpl.mock.calls.length;
+    await user.click(screen.getByRole("button", { name: "Toggle" }));
+    audio.error = null;
+    await ready(audio);
+    expect(audio.playImpl).toHaveBeenCalledTimes(playsBeforePause);
+    expect(screen.getByTestId("playing")).toHaveTextContent("false");
+  });
+
+  it("stops after one reload when the next chapter really has an unsupported source", async () => {
+    const { audio } = await startBook();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    await waitFor(() => expect(audio.src).toContain("/tracks/2/audio"));
+    await ready(audio);
+    await waitFor(() => expect(screen.getByTestId("queue-track")).toHaveTextContent("2"));
+    await act(async () => {
+      audio.error = { code: 4 }; audio.paused = true; audio.emit("error");
+    });
+    const loadsAfterRetry = audio.loadImpl.mock.calls.length;
+    await act(async () => { audio.error = { code: 4 }; audio.emit("error"); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loadsAfterRetry);
+    expect(screen.getByTestId("playing")).toHaveTextContent("false");
+    expect(screen.getByTestId("error")).toHaveTextContent("Audio source is not supported.");
+  });
+
   it.each(["completion", "queue"] as const)(
     "keeps C after B recovery and late A %s / B play responses", async (delayStage) => {
       const completionA = deferred<PlaybackUpdateResponse>();
@@ -382,12 +420,17 @@ describe("combined playback integration", () => {
         audio.currentTime = 23; audio.emit("timeupdate");
         audio.error = { code: 4 }; audio.paused = true; audio.emit("error");
       });
-      expect(screen.getByTestId("error")).not.toHaveTextContent("none");
-      expect(screen.getByTestId("playing")).toHaveTextContent("false");
       const loadsBeforeRecovery = audio.loadImpl.mock.calls.length;
       const playsBeforeRecovery = audio.playImpl.mock.calls.length;
-      await user.click(screen.getByRole("button", { name: "Toggle" }));
-      await waitFor(() => expect(audio.loadImpl).toHaveBeenCalledTimes(loadsBeforeRecovery + 1));
+      if (delayStage === "completion") {
+        expect(screen.getByTestId("error")).not.toHaveTextContent("none");
+        expect(screen.getByTestId("playing")).toHaveTextContent("false");
+        await user.click(screen.getByRole("button", { name: "Toggle" }));
+        await waitFor(() => expect(audio.loadImpl).toHaveBeenCalledTimes(loadsBeforeRecovery + 1));
+      } else {
+        expect(screen.getByTestId("error")).toHaveTextContent("none");
+        expect(screen.getByTestId("playing")).toHaveTextContent("true");
+      }
       const lateBReady = audio.captureEvent("canplay");
       audio.error = null;
       await ready(audio);
