@@ -122,6 +122,7 @@ func (s *Service) download(ctx context.Context, episodeID int64) (EpisodeDownloa
 	if !media.IsPlayableContentType(resp.Header.Get("Content-Type")) {
 		return EpisodeDownload{}, fmt.Errorf("download audio content type: %s", resp.Header.Get("Content-Type"))
 	}
+	contentType := resp.Header.Get("Content-Type")
 	prefix, err := media.ReadBodyPrefix(resp.Body)
 	if err != nil {
 		return EpisodeDownload{}, fmt.Errorf("read audio prefix: %w", err)
@@ -176,7 +177,9 @@ func (s *Service) download(ctx context.Context, episodeID int64) (EpisodeDownloa
 	// Best-effort: read audio duration from the local file and persist it only
 	// when no duration is stored yet (NULL). An existing non-zero value from the
 	// RSS feed is authoritative and must not be overwritten.
-	if dur, readErr := audiometa.ReadAudioDuration(targetPath); readErr == nil && dur > 0 {
+	// contentType is used as a hint for files whose path has no audio extension
+	// (e.g. episodes served from query-string CDN URLs).
+	if dur, readErr := audiometa.ReadAudioDurationWithHint(targetPath, contentType); readErr == nil && dur > 0 {
 		if _, dbErr := s.db.ExecContext(ctx,
 			`UPDATE episodes SET duration = ? WHERE id = ? AND duration IS NULL`,
 			dur, episodeID,
