@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cross/mpod/server/internal/podcasts"
 	"github.com/cross/mpod/server/internal/storage"
 )
 
@@ -334,4 +335,285 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return fn(r)
+}
+
+// readValidMP3Body returns the bytes of the shared valid.mp3 fixture.
+// The fixture is a 3-second synthetic MPEG stream used by audiobooks tests.
+func readValidMP3Body(t *testing.T) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", "valid.mp3"))
+	if err != nil {
+		t.Fatalf("read valid.mp3 fixture: %v", err)
+	}
+	return data
+}
+
+// validMP3Duration is the exact rounded duration of testdata/valid.mp3 as
+// reported by audiometa.ReadAudioDuration (3 seconds synthetic MPEG stream).
+const validMP3Duration = int64(3)
+
+// TestDownloadWritesDurationWhenEpisodeLacksDuration covers the primary regression:
+// episode has no itunes:duration in the feed → file is downloaded → duration measured
+// from the local file and written to episodes.duration.
+func TestDownloadWritesDurationWhenEpisodeLacksDuration(t *testing.T) {
+	db := newDownloadTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	mustExecDownload(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	// duration column omitted → NULL
+	mustExecDownload(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', ?)`, "https://example.com/ep1.mp3")
+
+	mp3Body := readValidMP3Body(t)
+	service := NewService(db.SQL, newDownloadTestClient(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader(string(mp3Body))),
+			Header:     http.Header{"Content-Type": []string{"audio/mpeg"}},
+		}, nil
+	}), downloadDir)
+
+	result, err := service.Download(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("Download failed: %v", err)
+	}
+	if !result.Downloaded {
+		t.Fatalf("expected downloaded=true")
+	}
+
+	var duration sql.NullInt64
+	if err := db.SQL.QueryRow(`SELECT duration FROM episodes WHERE id = 1`).Scan(&duration); err != nil {
+		t.Fatalf("query duration: %v", err)
+	}
+	if !duration.Valid {
+		t.Fatalf("expected duration to be written from local file, got NULL")
+	}
+	if duration.Int64 != validMP3Duration {
+		t.Fatalf("expected duration %d, got %d", validMP3Duration, duration.Int64)
+	}
+}
+
+// TestDownloadDoesNotOverwriteExistingDuration covers the guard rule:
+// episode already has a duration from the RSS feed → download must not replace it.
+func TestDownloadDoesNotOverwriteExistingDuration(t *testing.T) {
+	db := newDownloadTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	mustExecDownload(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	const feedDuration = int64(7200)
+	mustExecDownload(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, duration) VALUES (1, 1, 'ep-1', 'Episode 1', ?, ?)`, "https://example.com/ep1.mp3", feedDuration)
+
+	mp3Body := readValidMP3Body(t)
+	service := NewService(db.SQL, newDownloadTestClient(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader(string(mp3Body))),
+			Header:     http.Header{"Content-Type": []string{"audio/mpeg"}},
+		}, nil
+	}), downloadDir)
+
+	if _, err := service.Download(context.Background(), 1); err != nil {
+		t.Fatalf("Download failed: %v", err)
+	}
+
+	var duration sql.NullInt64
+	if err := db.SQL.QueryRow(`SELECT duration FROM episodes WHERE id = 1`).Scan(&duration); err != nil {
+		t.Fatalf("query duration: %v", err)
+	}
+	if !duration.Valid || duration.Int64 != feedDuration {
+		t.Fatalf("expected feed duration %d to be preserved, got %+v", feedDuration, duration)
+	}
+}
+
+// TestDownloadDoesNotFabricateDurationForUnsupportedFile covers the error rule:
+// if the local file cannot yield a reliable duration (unsupported content-type
+// and unsupported extension), no fabricated value must be written. The download
+// itself must still succeed.
+func TestDownloadDoesNotFabricateDurationForUnsupportedFile(t *testing.T) {
+	db := newDownloadTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	mustExecDownload(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	// audio_url has .ogg extension; Content-Type audio/ogg — both unsupported by audiometa.
+	mustExecDownload(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', ?)`, "https://example.com/ep1.ogg")
+
+	service := NewService(db.SQL, newDownloadTestClient(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader("audio-data")),
+			Header:     http.Header{"Content-Type": []string{"audio/ogg"}},
+		}, nil
+	}), downloadDir)
+
+	result, err := service.Download(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("Download failed: %v", err)
+	}
+	if !result.Downloaded {
+		t.Fatalf("expected download to succeed even when duration cannot be read")
+	}
+
+	var duration sql.NullInt64
+	if err := db.SQL.QueryRow(`SELECT duration FROM episodes WHERE id = 1`).Scan(&duration); err != nil {
+		t.Fatalf("query duration: %v", err)
+	}
+	if duration.Valid {
+		t.Fatalf("expected duration to remain NULL for unsupported/corrupt file, got %d", duration.Int64)
+	}
+}
+
+// TestDownloadWritesDurationForExtensionlessURL verifies that when the audio URL
+// carries no path extension (e.g. a CDN query-string URL), the Content-Type header
+// is used as a hint so that duration can still be extracted from the downloaded file.
+func TestDownloadWritesDurationForExtensionlessURL(t *testing.T) {
+	db := newDownloadTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	mustExecDownload(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	// URL has no file extension — buildFilename will produce a path without suffix.
+	mustExecDownload(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', ?)`, "https://cdn.example.com/audio?id=42&format=mp3")
+
+	mp3Body := readValidMP3Body(t)
+	service := NewService(db.SQL, newDownloadTestClient(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader(string(mp3Body))),
+			// Content-Type audio/mpeg is the hint audiometa uses when the path has no extension.
+			Header: http.Header{"Content-Type": []string{"audio/mpeg"}},
+		}, nil
+	}), downloadDir)
+
+	result, err := service.Download(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("Download failed: %v", err)
+	}
+	if !result.Downloaded {
+		t.Fatalf("expected downloaded=true")
+	}
+
+	var duration sql.NullInt64
+	if err := db.SQL.QueryRow(`SELECT duration FROM episodes WHERE id = 1`).Scan(&duration); err != nil {
+		t.Fatalf("query duration: %v", err)
+	}
+	if !duration.Valid {
+		t.Fatalf("expected duration to be written even for extensionless URL, got NULL")
+	}
+	if duration.Int64 != validMP3Duration {
+		t.Fatalf("expected duration %d, got %d", validMP3Duration, duration.Int64)
+	}
+}
+
+// TestDownloadDurationRegressionFullCycle is the focused regression:
+//  1. Episode has no <itunes:duration> → RSS import stores NULL duration.
+//  2. Episode is downloaded with a valid local MP3 → duration written to DB.
+//  3. RSS refresh runs again without a duration tag → the real podcasts.Service
+//     upsert (COALESCE) must preserve the measured duration.
+func TestDownloadDurationRegressionFullCycle(t *testing.T) {
+	db := newDownloadTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+
+	// Feed XML has no <itunes:duration>; the enclosure URL ends in .mp3 so that
+	// the downloaded filename will also carry the .mp3 extension.
+	const feedURL = "https://example.com/feed.xml"
+	const audioURL = "https://cdn.example.com/ep1.mp3"
+	feedXML := rssNoDuration("Podcast", "Episode 1", "guid-ep1", audioURL)
+
+	// Create the podcast and import the episode using the real podcasts service.
+	podcastSvc := podcasts.NewService(db.SQL, newDownloadTestClient(func(r *http.Request) (*http.Response, error) {
+		return xmlFeedResponse(feedXML), nil
+	}))
+	podcast, err := podcastSvc.CreateFromFeed(context.Background(), feedURL)
+	if err != nil {
+		t.Fatalf("CreateFromFeed failed: %v", err)
+	}
+
+	// Step 1: duration is NULL immediately after feed import.
+	var episodeID int64
+	var durationBefore sql.NullInt64
+	if err := db.SQL.QueryRow(
+		`SELECT id, duration FROM episodes WHERE podcast_id = ? AND external_episode_key = 'guid-ep1'`,
+		podcast.ID,
+	).Scan(&episodeID, &durationBefore); err != nil {
+		t.Fatalf("query episode before download: %v", err)
+	}
+	if durationBefore.Valid {
+		t.Fatalf("expected NULL duration after feed import without itunes:duration, got %d", durationBefore.Int64)
+	}
+
+	// Step 2: download a valid MP3 — duration should be written.
+	mp3Body := readValidMP3Body(t)
+	downloadSvc := NewService(db.SQL, newDownloadTestClient(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader(string(mp3Body))),
+			Header:     http.Header{"Content-Type": []string{"audio/mpeg"}},
+		}, nil
+	}), downloadDir)
+
+	if _, err := downloadSvc.Download(context.Background(), episodeID); err != nil {
+		t.Fatalf("Download failed: %v", err)
+	}
+
+	var durationAfterDownload sql.NullInt64
+	if err := db.SQL.QueryRow(`SELECT duration FROM episodes WHERE id = ?`, episodeID).Scan(&durationAfterDownload); err != nil {
+		t.Fatalf("query post-download duration: %v", err)
+	}
+	if !durationAfterDownload.Valid || durationAfterDownload.Int64 != validMP3Duration {
+		t.Fatalf("expected duration %d after download, got %+v", validMP3Duration, durationAfterDownload)
+	}
+
+	// Step 3: real RSS refresh with the same feed (still no <itunes:duration>).
+	// The real upsert COALESCE must preserve the measured duration.
+	if _, _, err := podcastSvc.Refresh(context.Background(), podcast.ID); err != nil {
+		t.Fatalf("Refresh failed: %v", err)
+	}
+
+	var durationAfterRefresh sql.NullInt64
+	if err := db.SQL.QueryRow(`SELECT duration FROM episodes WHERE id = ?`, episodeID).Scan(&durationAfterRefresh); err != nil {
+		t.Fatalf("query post-refresh duration: %v", err)
+	}
+	if !durationAfterRefresh.Valid {
+		t.Fatalf("expected duration to survive real RSS refresh without itunes:duration, got NULL")
+	}
+	if durationAfterRefresh.Int64 != validMP3Duration {
+		t.Fatalf("expected duration %d preserved after refresh, got %d", validMP3Duration, durationAfterRefresh.Int64)
+	}
+}
+
+// rssNoDuration builds a minimal RSS feed with one episode and no itunes:duration.
+func rssNoDuration(podcastTitle, episodeTitle, guid, audioURL string) string {
+	return `<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
+		`<rss version="2.0">` + "\n" +
+		`  <channel>` + "\n" +
+		`    <title>` + podcastTitle + `</title>` + "\n" +
+		`    <item>` + "\n" +
+		`      <title>` + episodeTitle + `</title>` + "\n" +
+		`      <guid>` + guid + `</guid>` + "\n" +
+		`      <enclosure url="` + audioURL + `" type="audio/mpeg"/>` + "\n" +
+		`    </item>` + "\n" +
+		`  </channel>` + "\n" +
+		`</rss>`
+}
+
+// xmlFeedResponse wraps an RSS string in an http.Response with the correct
+// Content-Type, matching what podcasts tests use.
+func xmlFeedResponse(body string) *http.Response {
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     make(http.Header),
+	}
+	resp.Header.Set("Content-Type", "application/rss+xml")
+	return resp
 }

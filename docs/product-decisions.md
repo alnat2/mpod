@@ -1172,6 +1172,50 @@ The app should not overwrite local user state such as:
 - The app should prefer resilient import over strict rejection.
 - Stable identity and duplicate prevention are more important than perfectly preserving all feed quirks.
 
+## Episode Duration from Local File
+
+### Decision
+When a podcast episode is downloaded and a valid local audio file is confirmed, the backend
+reads the file's duration from its audio metadata and writes it into `episodes.duration`
+if the column is currently NULL. Duration reading is implemented in the leaf package
+`internal/audiometa` (`audiometa.ReadAudioDurationWithHint`), which is shared with the
+`audiobooks` package via delegation. No new service, worker, queue, or goroutine is added.
+
+### Rules
+- After the local file has been atomically published to disk (rename from `.tmp`) and
+  `downloaded_path` has been persisted, the backend calls
+  `audiometa.ReadAudioDurationWithHint(targetPath, contentType)`.
+- The duration is written to `episodes.duration` **only when the current value is NULL**.
+- If `episodes.duration` already contains a non-zero value (from the RSS feed or a previous
+  measurement), it is **not overwritten**. The feed-provided value is authoritative.
+  Replacing an existing duration requires an explicit decision outside this flow.
+- `ReadAudioDurationWithHint` uses the HTTP `Content-Type` response header as a fallback
+  hint when the downloaded file path has no recognised audio extension (e.g. episodes served
+  from CDN query-string URLs like `https://cdn.example.com/audio?id=42`). Supported types:
+  `audio/mpeg` → `.mp3`, `audio/mp4` / `audio/x-m4a` → `.m4a`. For extensionless files
+  with an unsupported or absent Content-Type, `ErrAudioDurationUnavailable` is returned and
+  no duration is stored.
+- Internally, when the file path has no recognised audio extension,
+  `ReadAudioDurationWithHint` verifies that the `Content-Type` is a supported audio
+  format (`audio/mpeg`, `audio/mp3`, `audio/mp4`, `audio/x-m4a`, `audio/m4b`, `audio/x-m4b`)
+  and reads the duration directly from the source file without creating temporary files or links.
+- **Error handling** in `downloads/service.go`:
+  - `audiometa.ErrAudioDurationUnavailable`: **silently ignored** — covers unsupported
+    format, absent/unrecognised Content-Type, corrupt file, or taglib parse failure.
+    No log message is emitted.
+  - Any other error reading metadata: **logged** at `log.Printf` level. The download
+    still succeeds and `downloaded_path` is preserved.
+  - DB UPDATE failure while writing the measured duration: **logged** at `log.Printf`
+    level. Does not fail the download.
+- Audiobook source files are unaffected; this rule applies only to podcast episode downloads.
+
+### Notes
+- The discrepancy between a feed-declared duration and the file-measured duration is resolved
+  in favour of the feed value: existing non-NULL feed duration is not replaced.
+- A future explicit decision may introduce a policy to prefer measured duration over declared
+  duration (e.g. for feeds that consistently report wrong values). That decision is out of
+  scope here.
+
 ## Docker / Runtime Defaults
 
 ### Decision
