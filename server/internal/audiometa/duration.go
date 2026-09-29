@@ -39,8 +39,11 @@ func ReadAudioDuration(filePath string) (int64, error) {
 //
 // If the extension is recognised the hint is ignored. If the extension is absent
 // or unrecognised and contentType maps to a supported format (.mp3, .m4a, .m4b),
-// a temporary symlink with the correct extension is created, taglib is called on
-// the symlink, and the symlink is removed before returning.
+// a temporary hard link with the correct extension is created in the same directory
+// as filePath, taglib is called on the hard link, and the hard link is removed
+// before returning. A hard link (os.Link) is used instead of a symlink so that the
+// reference is path-independent: it is not affected by CWD changes or the relative/
+// absolute form of filePath.
 //
 // If neither the extension nor the content-type identifies a supported format,
 // ErrAudioDurationUnavailable is returned and the file is not read.
@@ -58,10 +61,12 @@ func ReadAudioDurationWithHint(filePath, contentType string) (int64, error) {
 	}
 
 	// taglib identifies the format from the file extension, so we create a
-	// temporary symlink with the inferred extension and let taglib read it.
+	// temporary hard link with the inferred extension and let taglib read it.
+	// A hard link shares the inode with filePath: it works with both relative
+	// and absolute paths, requires no data copy, and avoids symlink fragility.
 	linkPath := filePath + inferredExt + ".durlink"
-	if err := os.Symlink(filePath, linkPath); err != nil {
-		return 0, fmt.Errorf("%w: create duration symlink: %v", ErrAudioDurationUnavailable, err)
+	if err := os.Link(filePath, linkPath); err != nil {
+		return 0, fmt.Errorf("%w: create duration hard link: %v", ErrAudioDurationUnavailable, err)
 	}
 	defer os.Remove(linkPath)
 

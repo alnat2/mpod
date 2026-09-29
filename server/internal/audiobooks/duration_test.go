@@ -8,7 +8,6 @@ import (
 	"testing"
 )
 
-
 // The valid.* fixtures were generated for tests:
 // valid.mp3 is a synthetic MPEG-1 Layer III (128 kbps, 44.1 kHz) stream.
 // valid.m4a and valid.m4b are macOS `afconvert` outputs from a 440Hz 2-second WAV generated in Go:
@@ -20,8 +19,8 @@ func TestReadAudioDuration(t *testing.T) {
 		fixture  string
 		expected int64
 	}{
-		{"Valid MP3", "valid.mp3", 3},   // 3 seconds synthetic
-		{"Valid M4A", "valid.m4a", 2},   // 2 second generated PCM converted to AAC
+		{"Valid MP3", "valid.mp3", 3}, // 3 seconds synthetic
+		{"Valid M4A", "valid.m4a", 2}, // 2 second generated PCM converted to AAC
 		{"Valid M4B", "valid.m4b", 2},
 	}
 
