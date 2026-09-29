@@ -32,6 +32,7 @@ import {
   createPlaybackTraceId,
   initializePlaybackDiagnostics,
   recordPlaybackDiagnostic,
+  type PlaybackDiagnosticEventName,
 } from "./playback-diagnostics";
 import {
   isAudiobookQueueItem,
@@ -397,12 +398,31 @@ export function usePlaybackAudio({
     sourcePrimedRef.current = false;
     sourceReadyRef.current = false;
 
+    const recordAudioTransition = (
+      traceId: string | null,
+      event: PlaybackDiagnosticEventName,
+      sourceGeneration: number,
+      code?: string,
+      requestedPosition?: number,
+      target?: QueueEpisode
+    ) => {
+      if (!traceId) return;
+      const current = target ?? currentEpisodeRef.current;
+      const position = requestedPosition ?? audio.currentTime;
+      recordPlaybackDiagnostic(traceId, event, {
+        ...(current && (isAudiobookQueueItem(current)
+          ? { audiobookId: current.audiobookId ?? current.id, trackId: current.trackId }
+          : { episodeId: current.id })),
+        sourceGeneration,
+        mediaReadyState: audio.readyState,
+        documentHidden: document.visibilityState === "hidden",
+        positionSeconds: Number.isFinite(position) ? Math.max(0, Math.round(position)) : 0,
+        ...(code ? { code } : {}),
+      });
+    };
+
     const onPlaying = () => {
-      if (completionTraceRef.current) {
-        recordPlaybackDiagnostic(completionTraceRef.current, "audio_playing", {
-          sourceGeneration: sourceGenerationRef.current,
-        });
-      }
+      recordAudioTransition(completionTraceRef.current, "audio_playing", sourceGenerationRef.current);
       if (!playingRef.current && !userInitiatedPlayRef.current) {
         audioRef.current?.pause();
         return;
@@ -414,6 +434,7 @@ export function usePlaybackAudio({
     };
 
     const startQueuedEpisode = (episode: QueueEpisode) => {
+      const traceId = completionTraceRef.current;
       retryCleanupRef.current?.();
       selectionGenerationRef.current += 1;
       sourceSwitchingRef.current = true;
@@ -479,7 +500,21 @@ export function usePlaybackAudio({
         }
 
         clearRetryWait();
-        const error = await attemptAudioPlay(audio, () => {});
+        const playPromise = attemptAudioPlay(audio, () => {});
+        recordAudioTransition(traceId, "play_attempt", currentGen, undefined, nextPosition, episode);
+        const error = await playPromise;
+        recordAudioTransition(
+          traceId,
+          "play_result",
+          currentGen,
+          error
+            ? error instanceof Error && error.name === "NotSupportedError"
+              ? "NOT_SUPPORTED"
+              : "ERROR"
+            : audio.paused ? "PAUSED" : "RESOLVED",
+          nextPosition,
+          episode
+        );
         if (sourceGenerationRef.current !== currentGen) return;
         if (canceled) {
           if (!playingRef.current && !audio.paused) audio.pause();
@@ -555,6 +590,7 @@ export function usePlaybackAudio({
           if (playingRef.current) {
             void tryPlay();
           }
+          recordAudioTransition(traceId, "source_ready", currentGen, undefined, nextPosition, episode);
         },
         () => {
           sourcePrimeCleanupRef.current = null;
@@ -1108,6 +1144,10 @@ export function usePlaybackAudio({
       updateActiveDuration(sourceGenerationRef.current);
     };
 
+    const onVisibilityChanged = () => {
+      recordAudioTransition(completionTraceRef.current, "visibility_changed", sourceGenerationRef.current);
+    };
+
     audio.addEventListener("timeupdate", onTimeUpdate);
     audio.addEventListener("loadedmetadata", onLoadedMetadata);
     audio.addEventListener("durationchange", onDurationAvailable);
@@ -1115,6 +1155,7 @@ export function usePlaybackAudio({
     audio.addEventListener("pause", onPause);
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("error", onError);
+    document.addEventListener("visibilitychange", onVisibilityChanged);
 
     return () => {
       audio.removeEventListener("timeupdate", onTimeUpdate);
@@ -1124,6 +1165,7 @@ export function usePlaybackAudio({
       audio.removeEventListener("pause", onPause);
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
+      document.removeEventListener("visibilitychange", onVisibilityChanged);
       retryCleanupRef.current?.();
       audio.pause();
       audio.src = "";

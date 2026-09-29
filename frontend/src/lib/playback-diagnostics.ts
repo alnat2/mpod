@@ -14,7 +14,11 @@ export type PlaybackDiagnosticEventName =
   | "audio_error"
   | "manual_play"
   | "manual_pause"
-  | "selection_changed";
+  | "selection_changed"
+  | "play_attempt"
+  | "play_result"
+  | "source_ready"
+  | "visibility_changed";
 
 export type PlaybackDiagnosticDetails = {
   episodeId?: number;
@@ -27,6 +31,9 @@ export type PlaybackDiagnosticDetails = {
   selectionGeneration?: number;
   status?: number;
   code?: string;
+  mediaReadyState?: number;
+  documentHidden?: boolean;
+  positionSeconds?: number;
 };
 
 type PlaybackDiagnosticEvent = PlaybackDiagnosticDetails & {

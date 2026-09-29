@@ -22,6 +22,9 @@ type playbackDiagnosticEvent struct {
 	SelectionGeneration int64  `json:"selectionGeneration"`
 	Status              int    `json:"status"`
 	Code                string `json:"code"`
+	MediaReadyState     int    `json:"mediaReadyState"`
+	DocumentHidden      bool   `json:"documentHidden"`
+	PositionSeconds     int    `json:"positionSeconds"`
 }
 
 func validPlaybackTraceID(value string) bool {
@@ -55,7 +58,8 @@ func validPlaybackDiagnosticEvent(value string) bool {
 	case "ended", "predicted_next", "completion_request", "completion_response",
 		"completion_error", "queue_refreshed", "transition_continued",
 		"transition_stopped", "stale_completion", "audio_playing",
-		"audio_error", "manual_play", "manual_pause", "selection_changed":
+		"audio_error", "manual_play", "manual_pause", "selection_changed",
+		"play_attempt", "play_result", "source_ready", "visibility_changed":
 		return true
 	default:
 		return false
@@ -81,7 +85,9 @@ func (r *Router) handlePlaybackDiagnostics(w nethttp.ResponseWriter, req *nethtt
 		if !validPlaybackTraceID(event.ID) || !validPlaybackTraceID(event.TraceID) ||
 			!validPlaybackDiagnosticEvent(event.Event) ||
 			!validPlaybackDiagnosticCode(event.Code) ||
-			event.Status < 0 || event.Status > 599 {
+			event.Status < 0 || event.Status > 599 ||
+			event.MediaReadyState < 0 || event.MediaReadyState > 4 ||
+			event.PositionSeconds < 0 || event.PositionSeconds > 8640000 {
 			r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_DIAGNOSTICS", "Invalid event")
 			return
 		}
@@ -92,11 +98,12 @@ func (r *Router) handlePlaybackDiagnostics(w nethttp.ResponseWriter, req *nethtt
 	}
 	for _, event := range payload.Events {
 		r.logger.Printf(
-			"playback_trace client trace=%q event_id=%q at=%q event=%q audiobook=%d track=%d episode=%d next_audiobook=%d next_track=%d next_episode=%d source_gen=%d selection_gen=%d status=%d code=%q",
+			"playback_trace client trace=%q event_id=%q at=%q event=%q audiobook=%d track=%d episode=%d next_audiobook=%d next_track=%d next_episode=%d source_gen=%d selection_gen=%d status=%d code=%q media_ready=%d hidden=%t position=%d",
 			event.TraceID, event.ID, event.At, event.Event, event.AudiobookID,
 			event.TrackID, event.EpisodeID, event.NextAudiobookID, event.NextTrackID,
 			event.NextEpisodeID, event.SourceGeneration, event.SelectionGeneration,
-			event.Status, event.Code,
+			event.Status, event.Code, event.MediaReadyState, event.DocumentHidden,
+			event.PositionSeconds,
 		)
 	}
 	w.WriteHeader(nethttp.StatusNoContent)

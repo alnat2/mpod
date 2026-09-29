@@ -26,7 +26,7 @@ func TestPlaybackCompletionRequestLogIncludesTraceAndHTTPStatus(t *testing.T) {
 func TestPlaybackDiagnosticsAcceptsBoundedAuthenticatedEvents(t *testing.T) {
 	handler, _ := newTestRouter(t)
 	cookie := register(t, handler, "admin", "secret")
-	body := `{"events":[{"id":"event-123","traceId":"trace-123","at":"2026-09-28T09:32:04Z","event":"completion_error","audiobookId":10,"trackId":20,"code":"NETWORK_OR_CLIENT_ERROR"}]}`
+	body := `{"events":[{"id":"event-123","traceId":"trace-123","at":"2026-09-28T09:32:04Z","event":"completion_error","audiobookId":10,"trackId":20,"code":"NETWORK_OR_CLIENT_ERROR"},{"id":"event-124","traceId":"trace-123","at":"2026-09-28T09:32:05Z","event":"play_attempt","audiobookId":10,"trackId":21,"sourceGeneration":2,"mediaReadyState":0,"documentHidden":true,"positionSeconds":0},{"id":"event-125","traceId":"trace-123","at":"2026-09-28T09:32:06Z","event":"play_result","audiobookId":10,"trackId":21,"mediaReadyState":4,"documentHidden":false,"positionSeconds":1,"code":"RESOLVED"}]}`
 	req := httptest.NewRequest(nethttp.MethodPost, "/api/playback/diagnostics", bytes.NewBufferString(body))
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()

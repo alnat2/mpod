@@ -455,6 +455,48 @@ describe("combined playback integration", () => {
     expect(vi.mocked(api.playback.update).mock.calls.filter(([payload]) => payload.completed)).toHaveLength(1);
   });
 
+  it("records a play attempt before a hidden-tab play promise settles", async () => {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    const { audio } = await startBook();
+    const pendingPlay = deferred<void>();
+    audio.playImpl.mockImplementation(() => pendingPlay.promise);
+
+    await act(async () => {
+      audio.currentTime = 100;
+      audio.ended = true;
+      audio.paused = true;
+      audio.emit("ended");
+    });
+    await waitFor(() => expect(audio.src).toContain("/tracks/2/audio"));
+    const readEvents = () => JSON.parse(localStorage.getItem("mpod:temporary-playback-diagnostics") ?? "[]") as
+      Array<{ traceId: string; event: string; trackId?: number; documentHidden?: boolean; mediaReadyState?: number; code?: string }>;
+    const traceId = readEvents().filter((event) => event.event === "ended" && event.trackId === 1).at(-1)?.traceId;
+    const readTrace = () => readEvents().filter((event) => event.traceId === traceId);
+    expect(readTrace()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event: "play_attempt", trackId: 2, documentHidden: true, mediaReadyState: 0 }),
+    ]));
+    expect(readTrace().some((event) => event.event === "play_result" && event.trackId === 2)).toBe(false);
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(readTrace()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event: "visibility_changed", trackId: 2, documentHidden: true }),
+    ]));
+
+    await ready(audio);
+    expect(readTrace()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event: "source_ready", trackId: 2, documentHidden: true }),
+    ]));
+    await act(async () => {
+      audio.paused = false;
+      pendingPlay.resolve();
+    });
+    expect(readTrace()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event: "play_result", trackId: 2, code: "RESOLVED" }),
+    ]));
+  });
+
   it("does not resume after Pause while the failed chapter reloads", async () => {
     const { user, audio } = await startBook();
     await act(async () => {
