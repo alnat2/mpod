@@ -57,6 +57,7 @@ function Harness() {
     <div data-testid="error">{playbackError ?? "none"}</div>
     <div data-testid="position">{positionSeconds}</div>
     <button onClick={() => playQueueItem(queue[0]!)}>Book</button>
+    {queue[1] && <button onClick={() => playQueueItem(queue[1]!)}>Second</button>}
     <button onClick={playToggle}>Toggle</button>
     <button onClick={() => void playAudiobookTrack(10, track(3, { positionSeconds: 31 }))}>Choose C</button>
   </>;
@@ -374,6 +375,56 @@ describe("combined playback integration", () => {
       await waitFor(() => expect(completions).toBe(failure === "request lost" ? 2 : 1));
       expect(audio.src).toContain("/episodes/12/audio");
       expect(audio.paused).toBe(false);
+      expect(screen.getByTestId("error")).toHaveTextContent("none");
+    }
+  );
+
+  it.each([false, true])(
+    "reconciles completion of the last podcast episode when earlier items listened=%s",
+    async (earlierListened) => {
+      let serverCompleted = false;
+      queue = [podcastEpisode(12, earlierListened), podcastEpisode(11)];
+      vi.mocked(api.playback.queue).mockImplementation(async () => ({
+        queue: queue.map((item) => ({ ...item })),
+        activePlayback: { episodeId: 11, lastUpdated: stamp },
+      }));
+      vi.spyOn(api.episodes, "get").mockImplementation(async (id) => ({
+        episode: podcastEpisode(id, id === 11 && serverCompleted),
+      }));
+      let rejectCompletion!: (error: Error) => void;
+      const completion = new Promise<PlaybackUpdateResponse>((_, reject) => {
+        rejectCompletion = reject;
+      });
+      const update = vi.mocked(api.playback.update);
+      const ordinaryUpdate = update.getMockImplementation()!;
+      update.mockImplementation((payload) =>
+        payload.completed ? completion : ordinaryUpdate(payload)
+      );
+
+      render(<PlaybackProvider><Harness /></PlaybackProvider>);
+      await userEvent.setup().click(await screen.findByRole("button", { name: "Second" }));
+      const audio = FakeAudio.first;
+      await waitFor(() => expect(audio.src).toContain("/episodes/11/audio"));
+      await ready(audio);
+      await waitFor(() => expect(audio.paused).toBe(false));
+      const playsBeforeCompletion = audio.playImpl.mock.calls.length;
+      await act(async () => {
+        audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+      });
+      serverCompleted = true;
+      queue = [podcastEpisode(12, earlierListened), podcastEpisode(11, true)];
+      await act(async () => { rejectCompletion(new TypeError("Response lost")); });
+
+      if (earlierListened) {
+        await waitFor(() => expect(screen.getByTestId("playing")).toHaveTextContent("false"));
+        expect(audio.paused).toBe(true);
+        expect(audio.playImpl).toHaveBeenCalledTimes(playsBeforeCompletion);
+      } else {
+        await waitFor(() => expect(audio.src).toContain("/episodes/12/audio"));
+        await ready(audio);
+        await waitFor(() => expect(audio.paused).toBe(false));
+      }
+      expect(update.mock.calls.filter(([payload]) => payload.completed)).toHaveLength(1);
       expect(screen.getByTestId("error")).toHaveTextContent("none");
     }
   );
