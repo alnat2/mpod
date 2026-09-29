@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -38,12 +37,8 @@ func ReadAudioDuration(filePath string) (int64, error) {
 // episodes whose audio URL carries no path extension (e.g. CDN query-string URLs).
 //
 // If the extension is recognised the hint is ignored. If the extension is absent
-// or unrecognised and contentType maps to a supported format (.mp3, .m4a, .m4b),
-// a temporary hard link with the correct extension is created in the same directory
-// as filePath, taglib is called on the hard link, and the hard link is removed
-// before returning. A hard link (os.Link) is used instead of a symlink so that the
-// reference is path-independent: it is not affected by CWD changes or the relative/
-// absolute form of filePath.
+// or unrecognised and contentType maps to a supported format, the source file is
+// read directly.
 //
 // If neither the extension nor the content-type identifies a supported format,
 // ErrAudioDurationUnavailable is returned and the file is not read.
@@ -54,39 +49,24 @@ func ReadAudioDurationWithHint(filePath, contentType string) (int64, error) {
 		return readDurationViaTaglib(filePath)
 	}
 
-	// Extension is absent or unsupported – try to infer from Content-Type.
-	inferredExt := contentTypeToExt(contentType)
-	if inferredExt == "" {
+	// Extension is absent or unsupported – check Content-Type hint.
+	if !isSupportedContentType(contentType) {
 		return 0, ErrAudioDurationUnavailable
 	}
 
-	// taglib identifies the format from the file extension, so we create a
-	// temporary hard link with the inferred extension and let taglib read it.
-	// A hard link shares the inode with filePath: it works with both relative
-	// and absolute paths, requires no data copy, and avoids symlink fragility.
-	linkPath := filePath + inferredExt + ".durlink"
-	if err := os.Link(filePath, linkPath); err != nil {
-		return 0, fmt.Errorf("%w: create duration hard link: %v", ErrAudioDurationUnavailable, err)
-	}
-	defer os.Remove(linkPath)
-
-	return readDurationViaTaglib(linkPath)
+	return readDurationViaTaglib(filePath)
 }
 
-// contentTypeToExt maps a MIME type to a file extension taglib can read.
-// Returns "" for unsupported or unknown types.
-func contentTypeToExt(ct string) string {
-	// Strip parameters (e.g. "; charset=utf-8").
+// isSupportedContentType checks if the MIME type corresponds to a supported audio format.
+func isSupportedContentType(ct string) bool {
 	if i := strings.IndexByte(ct, ';'); i >= 0 {
 		ct = ct[:i]
 	}
 	switch strings.TrimSpace(strings.ToLower(ct)) {
-	case "audio/mpeg", "audio/mp3":
-		return ".mp3"
-	case "audio/mp4", "audio/x-m4a", "audio/m4b", "audio/x-m4b":
-		return ".m4a"
+	case "audio/mpeg", "audio/mp3", "audio/mp4", "audio/x-m4a", "audio/m4b", "audio/x-m4b":
+		return true
 	}
-	return ""
+	return false
 }
 
 func readDurationViaTaglib(filePath string) (int64, error) {

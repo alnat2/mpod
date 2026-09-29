@@ -79,8 +79,6 @@ func TestReadAudioDuration_RelativePath(t *testing.T) {
 
 // TestReadAudioDurationWithHint_RelativePath verifies that ReadAudioDurationWithHint
 // works correctly when given a relative file path that has no extension.
-// The hard link created internally is placed in the same directory as the source,
-// so it is unaffected by the relative/absolute form of the path.
 func TestReadAudioDurationWithHint_RelativePath(t *testing.T) {
 	// testdata/noext is a copy of valid.mp3 with no file extension.
 	relPath := filepath.Join("testdata", "noext")

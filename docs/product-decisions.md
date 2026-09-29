@@ -1195,18 +1195,16 @@ if the column is currently NULL. Duration reading is implemented in the leaf pac
   `audio/mpeg` → `.mp3`, `audio/mp4` / `audio/x-m4a` → `.m4a`. For extensionless files
   with an unsupported or absent Content-Type, `ErrAudioDurationUnavailable` is returned and
   no duration is stored.
-- Internally, when a Content-Type hint is needed, `ReadAudioDurationWithHint` creates a
-  temporary hard link (`os.Link`) with the inferred extension in the same directory as the
-  source file, passes it to taglib, then removes it. A hard link shares the inode of the
-  original file: no data is copied, it is not affected by relative-vs-absolute path form,
-  and there is no risk of dangling references.
+- Internally, when the file path has no recognised audio extension,
+  `ReadAudioDurationWithHint` verifies that the `Content-Type` is a supported audio
+  format (`audio/mpeg`, `audio/mp3`, `audio/mp4`, `audio/x-m4a`, `audio/m4b`, `audio/x-m4b`)
+  and reads the duration directly from the source file without creating temporary files or links.
 - **Error handling** in `downloads/service.go`:
   - `audiometa.ErrAudioDurationUnavailable`: **silently ignored** — covers unsupported
     format, absent/unrecognised Content-Type, corrupt file, or taglib parse failure.
     No log message is emitted.
-  - Any other error (e.g. `os.Link` failure due to a cross-device path or permission
-    error): **logged** at `log.Printf` level. The download still succeeds and
-    `downloaded_path` is preserved.
+  - Any other error reading metadata: **logged** at `log.Printf` level. The download
+    still succeeds and `downloaded_path` is preserved.
   - DB UPDATE failure while writing the measured duration: **logged** at `log.Printf`
     level. Does not fail the download.
 - Audiobook source files are unaffected; this rule applies only to podcast episode downloads.
