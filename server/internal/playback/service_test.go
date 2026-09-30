@@ -150,6 +150,114 @@ func TestAudiobookCompletionAfterFullDurationProgressIgnoresStaleClientTimestamp
 	}
 }
 
+func TestRepeatedAudiobookCompletionDoesNotReplaceNewerActiveChapter(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path) VALUES (1, 'Book', 'Author', 'Book')`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'Chapter 1', 'Book/01.mp3', '/path/01.mp3', 600), (11, 1, 2, 'Chapter 2', 'Book/02.mp3', '/path/02.mp3', 600), (12, 1, 3, 'Chapter 3', 'Book/03.mp3', '/path/03.mp3', 600)`)
+	mustExec(t, db.SQL, `INSERT INTO playlist (audiobook_id, position) VALUES (1, 1)`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10), (1, 11), (1, 12)`)
+
+	serverTime := time.Date(2026, 9, 29, 19, 29, 40, 0, time.UTC)
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+	service.now = func() time.Time { return serverTime }
+	bookID, firstTrackID, thirdTrackID := int64(1), int64(10), int64(12)
+	if _, err := service.Update(context.Background(), UpdateInput{
+		AudiobookID: &bookID, TrackID: &firstTrackID, PositionSeconds: 600, DurationSeconds: 600, Completed: true,
+	}); err != nil {
+		t.Fatalf("first completion Update returned error: %v", err)
+	}
+
+	service.now = func() time.Time { return serverTime.Add(time.Second) }
+	if _, err := service.SetActiveItem(context.Background(), nil, nil, &thirdTrackID); err != nil {
+		t.Fatalf("select newer active chapter: %v", err)
+	}
+	selected, err := service.GetActive(context.Background())
+	if err != nil || selected == nil || selected.AudiobookTrackID == nil || *selected.AudiobookTrackID != thirdTrackID {
+		t.Fatalf("expected active chapter 12 before retry, got %+v, err %v", selected, err)
+	}
+
+	service.now = func() time.Time { return serverTime.Add(2 * time.Second) }
+	staleClientTime := serverTime.Add(-time.Second)
+	result, err := service.Update(context.Background(), UpdateInput{
+		AudiobookID: &bookID, TrackID: &firstTrackID, PositionSeconds: 600, DurationSeconds: 600,
+		Completed: true, ClientUpdatedAt: &staleClientTime,
+	})
+	if err != nil {
+		t.Fatalf("repeated completion Update returned error: %v", err)
+	}
+	active, err := service.GetActive(context.Background())
+	if err != nil || active == nil || active.AudiobookTrackID == nil || *active.AudiobookTrackID != thirdTrackID {
+		t.Fatalf("repeated completion replaced active chapter 12: %+v, err %v", active, err)
+	}
+	if !active.LastUpdated.Equal(selected.LastUpdated) {
+		t.Fatalf("repeated completion rewrote active timestamp: before %v, after %v", selected.LastUpdated, active.LastUpdated)
+	}
+	if result.NextTarget == nil || result.NextTarget.Type != "audiobook" ||
+		result.NextTarget.AudiobookID == nil || *result.NextTarget.AudiobookID != bookID ||
+		result.NextTarget.TrackID == nil || *result.NextTarget.TrackID != thirdTrackID {
+		t.Fatalf("expected retry to reflect current active chapter 12, got %+v", result.NextTarget)
+	}
+	var nextListened bool
+	if err := db.SQL.QueryRow(`SELECT is_listened FROM audiobook_tracks WHERE id = 12`).Scan(&nextListened); err != nil {
+		t.Fatalf("query selected chapter listened state: %v", err)
+	}
+	if nextListened {
+		t.Fatal("repeated completion marked newer active chapter listened")
+	}
+}
+
+func TestRepeatedAudiobookCompletionKeepsConfirmedNextChapter(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path) VALUES (1, 'Book', 'Author', 'Book')`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'Chapter 1', 'Book/01.mp3', '/path/01.mp3', 600), (11, 1, 2, 'Chapter 2', 'Book/02.mp3', '/path/02.mp3', 600)`)
+	mustExec(t, db.SQL, `INSERT INTO playlist (audiobook_id, position) VALUES (1, 1)`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10), (1, 11)`)
+
+	serverTime := time.Date(2026, 9, 29, 19, 29, 40, 0, time.UTC)
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+	service.now = func() time.Time { return serverTime }
+	bookID, firstTrackID := int64(1), int64(10)
+	first, err := service.Update(context.Background(), UpdateInput{
+		AudiobookID: &bookID, TrackID: &firstTrackID, PositionSeconds: 600, DurationSeconds: 600, Completed: true,
+	})
+	if err != nil {
+		t.Fatalf("first completion Update returned error: %v", err)
+	}
+	before, err := service.GetActive(context.Background())
+	if err != nil || before == nil || before.AudiobookTrackID == nil || *before.AudiobookTrackID != 11 {
+		t.Fatalf("expected active next chapter 11, got %+v, err %v", before, err)
+	}
+
+	service.now = func() time.Time { return serverTime.Add(time.Second) }
+	staleClientTime := serverTime.Add(-time.Second)
+	result, err := service.Update(context.Background(), UpdateInput{
+		AudiobookID: &bookID, TrackID: &firstTrackID, PositionSeconds: 600, DurationSeconds: 600,
+		Completed: true, ClientUpdatedAt: &staleClientTime,
+	})
+	if err != nil {
+		t.Fatalf("repeated completion Update returned error: %v", err)
+	}
+	if result.NextTarget == nil || result.NextTarget.Type != "audiobook" ||
+		result.NextTarget.AudiobookID == nil || *result.NextTarget.AudiobookID != bookID ||
+		result.NextTarget.TrackID == nil || *result.NextTarget.TrackID != 11 {
+		t.Fatalf("expected confirmed next chapter 11 after retry, got %+v", result.NextTarget)
+	}
+	if !result.Playback.LastUpdated.Equal(first.Playback.LastUpdated) {
+		t.Fatalf("repeated completion rewrote chapter progress timestamp: before %v, after %v", first.Playback.LastUpdated, result.Playback.LastUpdated)
+	}
+	after, err := service.GetActive(context.Background())
+	if err != nil || after == nil || after.AudiobookTrackID == nil || *after.AudiobookTrackID != 11 {
+		t.Fatalf("expected active next chapter 11 after retry, got %+v, err %v", after, err)
+	}
+	if !after.LastUpdated.Equal(before.LastUpdated) {
+		t.Fatalf("repeated completion rewrote active timestamp: before %v, after %v", before.LastUpdated, after.LastUpdated)
+	}
+}
+
 func TestListQueueReturnsPlaybackReadyEpisodesInPlaylistOrder(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()

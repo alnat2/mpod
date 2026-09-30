@@ -665,6 +665,40 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 			return UpdateResult{Playback: State{AudiobookID: abID, TrackID: *input.TrackID, PositionSeconds: currentPosition.Int64, LastUpdated: currentUpdated.Time.UTC()}}, nil
 		}
 
+		if input.Completed && currentPosition.Valid {
+			var alreadyListened bool
+			if err := tx.QueryRowContext(ctx, `SELECT is_listened FROM audiobook_tracks WHERE id = ?`, *input.TrackID).Scan(&alreadyListened); err != nil {
+				return UpdateResult{}, fmt.Errorf("load audiobook track listened state: %w", err)
+			}
+			if alreadyListened {
+				result := UpdateResult{Playback: State{
+					AudiobookID: abID, TrackID: *input.TrackID,
+					PositionSeconds: currentPosition.Int64, LastUpdated: currentUpdated.Time.UTC(),
+				}}
+				// A retry may need the current chapter target, but must not replace a newer selection.
+				var activeTrackID int64
+				err := tx.QueryRowContext(ctx, `
+					SELECT active.audiobook_track_id
+					FROM active_playback active
+					JOIN playlist p ON p.audiobook_id = active.audiobook_id
+					JOIN audiobook_playlist_tracks selected
+					  ON selected.audiobook_id = active.audiobook_id
+					 AND selected.track_id = active.audiobook_track_id
+					JOIN audiobook_tracks track ON track.id = active.audiobook_track_id
+					WHERE active.singleton_id = 1 AND active.audiobook_id = ?
+					  AND track.is_listened = 0
+				`, abID).Scan(&activeTrackID)
+				if err != nil && !errors.Is(err, sql.ErrNoRows) {
+					return UpdateResult{}, fmt.Errorf("load active audiobook target after repeated completion: %w", err)
+				}
+				if err == nil {
+					result.NextTarget = &PlaybackTarget{Type: "audiobook", AudiobookID: &abID, TrackID: &activeTrackID}
+					result.NextTrackID = &activeTrackID
+				}
+				return result, nil
+			}
+		}
+
 		if input.Completed {
 			if input.DurationSeconds > 0 {
 				position = input.DurationSeconds
