@@ -661,7 +661,7 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 		if err := tx.QueryRowContext(ctx, `SELECT position_seconds, last_updated FROM audiobook_playback WHERE track_id = ?`, *input.TrackID).Scan(&currentPosition, &currentUpdated); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return UpdateResult{}, fmt.Errorf("load audiobook playback: %w", err)
 		}
-		if !input.DidSeek && input.ClientUpdatedAt != nil && currentUpdated.Valid && input.ClientUpdatedAt.UTC().Before(currentUpdated.Time.UTC()) && position <= currentPosition.Int64 {
+		if !input.Completed && !input.DidSeek && input.ClientUpdatedAt != nil && currentUpdated.Valid && input.ClientUpdatedAt.UTC().Before(currentUpdated.Time.UTC()) && position <= currentPosition.Int64 {
 			return UpdateResult{Playback: State{AudiobookID: abID, TrackID: *input.TrackID, PositionSeconds: currentPosition.Int64, LastUpdated: currentUpdated.Time.UTC()}}, nil
 		}
 

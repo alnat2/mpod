@@ -102,6 +102,54 @@ func TestUpdateProcessesCompletionAfterNewerServerTimestamp(t *testing.T) {
 	}
 }
 
+func TestAudiobookCompletionAfterFullDurationProgressIgnoresStaleClientTimestamp(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path) VALUES (1, 'Book', 'Author', 'Book')`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'Chapter 1', 'Book/01.mp3', '/path/01.mp3', 600), (11, 1, 2, 'Chapter 2', 'Book/02.mp3', '/path/02.mp3', 600)`)
+	mustExec(t, db.SQL, `INSERT INTO playlist (audiobook_id, position) VALUES (1, 1)`)
+	mustExec(t, db.SQL, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10), (1, 11)`)
+
+	serverTime := time.Date(2026, 9, 29, 19, 29, 40, 0, time.UTC)
+	service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+	service.now = func() time.Time { return serverTime }
+	bookID, firstTrackID := int64(1), int64(10)
+	progressClientTime := serverTime.Add(-100 * time.Millisecond)
+	if _, err := service.Update(context.Background(), UpdateInput{
+		AudiobookID: &bookID, TrackID: &firstTrackID, PositionSeconds: 600, DurationSeconds: 600,
+		ClientUpdatedAt: &progressClientTime,
+	}); err != nil {
+		t.Fatalf("progress Update returned error: %v", err)
+	}
+
+	completionClientTime := serverTime.Add(-50 * time.Millisecond)
+	service.now = func() time.Time { return serverTime.Add(100 * time.Millisecond) }
+	result, err := service.Update(context.Background(), UpdateInput{
+		AudiobookID: &bookID, TrackID: &firstTrackID, PositionSeconds: 600, DurationSeconds: 600,
+		Completed: true, ClientUpdatedAt: &completionClientTime,
+	})
+	if err != nil {
+		t.Fatalf("completion Update returned error: %v", err)
+	}
+	if result.NextTarget == nil || result.NextTarget.Type != "audiobook" ||
+		result.NextTarget.AudiobookID == nil || *result.NextTarget.AudiobookID != bookID ||
+		result.NextTarget.TrackID == nil || *result.NextTarget.TrackID != 11 {
+		t.Fatalf("expected next audiobook chapter 11, got %+v", result.NextTarget)
+	}
+	if result.NextTrackID == nil || *result.NextTrackID != 11 {
+		t.Fatalf("expected nextTrackId 11, got %v", result.NextTrackID)
+	}
+
+	var listened bool
+	if err := db.SQL.QueryRow(`SELECT is_listened FROM audiobook_tracks WHERE id = 10`).Scan(&listened); err != nil {
+		t.Fatalf("query listened state: %v", err)
+	}
+	if !listened {
+		t.Fatal("expected completed chapter to be marked listened")
+	}
+}
+
 func TestListQueueReturnsPlaybackReadyEpisodesInPlaylistOrder(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
