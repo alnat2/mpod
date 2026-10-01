@@ -55,6 +55,7 @@ type CommitPlayback = (
 ) => Promise<PlaybackUpdateResponse | null>;
 
 const DOWNLOADED_SOURCE_POLL_MS = 5000;
+const AUTO_START_TIMEOUT_MS = 30_000;
 
 type UsePlaybackAudioOptions = {
   audioRef: RefObject<HTMLAudioElement | null>;
@@ -220,7 +221,11 @@ export function usePlaybackAudio({
   const completionGenerationRef = useRef<number | null>(null);
   const completionTraceRef = useRef<string | null>(null);
   const confirmedTransitionRef = useRef<{ generation: number; sourceKey: string } | null>(null);
-  const mediaRecoveryRef = useRef<{ generation: number; attempts: number } | null>(null);
+  const autoPlayRecoveryRef = useRef<{
+    generation: number;
+    canRecover: () => boolean;
+    recover: () => boolean;
+  } | null>(null);
   const retryCleanupRef = useRef<(() => void) | null>(null);
   const autoAdvanceIntentRef = useRef(false);
   const completedAudioSourceRef = useRef<string | null>(null);
@@ -456,6 +461,14 @@ export function usePlaybackAudio({
       let canceled = false;
       let retryListener: (() => void) | null = null;
       let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+      let startTimeout: ReturnType<typeof setTimeout> | null = null;
+      let attemptGeneration = 0;
+      let reloadAttempts = 0;
+
+      const clearStartTimeout = () => {
+        if (startTimeout !== null) clearTimeout(startTimeout);
+        startTimeout = null;
+      };
 
       const clearRetryWait = () => {
         if (retryListener) {
@@ -469,12 +482,87 @@ export function usePlaybackAudio({
       };
       const cancelAutoPlay = () => {
         canceled = true;
+        attemptGeneration += 1;
         clearRetryWait();
+        clearStartTimeout();
+        if (autoPlayRecoveryRef.current?.generation === currentGen) {
+          autoPlayRecoveryRef.current = null;
+        }
         if (retryCleanupRef.current === cancelAutoPlay) {
           retryCleanupRef.current = null;
         }
       };
       retryCleanupRef.current = cancelAutoPlay;
+
+      const stopAutoPlay = (message: string) => {
+        cancelAutoPlay();
+        sourcePrimeCleanupRef.current?.();
+        sourcePrimeCleanupRef.current = null;
+        sourceReloadCleanupRef.current?.();
+        sourceReloadCleanupRef.current = null;
+        autoAdvanceIntentRef.current = false;
+        userInitiatedPlayRef.current = false;
+        sourceSwitchingRef.current = false;
+        playingRef.current = false;
+        setPlaying(false);
+        setPlaybackError(message);
+        audio.pause();
+      };
+
+      const armStartTimeout = () => {
+        clearStartTimeout();
+        startTimeout = setTimeout(() => {
+          startTimeout = null;
+          if (canceled || sourceGenerationRef.current !== currentGen || !playingRef.current) return;
+          recordAudioTransition(traceId, "play_result", currentGen, "START_TIMEOUT", nextPosition, episode);
+          if (!recoverAutoPlay()) stopAutoPlay("Timeout waiting for audio to become ready");
+        }, AUTO_START_TIMEOUT_MS);
+      };
+
+      const recoverAutoPlay = () => {
+        if (canceled || sourceGenerationRef.current !== currentGen || !playingRef.current || reloadAttempts >= 1) return false;
+        const resumePosition = playSucceeded ? audio.currentTime : nextPosition;
+        reloadAttempts += 1;
+        attemptGeneration += 1;
+        playPending = false;
+        playSucceeded = false;
+        playAttempts = 0;
+        clearRetryWait();
+        clearStartTimeout();
+        // Detach the old prime/error handlers before reloading this source.
+        sourcePrimeCleanupRef.current?.();
+        sourcePrimeCleanupRef.current = null;
+        sourceReloadCleanupRef.current?.();
+        sourceSwitchingRef.current = true;
+        sourceReadyRef.current = false;
+        audio.pause();
+        sourceReloadCleanupRef.current = reloadAudioSourceAtPosition(
+          audio,
+          resumePosition,
+          setPositionSeconds,
+          () => {
+            sourceReloadCleanupRef.current = null;
+            if (canceled || sourceGenerationRef.current !== currentGen || !playingRef.current) return;
+            sourceSwitchingRef.current = false;
+            sourceReadyRef.current = true;
+            updateActiveDuration(currentGen);
+            setPlaybackError(null);
+            void tryPlay();
+          },
+          () => {
+            sourceReloadCleanupRef.current = null;
+            if (canceled || sourceGenerationRef.current !== currentGen) return;
+            stopAutoPlay(describeMediaError(audio.error));
+          }
+        );
+        armStartTimeout();
+        return true;
+      };
+      autoPlayRecoveryRef.current = {
+        generation: currentGen,
+        canRecover: () => !canceled && reloadAttempts < 1,
+        recover: recoverAutoPlay,
+      };
 
       const tryPlay = async () => {
         if (canceled || sourceGenerationRef.current !== currentGen || !playingRef.current || playSucceeded) return;
@@ -490,6 +578,7 @@ export function usePlaybackAudio({
 
         playPending = true;
         playAttempts++;
+        const attempt = ++attemptGeneration;
         setPlaying(true);
 
         const audio = audioRef.current;
@@ -503,6 +592,11 @@ export function usePlaybackAudio({
         const playPromise = attemptAudioPlay(audio, () => {});
         recordAudioTransition(traceId, "play_attempt", currentGen, undefined, nextPosition, episode);
         const error = await playPromise;
+        if (sourceGenerationRef.current !== currentGen) return;
+        if (canceled || attempt !== attemptGeneration) {
+          if (!playingRef.current && !audio.paused) audio.pause();
+          return;
+        }
         recordAudioTransition(
           traceId,
           "play_result",
@@ -515,11 +609,6 @@ export function usePlaybackAudio({
           nextPosition,
           episode
         );
-        if (sourceGenerationRef.current !== currentGen) return;
-        if (canceled) {
-          if (!playingRef.current && !audio.paused) audio.pause();
-          return;
-        }
         playPending = false;
         if (!playingRef.current) {
           audio.pause();
@@ -564,7 +653,8 @@ export function usePlaybackAudio({
             return;
           }
           playSucceeded = true;
-          cancelAutoPlay();
+          clearRetryWait();
+          clearStartTimeout();
         }
       };
 
@@ -611,6 +701,7 @@ export function usePlaybackAudio({
       }
 
       setPlaybackError(null);
+      armStartTimeout();
     };
 
     const startAfterCompletion = async (
@@ -906,10 +997,8 @@ export function usePlaybackAudio({
       completionGenerationRef.current = completionGeneration;
       completedAudioSourceRef.current = finishedSource;
 
-      // Synchronous auto-advance for seamless transition on mobile / locked screen.
-      // On Android Chromium, awaiting network promises when audio ends suspends Chrome
-      // and blocks audio.play() due to background autoplay policy.
-      // Starting the next item immediately in memory retains media continuation privileges.
+      // Prime the predicted source without awaiting completion/queue requests.
+      // Loading can still stall in the background; the start watchdog handles it.
       let synchronousNextItem: QueueEpisode | null = null;
       if (isAudiobookQueueItem(finishedEpisode)) {
         synchronousNextItem = getNextAudiobookChapter(
@@ -1070,7 +1159,7 @@ export function usePlaybackAudio({
       const current = currentEpisodeRef.current;
       const generation = sourceGenerationRef.current;
       const confirmed = confirmedTransitionRef.current;
-      const previousRecovery = mediaRecoveryRef.current;
+      const recovery = autoPlayRecoveryRef.current;
       if (
         audio.error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED &&
         current &&
@@ -1078,45 +1167,17 @@ export function usePlaybackAudio({
         confirmed.sourceKey === playbackMediaSourceKey(current) &&
         autoAdvanceIntentRef.current &&
         playingRef.current &&
-        (previousRecovery?.generation !== generation || previousRecovery.attempts < 1)
+        recovery?.generation === generation &&
+        recovery.canRecover()
       ) {
-        mediaRecoveryRef.current = { generation, attempts: 1 };
-        const savedPosition = audio.currentTime;
+        sourcePrimeCleanupRef.current?.();
+        sourcePrimeCleanupRef.current = null;
         sourceSwitchingRef.current = true;
         sourceReadyRef.current = false;
-        sourceReloadCleanupRef.current?.();
-        // Register the reload listener after this error event has finished
-        // dispatching; otherwise it observes the same error and fails at once.
+        // The replacement error listener must not see this same error event.
         queueMicrotask(() => {
           if (sourceGenerationRef.current !== generation || !playingRef.current) return;
-          sourceReloadCleanupRef.current = reloadAudioSourceAtPosition(
-            audio,
-            savedPosition,
-            setPositionSeconds,
-            () => {
-              sourceReloadCleanupRef.current = null;
-              if (sourceGenerationRef.current !== generation) return;
-              sourceSwitchingRef.current = false;
-              if (!playingRef.current) return;
-              sourceReadyRef.current = true;
-              updateActiveDuration(generation);
-              void attemptAudioPlay(audio, (error) => {
-                if (sourceGenerationRef.current !== generation) return;
-                playingRef.current = false;
-                setPlaying(false);
-                setPlaybackError(describeAudioError(error));
-              }, () => sourceGenerationRef.current === generation && playingRef.current);
-            },
-            () => {
-              sourceReloadCleanupRef.current = null;
-              if (sourceGenerationRef.current !== generation) return;
-              sourceSwitchingRef.current = false;
-              sourceReadyRef.current = false;
-              playingRef.current = false;
-              setPlaying(false);
-              setPlaybackError(describeMediaError(audio.error));
-            }
-          );
+          recovery.recover();
         });
         return;
       }

@@ -320,6 +320,13 @@ Rules:
 - resume the selected target from stored playback state, or start from `0:00` when it has none
 - ordinary progress responses must not be treated as completion and must not trigger playlist or file-side reconciliation
 
+Autostart recovery:
+- a chapter/episode transition waits up to 30 seconds for its initial source preparation and playback start; browser background timer suspension can delay this check
+- a stalled start gets one reload of the same source, preserving its saved start position; a confirmed unsupported-source error uses the same reload budget, preserving the current position once playback has started
+- the reloaded source gets a further 30-second start window; another timeout stops playback and reports an error
+- Pause, manual selection, and provider unmount cancel pending recovery; results from a superseded play attempt must not change the current attempt
+- a system Media Session Play command is idempotent while playback is already intended, including metadata loading and buffering
+
 ### Active Audio Duration Resolution
 
 Decision:

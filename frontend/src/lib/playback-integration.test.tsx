@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api, type AudiobookTrack, type PlaybackQueueResponse, type PlaybackUpdateResponse, type PlaybackState } from "./api";
 import { PlaybackProvider, usePlayback } from "./playback-context";
@@ -67,6 +67,8 @@ describe("combined playback integration", () => {
   let tracks: AudiobookTrack[];
   let queue: QueueEpisode[];
 
+  afterEach(() => vi.useRealTimers());
+
   beforeEach(() => {
     vi.restoreAllMocks();
     FakeAudio.instances = [];
@@ -113,7 +115,7 @@ describe("combined playback integration", () => {
 
   async function startBook() {
     const user = userEvent.setup();
-    render(<PlaybackProvider><Harness /></PlaybackProvider>);
+    const { unmount } = render(<PlaybackProvider><Harness /></PlaybackProvider>);
     await waitFor(() => expect(screen.getByTestId("source")).toHaveTextContent("1"));
     await waitFor(() => expect(api.audiobooks.get).toHaveBeenCalled());
     await user.click(screen.getByRole("button", { name: "Book" }));
@@ -121,7 +123,7 @@ describe("combined playback integration", () => {
     await waitFor(() => expect(audio.src).toContain("/tracks/1/audio"));
     await act(async () => { audio.readyState = 4; audio.emit("loadedmetadata"); audio.emit("canplay"); });
     await waitFor(() => expect(audio.playImpl).toHaveBeenCalled());
-    return { user, audio };
+    return { user, audio, unmount };
   }
 
   it("stops after three rejected auto plays and ignores further readiness", async () => {
@@ -453,6 +455,159 @@ describe("combined playback integration", () => {
     expect(audio.paused).toBe(false);
     expect(screen.getByTestId("error")).toHaveTextContent("none");
     expect(vi.mocked(api.playback.update).mock.calls.filter(([payload]) => payload.completed)).toHaveLength(1);
+  });
+
+  it("recovers a confirmed media error before the new chapter has metadata", async () => {
+    const { audio } = await startBook();
+    const oldPlay = deferred<void>();
+    audio.playImpl.mockImplementationOnce(() => oldPlay.promise);
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    await waitFor(() => expect(screen.getByTestId("queue-track")).toHaveTextContent("2"));
+    expect(audio.readyState).toBe(0);
+    const loads = audio.loadImpl.mock.calls.length;
+    await act(async () => { audio.error = { code: 4 }; audio.emit("error"); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    audio.error = null;
+    await ready(audio);
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("playing")).toHaveTextContent("true");
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+    await act(async () => { oldPlay.resolve(); });
+    expect(audio.paused).toBe(false);
+  });
+
+  it("reloads a pending hidden-tab start once and ignores the superseded play result", async () => {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    const { audio } = await startBook();
+    let rejectOldPlay!: (error: Error) => void;
+    audio.playImpl.mockImplementationOnce(() => new Promise<void>((_, reject) => { rejectOldPlay = reject; }));
+    vi.useFakeTimers();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    const loads = audio.loadImpl.mock.calls.length;
+    const plays = audio.playImpl.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    await ready(audio);
+    expect(audio.playImpl).toHaveBeenCalledTimes(plays + 1);
+    expect(audio.paused).toBe(false);
+    await act(async () => { rejectOldPlay(new DOMException("Old load aborted", "NotSupportedError")); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+  });
+
+  it("bounds a resumed chapter's metadata wait and preserves its saved position", async () => {
+    tracks[1]!.positionSeconds = 47;
+    const { audio } = await startBook();
+    vi.useFakeTimers();
+    const plays = audio.playImpl.mock.calls.length;
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    expect(audio.playImpl).toHaveBeenCalledTimes(plays);
+    const loads = audio.loadImpl.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    await ready(audio);
+    expect(audio.currentTime).toBe(47);
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("position")).toHaveTextContent("47");
+  });
+
+  it.each(["loading", "play"] as const)("stops if the reloaded source stalls during %s and blocks late playback", async (stage) => {
+    const { audio } = await startBook();
+    const oldPlay = deferred<void>();
+    audio.playImpl.mockImplementation(() => oldPlay.promise);
+    vi.useFakeTimers();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    const loads = audio.loadImpl.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    if (stage === "play") await ready(audio);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    expect(screen.getByTestId("playing")).toHaveTextContent("false");
+    expect(screen.getByTestId("error")).toHaveTextContent("Timeout waiting for audio to become ready");
+    const plays = audio.playImpl.mock.calls.length;
+    await ready(audio);
+    await act(async () => { audio.paused = false; audio.emit("playing"); oldPlay.resolve(); });
+    expect(audio.paused).toBe(true);
+    expect(audio.playImpl).toHaveBeenCalledTimes(plays);
+  });
+
+  it.each(["pause", "select", "unmount"] as const)("cancels the pending-start watchdog on %s", async (action) => {
+    const { audio, unmount } = await startBook();
+    const oldPlay = deferred<void>();
+    audio.playImpl.mockImplementationOnce(() => oldPlay.promise);
+    vi.useFakeTimers();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    await act(async () => {
+      if (action === "unmount") unmount();
+      else screen.getByRole("button", { name: action === "pause" ? "Toggle" : "Choose C" }).click();
+    });
+    if (action === "select") await ready(audio);
+    const loads = audio.loadImpl.mock.calls.length;
+    const plays = audio.playImpl.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); oldPlay.resolve(); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads);
+    expect(audio.playImpl).toHaveBeenCalledTimes(plays);
+    if (action === "select") {
+      expect(audio.src).toContain("/tracks/3/audio");
+      expect(audio.currentTime).toBe(31);
+      expect(audio.paused).toBe(false);
+    } else expect(audio.paused).toBe(true);
+  });
+
+  it.each(["timeout-error", "error-timeout"] as const)("shares the single reload budget across %s", async (order) => {
+    const { audio } = await startBook();
+    const oldPlay = deferred<void>();
+    audio.playImpl.mockImplementation(() => oldPlay.promise);
+    vi.useFakeTimers();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    const loads = audio.loadImpl.mock.calls.length;
+    await act(async () => {
+      if (order === "timeout-error") await vi.advanceTimersByTimeAsync(30_000);
+      else { audio.error = { code: 4 }; audio.emit("error"); }
+    });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    await act(async () => {
+      if (order === "timeout-error") { audio.error = { code: 4 }; audio.emit("error"); }
+      else await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    expect(screen.getByTestId("playing")).toHaveTextContent("false");
+    expect(screen.getByTestId("error")).toHaveTextContent(order === "timeout-error"
+      ? "Audio source is not supported." : "Timeout waiting for audio to become ready");
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); oldPlay.resolve(); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    expect(audio.paused).toBe(true);
+  });
+
+  it("treats MediaSession Play as idempotent while a resumed chapter waits for metadata", async () => {
+    tracks[1]!.positionSeconds = 47;
+    const { audio } = await startBook();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    expect(audio.paused).toBe(true);
+    expect(screen.getByTestId("playing")).toHaveTextContent("true");
+    const session = navigator.mediaSession;
+    const playHandler = vi.mocked(session.setActionHandler).mock.calls.find(([action]) => action === "play")![1]!;
+    await act(async () => { playHandler({ action: "play" }); playHandler({ action: "play" }); });
+    expect(screen.getByTestId("playing")).toHaveTextContent("true");
+    await ready(audio);
+    expect(audio.currentTime).toBe(47);
+    expect(audio.paused).toBe(false);
   });
 
   it("records a play attempt before a hidden-tab play promise settles", async () => {
