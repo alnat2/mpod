@@ -751,7 +751,14 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 					WHERE active_playback.episode_id IS NULL AND
 					  (active_playback.audiobook_id IS NULL OR
 					   (active_playback.audiobook_id = ? AND
-					    (active_playback.audiobook_track_id IS NULL OR active_playback.audiobook_track_id = ?)))
+					    (active_playback.audiobook_track_id IS NULL OR active_playback.audiobook_track_id = ? OR
+					     NOT EXISTS (
+					       SELECT 1 FROM audiobook_playlist_tracks selected
+					       JOIN audiobook_tracks track ON track.id = selected.track_id
+					       WHERE selected.audiobook_id = active_playback.audiobook_id
+					         AND selected.track_id = active_playback.audiobook_track_id
+					         AND track.is_listened = 0
+					     ))))
 				`, abID, nextTrackID, now, abID, *input.TrackID)
 				if err != nil {
 					return UpdateResult{}, fmt.Errorf("advance active audiobook track: %w", err)

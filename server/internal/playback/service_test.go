@@ -214,6 +214,62 @@ func TestFirstDelayedAudiobookCompletionPreservesNewerActiveChapter(t *testing.T
 	}
 }
 
+func TestFirstAudiobookCompletionAdvancesPastInvalidActiveChapter(t *testing.T) {
+	for _, invalidation := range []string{"listened", "deselected"} {
+		t.Run(invalidation, func(t *testing.T) {
+			db := newTestDB(t)
+			defer db.Close()
+
+			mustExec(t, db.SQL, `INSERT INTO audiobooks (id, title, author, rel_path) VALUES (1, 'Book', 'Author', 'Book')`)
+			mustExec(t, db.SQL, `INSERT INTO audiobook_tracks (id, audiobook_id, track_number, title, rel_path, file_path, duration) VALUES (10, 1, 1, 'A', 'Book/01.mp3', '/path/01.mp3', 600), (11, 1, 2, 'B', 'Book/02.mp3', '/path/02.mp3', 600), (12, 1, 3, 'C', 'Book/03.mp3', '/path/03.mp3', 600)`)
+			mustExec(t, db.SQL, `INSERT INTO playlist (audiobook_id, position) VALUES (1, 1)`)
+			mustExec(t, db.SQL, `INSERT INTO audiobook_playlist_tracks (audiobook_id, track_id) VALUES (1, 10), (1, 11), (1, 12)`)
+
+			serverTime := time.Date(2026, 9, 29, 19, 29, 40, 0, time.UTC)
+			service := NewService(db.SQL, episodes.NewActions(db.SQL, downloads.NewService(db.SQL, nil, t.TempDir())), playlist.NewService(db.SQL))
+			service.now = func() time.Time { return serverTime }
+			bookID, firstTrackID, activeTrackID, nextTrackID := int64(1), int64(10), int64(11), int64(12)
+			if _, err := service.Update(context.Background(), UpdateInput{
+				AudiobookID: &bookID, TrackID: &firstTrackID, PositionSeconds: 600, DurationSeconds: 600,
+			}); err != nil {
+				t.Fatalf("save progress for A: %v", err)
+			}
+			if _, err := service.SetActiveItem(context.Background(), nil, nil, &activeTrackID); err != nil {
+				t.Fatalf("select active B: %v", err)
+			}
+			if invalidation == "listened" {
+				mustExec(t, db.SQL, `UPDATE audiobook_tracks SET is_listened = 1 WHERE id = 11`)
+			} else {
+				mustExec(t, db.SQL, `DELETE FROM audiobook_playlist_tracks WHERE audiobook_id = 1 AND track_id = 11`)
+			}
+
+			service.now = func() time.Time { return serverTime.Add(time.Second) }
+			result, err := service.Update(context.Background(), UpdateInput{
+				AudiobookID: &bookID, TrackID: &firstTrackID, PositionSeconds: 600, DurationSeconds: 600, Completed: true,
+			})
+			if err != nil {
+				t.Fatalf("complete A: %v", err)
+			}
+			var listened bool
+			if err := db.SQL.QueryRow(`SELECT is_listened FROM audiobook_tracks WHERE id = 10`).Scan(&listened); err != nil || !listened {
+				t.Fatalf("expected A listened, got %v, err %v", listened, err)
+			}
+			if result.NextTarget == nil || result.NextTarget.Type != "audiobook" ||
+				result.NextTarget.AudiobookID == nil || *result.NextTarget.AudiobookID != bookID ||
+				result.NextTarget.TrackID == nil || *result.NextTarget.TrackID != nextTrackID {
+				t.Fatalf("expected next eligible chapter C, got %+v", result.NextTarget)
+			}
+			if result.NextTrackID == nil || *result.NextTrackID != nextTrackID {
+				t.Fatalf("expected compatible nextTrackId C, got %v", result.NextTrackID)
+			}
+			active, err := service.GetActive(context.Background())
+			if err != nil || active == nil || active.AudiobookTrackID == nil || *active.AudiobookTrackID != nextTrackID {
+				t.Fatalf("expected invalid active B replaced by C, got %+v, err %v", active, err)
+			}
+		})
+	}
+}
+
 func TestRepeatedAudiobookCompletionDoesNotReplaceNewerActiveChapter(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()
