@@ -596,6 +596,28 @@ func (s *Service) episodeInPlaylist(ctx context.Context, episodeID int64) (bool,
 	return count > 0, nil
 }
 
+func selectedActiveAudiobookTrack(ctx context.Context, tx *sql.Tx, audiobookID int64) (*int64, error) {
+	var trackID int64
+	err := tx.QueryRowContext(ctx, `
+		SELECT active.audiobook_track_id
+		FROM active_playback active
+		JOIN playlist p ON p.audiobook_id = active.audiobook_id
+		JOIN audiobook_playlist_tracks selected
+		  ON selected.audiobook_id = active.audiobook_id
+		 AND selected.track_id = active.audiobook_track_id
+		JOIN audiobook_tracks track ON track.id = active.audiobook_track_id
+		WHERE active.singleton_id = 1 AND active.audiobook_id = ?
+		  AND track.is_listened = 0
+	`, audiobookID).Scan(&trackID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &trackID, nil
+}
+
 func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, error) {
 	if input.PositionSeconds < 0 {
 		return UpdateResult{}, ErrInvalidPosition
@@ -661,8 +683,31 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 		if err := tx.QueryRowContext(ctx, `SELECT position_seconds, last_updated FROM audiobook_playback WHERE track_id = ?`, *input.TrackID).Scan(&currentPosition, &currentUpdated); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return UpdateResult{}, fmt.Errorf("load audiobook playback: %w", err)
 		}
-		if !input.DidSeek && input.ClientUpdatedAt != nil && currentUpdated.Valid && input.ClientUpdatedAt.UTC().Before(currentUpdated.Time.UTC()) && position <= currentPosition.Int64 {
+		if !input.Completed && !input.DidSeek && input.ClientUpdatedAt != nil && currentUpdated.Valid && input.ClientUpdatedAt.UTC().Before(currentUpdated.Time.UTC()) && position <= currentPosition.Int64 {
 			return UpdateResult{Playback: State{AudiobookID: abID, TrackID: *input.TrackID, PositionSeconds: currentPosition.Int64, LastUpdated: currentUpdated.Time.UTC()}}, nil
+		}
+
+		if input.Completed && currentPosition.Valid {
+			var alreadyListened bool
+			if err := tx.QueryRowContext(ctx, `SELECT is_listened FROM audiobook_tracks WHERE id = ?`, *input.TrackID).Scan(&alreadyListened); err != nil {
+				return UpdateResult{}, fmt.Errorf("load audiobook track listened state: %w", err)
+			}
+			if alreadyListened {
+				result := UpdateResult{Playback: State{
+					AudiobookID: abID, TrackID: *input.TrackID,
+					PositionSeconds: currentPosition.Int64, LastUpdated: currentUpdated.Time.UTC(),
+				}}
+				// A retry may need the current chapter target, but must not replace a newer selection.
+				activeTrackID, err := selectedActiveAudiobookTrack(ctx, tx, abID)
+				if err != nil {
+					return UpdateResult{}, fmt.Errorf("load active audiobook target after repeated completion: %w", err)
+				}
+				if activeTrackID != nil {
+					result.NextTarget = &PlaybackTarget{Type: "audiobook", AudiobookID: &abID, TrackID: activeTrackID}
+					result.NextTrackID = activeTrackID
+				}
+				return result, nil
+			}
 		}
 
 		if input.Completed {
@@ -695,7 +740,7 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 				LIMIT 1
 			`, abID, *input.TrackID).Scan(&nextTrackID)
 			if err == nil {
-				if _, err := tx.ExecContext(ctx, `
+				activeUpdate, err := tx.ExecContext(ctx, `
 					INSERT INTO active_playback (singleton_id, episode_id, audiobook_id, audiobook_track_id, last_updated)
 					VALUES (1, NULL, ?, ?, ?)
 					ON CONFLICT (singleton_id) DO UPDATE SET
@@ -703,26 +748,48 @@ func (s *Service) Update(ctx context.Context, input UpdateInput) (UpdateResult, 
 						audiobook_id = excluded.audiobook_id,
 						audiobook_track_id = excluded.audiobook_track_id,
 						last_updated = excluded.last_updated
-				`, abID, nextTrackID, now); err != nil {
+					WHERE active_playback.episode_id IS NULL AND
+					  (active_playback.audiobook_id IS NULL OR
+					   (active_playback.audiobook_id = ? AND
+					    (active_playback.audiobook_track_id IS NULL OR active_playback.audiobook_track_id = ? OR
+					     NOT EXISTS (
+					       SELECT 1 FROM audiobook_playlist_tracks selected
+					       JOIN audiobook_tracks track ON track.id = selected.track_id
+					       WHERE selected.audiobook_id = active_playback.audiobook_id
+					         AND selected.track_id = active_playback.audiobook_track_id
+					         AND track.is_listened = 0
+					     ))))
+				`, abID, nextTrackID, now, abID, *input.TrackID)
+				if err != nil {
 					return UpdateResult{}, fmt.Errorf("advance active audiobook track: %w", err)
+				}
+				updated, err := activeUpdate.RowsAffected()
+				if err != nil {
+					return UpdateResult{}, fmt.Errorf("check active audiobook advance: %w", err)
+				}
+				confirmedTrackID := &nextTrackID
+				if updated == 0 {
+					confirmedTrackID, err = selectedActiveAudiobookTrack(ctx, tx, abID)
+					if err != nil {
+						return UpdateResult{}, fmt.Errorf("load current active audiobook target: %w", err)
+					}
 				}
 				if err := tx.Commit(); err != nil {
 					return UpdateResult{}, fmt.Errorf("commit audiobook completion: %w", err)
 				}
-				return UpdateResult{
+				result := UpdateResult{
 					Playback: State{
 						AudiobookID:     abID,
 						TrackID:         *input.TrackID,
 						PositionSeconds: position,
 						LastUpdated:     now,
 					},
-					NextTarget: &PlaybackTarget{
-						Type:        "audiobook",
-						AudiobookID: &abID,
-						TrackID:     &nextTrackID,
-					},
-					NextTrackID: &nextTrackID,
-				}, nil
+				}
+				if confirmedTrackID != nil {
+					result.NextTarget = &PlaybackTarget{Type: "audiobook", AudiobookID: &abID, TrackID: confirmedTrackID}
+					result.NextTrackID = confirmedTrackID
+				}
+				return result, nil
 			}
 			if !errors.Is(err, sql.ErrNoRows) {
 				return UpdateResult{}, fmt.Errorf("find next audiobook track: %w", err)

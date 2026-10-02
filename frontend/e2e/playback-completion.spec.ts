@@ -8,6 +8,7 @@ test("starts the topmost fallback after the last episode really ends", async ({
   await page.setViewportSize({ width: 1280, height: 900 });
   await installAppShellApiMocks(page);
 
+
   await page.addInitScript(() => {
     class FakeAudio extends EventTarget {
       src = "";
@@ -25,7 +26,7 @@ test("starts the topmost fallback after the last episode really ends", async ({
         super();
         (
           globalThis as typeof globalThis & { __mpodTestAudio?: FakeAudio }
-        ).__mpodTestAudio = this;
+        ).__mpodTestAudio ??= this;
       }
 
       load() {
@@ -114,11 +115,12 @@ test("starts the topmost fallback after the last episode really ends", async ({
       }),
     });
   });
-  await page.route("**/api/playback/2", async (route) => {
+  await page.route("**/api/playback?*", async (route) => {
+    const id = Number(new URL(route.request().url()).searchParams.get("episodeId"));
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ playback: lastEpisode.playback }),
+      body: JSON.stringify({ playback: id === 2 ? lastEpisode.playback : null }),
     });
   });
   await page.route("**/api/episodes/*", async (route) => {

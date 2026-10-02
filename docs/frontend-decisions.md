@@ -320,6 +320,24 @@ Rules:
 - resume the selected target from stored playback state, or start from `0:00` when it has none
 - ordinary progress responses must not be treated as completion and must not trigger playlist or file-side reconciliation
 
+Autostart recovery:
+- a chapter/episode transition waits up to 30 seconds for its initial source preparation and playback start; browser background timer suspension can delay this check
+- a stalled start gets one reload of the same source, preserving its saved start position; a confirmed unsupported-source error uses the same reload budget, preserving the current position once playback has started
+- the reloaded source gets a further 30-second start window; another timeout stops playback and reports an error
+- Pause, manual selection, and provider unmount cancel pending recovery; results from a superseded play attempt must not change the current attempt
+- a system Media Session Play command is idempotent while playback is already intended, including metadata loading and buffering
+
+Prepared next source:
+- while the active audio is playing, preload one predicted next source in a paused reserve audio element; preparation never commits active playback, progress, or completion
+- prefer the next selected uncompleted audiobook chapter from the current cache, then sequential/wrapped queue candidates; backend `nextTarget` still reconciles the prediction after actual completion
+- readiness requires playback data buffered at the saved position, `HAVE_FUTURE_DATA`, and no pending seek or media error; metadata alone is insufficient
+- consume only a reserve matching the source key, saved position, source generation, and queue revision, rechecking readiness at the handoff
+- promote the prepared element without changing its `src`, seeking again, or calling `load()`; rebind active media listeners and release the previous element; queued events from a retired element cannot mutate active playback
+- an unavailable, stale, or failed reserve uses the existing cold-load/recovery path; reserve failure does not stop the current audio
+- Pause, manual selection, queue invalidation, and provider unmount dispose of the reserve; speed, seek, progress sync, and Media Session actions use the active element after promotion
+- preparation may issue audio requests earlier and buffer one additional source; browser preload and background playback policies still apply
+- the diagnostic test build `417537c` passed several hours of user testing on Android Chrome with the screen locked, for both audiobook and podcast transitions; release builds still require validation after diagnostics are removed
+
 ### Active Audio Duration Resolution
 
 Decision:

@@ -37,7 +37,8 @@ export function usePlaybackMediaSession({
         return;
       }
 
-      if (!audio.paused) {
+      // Play is idempotent while a source is still preparing or buffering.
+      if (!audio.paused || playingRef.current) {
         playingRef.current = true;
         userInitiatedPlayRef.current = false;
         setPlaying(true);

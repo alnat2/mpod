@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api, type AudiobookTrack, type PlaybackQueueResponse, type PlaybackUpdateResponse, type PlaybackState } from "./api";
 import { PlaybackProvider, usePlayback } from "./playback-context";
@@ -35,24 +35,44 @@ const book: QueueEpisode = {
   description: null, audioUrl: "/api/audiobooks/10/tracks/1/audio", duration: 100,
   downloaded: false, isListened: false, publishedAt: null, playback: null,
 };
+const podcastEpisode = (id: number, isListened = false): QueueEpisode => ({
+  ...book,
+  type: "episode",
+  id,
+  audiobookId: undefined,
+  trackId: undefined,
+  trackNumber: undefined,
+  podcastId: 7,
+  podcastTitle: "Podcast",
+  audioUrl: `/api/episodes/${id}/audio`,
+  isListened,
+});
 function Harness() {
   const { currentEpisode, queue, playing, playbackError, positionSeconds,
-    playQueueItem, playToggle, playAudiobookTrack } = usePlayback();
+    playQueueItem, playToggle, playAudiobookTrack, updateQueue, reloadQueue, setSpeedLabel, speedLabel } = usePlayback();
   return <>
     <div data-testid="source">{currentEpisode?.trackId ?? "none"}</div>
     <div data-testid="queue-track">{queue[0]?.trackId}</div>
     <div data-testid="playing">{String(playing)}</div>
     <div data-testid="error">{playbackError ?? "none"}</div>
     <div data-testid="position">{positionSeconds}</div>
+    <div data-testid="episode">{currentEpisode?.id}</div>
+    <div data-testid="speed">{speedLabel}</div>
     <button onClick={() => playQueueItem(queue[0]!)}>Book</button>
+    {queue[1] && <button onClick={() => playQueueItem(queue[1]!)}>Second</button>}
     <button onClick={playToggle}>Toggle</button>
     <button onClick={() => void playAudiobookTrack(10, track(3, { positionSeconds: 31 }))}>Choose C</button>
+    <button onClick={() => updateQueue((items) => items.slice(0, 1))}>Remove next</button>
+    <button onClick={() => void reloadQueue()}>Reload</button>
+    <button onClick={() => setSpeedLabel("Speed 2x")}>Speed 2x</button>
   </>;
 }
 
 describe("combined playback integration", () => {
   let tracks: AudiobookTrack[];
   let queue: QueueEpisode[];
+
+  afterEach(() => vi.useRealTimers());
 
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -100,7 +120,7 @@ describe("combined playback integration", () => {
 
   async function startBook() {
     const user = userEvent.setup();
-    render(<PlaybackProvider><Harness /></PlaybackProvider>);
+    const { unmount } = render(<PlaybackProvider><Harness /></PlaybackProvider>);
     await waitFor(() => expect(screen.getByTestId("source")).toHaveTextContent("1"));
     await waitFor(() => expect(api.audiobooks.get).toHaveBeenCalled());
     await user.click(screen.getByRole("button", { name: "Book" }));
@@ -108,8 +128,229 @@ describe("combined playback integration", () => {
     await waitFor(() => expect(audio.src).toContain("/tracks/1/audio"));
     await act(async () => { audio.readyState = 4; audio.emit("loadedmetadata"); audio.emit("canplay"); });
     await waitFor(() => expect(audio.playImpl).toHaveBeenCalled());
-    return { user, audio };
+    return { user, audio, unmount };
   }
+
+  async function prepareReserve(audio: FakeAudio, position = 0) {
+    await act(async () => { audio.emit("playing"); });
+    await waitFor(() => expect(FakeAudio.instances.length).toBeGreaterThan(1));
+    const reserve = FakeAudio.instances[1]!;
+    await act(async () => {
+      reserve.duration = 100;
+      reserve.readyState = 1;
+      reserve.emit("loadedmetadata");
+      reserve.buffered = { length: 1, start: () => position, end: () => position + 5 };
+      reserve.readyState = 4;
+      reserve.emit("canplay");
+    });
+    return reserve;
+  }
+
+  it.each(["book", "podcast"])("starts the buffered %s source without another load and ignores old element events", async (kind) => {
+    if (kind === "podcast") {
+      queue = [podcastEpisode(1), podcastEpisode(2)];
+      vi.mocked(api.playback.update).mockImplementation(async (payload) => ({
+        playback: { episodeId: payload.episodeId, positionSeconds: payload.positionSeconds, lastUpdated: stamp },
+        nextTarget: payload.completed ? { type: "episode", episodeId: 2 } : undefined,
+        nextEpisodeId: null,
+      }));
+    }
+    const user = userEvent.setup();
+    render(<PlaybackProvider><Harness /></PlaybackProvider>);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Book" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Book" }));
+    const audio = FakeAudio.first;
+    await ready(audio);
+    await waitFor(() => expect(audio.paused).toBe(false));
+    const activeCalls = vi.mocked(api.playback.setActive).mock.calls.length;
+    const reserve = await prepareReserve(audio);
+    expect(api.playback.setActive).toHaveBeenCalledTimes(activeCalls);
+    expect(reserve.playImpl).not.toHaveBeenCalled();
+    const loads = reserve.loadImpl.mock.calls.length;
+    const oldPause = audio.captureEvent("pause");
+    const oldPlaying = audio.captureEvent("playing");
+    const oldEnded = audio.captureEvent("ended");
+    const oldError = audio.captureEvent("error");
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    try {
+      await act(async () => { audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended"); });
+      await waitFor(() => expect(reserve.paused).toBe(false));
+      expect(reserve.loadImpl).toHaveBeenCalledTimes(loads);
+      expect(audio.src).toBe("");
+      expect(screen.getByTestId("playing")).toHaveTextContent("true");
+      await act(async () => {
+        reserve.currentTime = 8; reserve.emit("timeupdate");
+        audio.error = { code: 4 }; oldPause(); oldPlaying(); oldEnded(); oldError();
+      });
+      expect(reserve.paused).toBe(false);
+      expect(screen.getByTestId("position")).toHaveTextContent("8");
+      expect(screen.getByTestId("error")).toHaveTextContent("none");
+      expect(vi.mocked(api.playback.update).mock.calls.filter(([payload]) => payload.completed)).toHaveLength(1);
+    } finally {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    }
+  });
+
+  it("resumes a prepared chapter at its buffered saved position and keeps controls on the new element", async () => {
+    tracks[1] = track(2, { positionSeconds: 23 });
+    vi.spyOn(api.settings, "update").mockResolvedValue({ settings: {
+      dailyRefreshTime: "03:00", playbackSpeed: "Speed 1.3x", audiobookPlaybackSpeed: "Speed 2x",
+      proxyEnabled: false, proxyConfigured: false, appBuild: "test",
+    } });
+    const { user, audio } = await startBook();
+    const reserve = await prepareReserve(audio, 23);
+    await act(async () => { audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended"); });
+    await waitFor(() => expect(reserve.paused).toBe(false));
+    expect(reserve.currentTime).toBe(23);
+    await user.click(screen.getByRole("button", { name: "Speed 2x" }));
+    expect(reserve.playbackRate).toBe(2);
+    await user.click(screen.getByRole("button", { name: "Toggle" }));
+    expect(reserve.paused).toBe(true);
+    expect(screen.getByTestId("playing")).toHaveTextContent("false");
+    expect(reserve.loadImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["metadata", "error", "lost buffer"])("falls back without disturbing current playback when reserve has %s", async (state) => {
+    const { audio } = await startBook();
+    await act(async () => { audio.emit("playing"); });
+    const reserve = FakeAudio.instances[1]!;
+    await act(async () => {
+      reserve.readyState = state === "metadata" ? 1 : 4;
+      reserve.duration = 100;
+      reserve.emit("loadedmetadata");
+      if (state === "error") { reserve.error = { code: 4 }; reserve.emit("error"); }
+      if (state === "lost buffer") {
+        reserve.buffered = { length: 1, start: () => 0, end: () => 5 }; reserve.emit("canplay");
+        reserve.buffered = { length: 0, start: () => 0, end: () => 0 };
+      }
+    });
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+    await act(async () => { audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended"); });
+    expect(audio.src).toContain("/tracks/2/audio");
+    expect(reserve.playImpl).not.toHaveBeenCalled();
+    expect(reserve.src).toBe("");
+    await ready(audio);
+    expect(audio.paused).toBe(false);
+  });
+
+  it.each(["Pause", "selection", "unmount"])("disposes the reserve on %s and ignores late readiness", async (action) => {
+    const { audio, user, unmount } = await startBook();
+    const reserve = await prepareReserve(audio);
+    const lateReady = reserve.captureEvent("canplay");
+    if (action === "Pause") await user.click(screen.getByRole("button", { name: "Toggle" }));
+    else if (action === "selection") await user.click(screen.getByRole("button", { name: "Choose C" }));
+    else unmount();
+    expect(reserve.src).toBe("");
+    await act(async () => { reserve.readyState = 4; lateReady(); });
+    expect(reserve.playImpl).not.toHaveBeenCalled();
+  });
+
+  it("invalidates a prepared podcast when it leaves the queue", async () => {
+    queue = [book, podcastEpisode(2)];
+    tracks = [track(1)];
+    const { audio, user } = await startBook();
+    const reserve = await prepareReserve(audio);
+    expect(reserve.src).toContain("/episodes/2/audio");
+    await user.click(screen.getByRole("button", { name: "Remove next" }));
+    expect(reserve.src).toBe("");
+    expect(audio.paused).toBe(false);
+    expect(reserve.playImpl).not.toHaveBeenCalled();
+  });
+
+  it("reconciles a different authoritative target after starting the prepared prediction", async () => {
+    const { audio } = await startBook();
+    const reserve = await prepareReserve(audio);
+    const completion = deferred<PlaybackUpdateResponse>();
+    vi.mocked(api.playback.update).mockReturnValue(completion.promise);
+    await act(async () => { audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended"); });
+    await waitFor(() => expect(reserve.paused).toBe(false));
+    await act(async () => completion.resolve({
+      playback: { audiobookId: 10, trackId: 1, positionSeconds: 100, lastUpdated: stamp },
+      nextTarget: { type: "audiobook", audiobookId: 10, trackId: 3 }, nextEpisodeId: null,
+    }));
+    await waitFor(() => expect(reserve.src).toContain("/tracks/3/audio"));
+    await ready(reserve);
+    expect(reserve.currentTime).toBe(31);
+    expect(screen.getByTestId("source")).toHaveTextContent("3");
+    expect(reserve.paused).toBe(false);
+  });
+
+  it.each(["mixed", "wrap"])("uses the reserve after authoritative %s-queue completion", async (kind) => {
+    tracks = [track(1)];
+    const next = podcastEpisode(2);
+    queue = kind === "wrap" ? [next, book] : [book, next];
+    vi.mocked(api.playback.update).mockImplementation(async (payload) => {
+      if (payload.completed) queue = [next];
+      return {
+        playback: { audiobookId: 10, trackId: payload.trackId, positionSeconds: payload.positionSeconds, lastUpdated: stamp },
+        nextTarget: payload.completed ? { type: "episode", episodeId: 2 } : undefined, nextEpisodeId: null,
+      };
+    });
+    const user = userEvent.setup();
+    render(<PlaybackProvider><Harness /></PlaybackProvider>);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Second" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: kind === "wrap" ? "Second" : "Book" }));
+    const audio = FakeAudio.first;
+    await ready(audio);
+    const reserve = await prepareReserve(audio);
+    const loads = reserve.loadImpl.mock.calls.length;
+    await act(async () => { audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended"); });
+    await waitFor(() => expect(screen.getByTestId("episode")).toHaveTextContent("2"));
+    expect(reserve.paused).toBe(false);
+    expect(reserve.loadImpl).toHaveBeenCalledTimes(loads);
+    expect(reserve.playbackRate).toBe(1.3);
+  });
+
+  it("handles consecutive prepared chapters and Media Session Pause on the promoted element", async () => {
+    tracks[2] = track(3);
+    vi.mocked(api.playback.update).mockImplementation(async (payload) => ({
+      playback: { audiobookId: 10, trackId: payload.trackId, positionSeconds: payload.positionSeconds, lastUpdated: stamp },
+      nextTarget: payload.completed ? { type: "audiobook", audiobookId: 10, trackId: (payload.trackId ?? 0) + 1 } : undefined,
+      nextEpisodeId: null,
+    }));
+    const { audio } = await startBook();
+    const second = await prepareReserve(audio);
+    await act(async () => { audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended"); });
+    await waitFor(() => expect(second.paused).toBe(false));
+    await act(async () => { second.emit("playing"); });
+    await waitFor(() => expect(FakeAudio.instances.some((element) => element.src.includes("/tracks/3/audio"))).toBe(true));
+    const third = FakeAudio.instances.find((element) => element.src.includes("/tracks/3/audio"))!;
+    await act(async () => {
+      third.duration = 100; third.readyState = 4;
+      third.buffered = { length: 1, start: () => 0, end: () => 5 }; third.emit("canplay");
+      second.currentTime = 100; second.ended = true; second.paused = true; second.emit("ended");
+    });
+    await waitFor(() => expect(third.paused).toBe(false));
+    expect(third.loadImpl).toHaveBeenCalledTimes(1);
+    const setHandler = vi.mocked(navigator.mediaSession.setActionHandler);
+    const pause = setHandler.mock.calls.find(([action]) => action === "pause")![1]!;
+    await act(async () => pause({ action: "pause" }));
+    expect(third.paused).toBe(true);
+    expect(screen.getByTestId("playing")).toHaveTextContent("false");
+    expect(second.src).toBe("");
+  });
+
+  it("keeps recovery on a promoted element and ignores its late play result after Pause", async () => {
+    const { audio } = await startBook();
+    const reserve = await prepareReserve(audio);
+    const pending = deferred<void>();
+    reserve.playImpl.mockImplementationOnce(() => pending.promise);
+    vi.useFakeTimers();
+    await act(async () => { audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended"); });
+    expect(reserve.playImpl).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(reserve.loadImpl).toHaveBeenCalledTimes(2);
+    await ready(reserve);
+    expect(reserve.playImpl).toHaveBeenCalledTimes(2);
+    expect(reserve.paused).toBe(false);
+    const pause = vi.mocked(navigator.mediaSession.setActionHandler).mock.calls
+      .find(([action]) => action === "pause")![1]!;
+    await act(async () => pause({ action: "pause" }));
+    await act(async () => { reserve.paused = false; pending.resolve(); reserve.emit("playing"); });
+    expect(reserve.paused).toBe(true);
+    expect(screen.getByTestId("playing")).toHaveTextContent("false");
+  });
 
   it("stops after three rejected auto plays and ignores further readiness", async () => {
     const { audio } = await startBook();
@@ -215,6 +456,442 @@ describe("combined playback integration", () => {
     expect(screen.getByTestId("error")).toHaveTextContent("none");
   });
 
+  it("records one trace when the next chapter starts before completion confirmation fails", async () => {
+    const { audio } = await startBook();
+    let rejectCompletion!: (error: Error) => void;
+    const pendingCompletion = new Promise<PlaybackUpdateResponse>((_, reject) => {
+      rejectCompletion = reject;
+    });
+    const update = vi.mocked(api.playback.update);
+    const ordinaryUpdate = update.getMockImplementation()!;
+    update.mockImplementation((payload) =>
+      payload.completed ? pendingCompletion : ordinaryUpdate(payload)
+    );
+
+    await act(async () => {
+      audio.ended = true;
+      audio.paused = true;
+      audio.currentTime = 100;
+      audio.emit("ended");
+    });
+    await waitFor(() => expect(audio.src).toContain("/tracks/2/audio"));
+    await ready(audio);
+    await waitFor(() => expect(audio.paused).toBe(false));
+    await act(async () => { rejectCompletion(new Error("Network unavailable")); });
+    await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent("Could not confirm playback completion."));
+
+  });
+
+  it("recovers an unreceived completion request and keeps the predicted chapter playing", async () => {
+    const { audio } = await startBook();
+    let rejectFirst!: (error: Error) => void;
+    const firstRequest = new Promise<PlaybackUpdateResponse>((_, reject) => { rejectFirst = reject; });
+    const update = vi.mocked(api.playback.update);
+    const ordinaryUpdate = update.getMockImplementation()!;
+    let completions = 0;
+    update.mockImplementation((payload) => {
+      if (!payload.completed) return ordinaryUpdate(payload);
+      completions += 1;
+      return completions === 1 ? firstRequest : Promise.resolve({
+        playback: { audiobookId: 10, trackId: 1, positionSeconds: 100, lastUpdated: stamp },
+        nextTarget: { type: "audiobook", audiobookId: 10, trackId: 2 },
+        nextTrackId: 2,
+        nextEpisodeId: null,
+      });
+    });
+
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    await waitFor(() => expect(audio.src).toContain("/tracks/2/audio"));
+    await ready(audio);
+    await waitFor(() => expect(audio.paused).toBe(false));
+    await act(async () => { rejectFirst(new TypeError("Failed to fetch")); });
+
+    await waitFor(() => expect(completions).toBe(2));
+    expect(audio.src).toContain("/tracks/2/audio");
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+  });
+
+  it("does not complete twice when the server committed but Chrome lost the response", async () => {
+    const { audio } = await startBook();
+    let rejectFirst!: (error: Error) => void;
+    const firstRequest = new Promise<PlaybackUpdateResponse>((_, reject) => { rejectFirst = reject; });
+    const update = vi.mocked(api.playback.update);
+    const ordinaryUpdate = update.getMockImplementation()!;
+    let completions = 0;
+    update.mockImplementation((payload) => {
+      if (!payload.completed) return ordinaryUpdate(payload);
+      completions += 1;
+      return firstRequest;
+    });
+
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    await waitFor(() => expect(audio.src).toContain("/tracks/2/audio"));
+    await ready(audio);
+    await waitFor(() => expect(audio.paused).toBe(false));
+    const bookReadsBeforeRecovery = vi.mocked(api.audiobooks.get).mock.calls.length;
+    // The get mock reads tracks at call time, after the simulated server commit.
+    tracks = tracks.map((item) => item.id === 1 ? { ...item, isListened: true } : item);
+    queue = [{ ...book, trackId: 2, trackNumber: 2, audioUrl: "/api/audiobooks/10/tracks/2/audio" }];
+    await act(async () => { rejectFirst(new TypeError("Response lost")); });
+
+    await waitFor(() => expect(vi.mocked(api.audiobooks.get).mock.calls.length).toBeGreaterThan(bookReadsBeforeRecovery));
+    expect(completions).toBe(1);
+    expect(audio.src).toContain("/tracks/2/audio");
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+  });
+
+  it.each(["request lost", "response lost"] as const)(
+    "keeps the next podcast episode after a completion %s",
+    async (failure) => {
+      let serverCompleted = false;
+      queue = [podcastEpisode(11), podcastEpisode(12)];
+      vi.mocked(api.playback.queue).mockImplementation(async () => ({
+        queue: queue.map((item) => ({ ...item })),
+        // This may still point at the finished episode after completion.
+        activePlayback: { episodeId: 11, lastUpdated: stamp },
+      }));
+      vi.spyOn(api.episodes, "get").mockImplementation(async (id) => ({
+        episode: podcastEpisode(id, id === 11 && serverCompleted),
+      }));
+      let rejectFirst!: (error: Error) => void;
+      const firstRequest = new Promise<PlaybackUpdateResponse>((_, reject) => { rejectFirst = reject; });
+      const update = vi.mocked(api.playback.update);
+      const ordinaryUpdate = update.getMockImplementation()!;
+      let completions = 0;
+      update.mockImplementation((payload) => {
+        if (!payload.completed) return ordinaryUpdate(payload);
+        completions += 1;
+        return completions === 1 ? firstRequest : Promise.resolve({
+          playback: { episodeId: 11, positionSeconds: 100, lastUpdated: stamp },
+          nextTarget: { type: "episode", episodeId: 12 },
+          nextEpisodeId: 12,
+        });
+      });
+
+      render(<PlaybackProvider><Harness /></PlaybackProvider>);
+      await waitFor(() => expect(screen.getByRole("button", { name: "Book" })).toBeEnabled());
+      await userEvent.setup().click(screen.getByRole("button", { name: "Book" }));
+      const audio = FakeAudio.first;
+      await waitFor(() => expect(audio.src).toContain("/episodes/11/audio"));
+      await ready(audio);
+      await waitFor(() => expect(audio.paused).toBe(false));
+      await act(async () => {
+        audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+      });
+      await waitFor(() => expect(audio.src).toContain("/episodes/12/audio"));
+      await ready(audio);
+      await waitFor(() => expect(audio.paused).toBe(false));
+      serverCompleted = failure === "response lost";
+      await act(async () => { rejectFirst(new TypeError("Failed to fetch")); });
+      await waitFor(() => expect(completions).toBe(failure === "request lost" ? 2 : 1));
+      expect(audio.src).toContain("/episodes/12/audio");
+      expect(audio.paused).toBe(false);
+      expect(screen.getByTestId("error")).toHaveTextContent("none");
+    }
+  );
+
+  it.each([false, true])(
+    "reconciles completion of the last podcast episode when earlier items listened=%s",
+    async (earlierListened) => {
+      let serverCompleted = false;
+      queue = [podcastEpisode(12, earlierListened), podcastEpisode(11)];
+      vi.mocked(api.playback.queue).mockImplementation(async () => ({
+        queue: queue.map((item) => ({ ...item })),
+        activePlayback: { episodeId: 11, lastUpdated: stamp },
+      }));
+      vi.spyOn(api.episodes, "get").mockImplementation(async (id) => ({
+        episode: podcastEpisode(id, id === 11 && serverCompleted),
+      }));
+      let rejectCompletion!: (error: Error) => void;
+      const completion = new Promise<PlaybackUpdateResponse>((_, reject) => {
+        rejectCompletion = reject;
+      });
+      const update = vi.mocked(api.playback.update);
+      const ordinaryUpdate = update.getMockImplementation()!;
+      update.mockImplementation((payload) =>
+        payload.completed ? completion : ordinaryUpdate(payload)
+      );
+
+      render(<PlaybackProvider><Harness /></PlaybackProvider>);
+      await userEvent.setup().click(await screen.findByRole("button", { name: "Second" }));
+      const audio = FakeAudio.first;
+      await waitFor(() => expect(audio.src).toContain("/episodes/11/audio"));
+      await ready(audio);
+      await waitFor(() => expect(audio.paused).toBe(false));
+      const playsBeforeCompletion = audio.playImpl.mock.calls.length;
+      await act(async () => {
+        audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+      });
+      serverCompleted = true;
+      queue = [podcastEpisode(12, earlierListened), podcastEpisode(11, true)];
+      await act(async () => { rejectCompletion(new TypeError("Response lost")); });
+
+      if (earlierListened) {
+        await waitFor(() => expect(screen.getByTestId("playing")).toHaveTextContent("false"));
+        expect(audio.paused).toBe(true);
+        expect(audio.playImpl).toHaveBeenCalledTimes(playsBeforeCompletion);
+      } else {
+        await waitFor(() => expect(audio.src).toContain("/episodes/12/audio"));
+        await ready(audio);
+        await waitFor(() => expect(audio.paused).toBe(false));
+      }
+      expect(update.mock.calls.filter(([payload]) => payload.completed)).toHaveLength(1);
+      expect(screen.getByTestId("error")).toHaveTextContent("none");
+    }
+  );
+
+  it("recovers MEDIA_ERROR_4 on the predicted chapter after completion succeeds", async () => {
+    const { audio } = await startBook();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    await waitFor(() => expect(audio.src).toContain("/tracks/2/audio"));
+    await ready(audio);
+    await waitFor(() => expect(audio.paused).toBe(false));
+    const loadsBeforeError = audio.loadImpl.mock.calls.length;
+    const playsBeforeError = audio.playImpl.mock.calls.length;
+
+    await act(async () => {
+      audio.error = { code: 4 };
+      audio.paused = true;
+      audio.emit("error");
+    });
+    await waitFor(() => expect(audio.loadImpl.mock.calls.length).toBeGreaterThan(loadsBeforeError));
+    audio.error = null;
+    await ready(audio);
+    await waitFor(() => expect(audio.playImpl.mock.calls.length).toBe(playsBeforeError + 1));
+    expect(audio.src).toContain("/tracks/2/audio");
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+    expect(vi.mocked(api.playback.update).mock.calls.filter(([payload]) => payload.completed)).toHaveLength(1);
+  });
+
+  it("recovers a confirmed media error before the new chapter has metadata", async () => {
+    const { audio } = await startBook();
+    const oldPlay = deferred<void>();
+    audio.playImpl.mockImplementationOnce(() => oldPlay.promise);
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    await waitFor(() => expect(screen.getByTestId("queue-track")).toHaveTextContent("2"));
+    expect(audio.readyState).toBe(0);
+    const loads = audio.loadImpl.mock.calls.length;
+    await act(async () => { audio.error = { code: 4 }; audio.emit("error"); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    audio.error = null;
+    await ready(audio);
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("playing")).toHaveTextContent("true");
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+    await act(async () => { oldPlay.resolve(); });
+    expect(audio.paused).toBe(false);
+  });
+
+  it("reloads a pending hidden-tab start once and ignores the superseded play result", async () => {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    const { audio } = await startBook();
+    let rejectOldPlay!: (error: Error) => void;
+    audio.playImpl.mockImplementationOnce(() => new Promise<void>((_, reject) => { rejectOldPlay = reject; }));
+    vi.useFakeTimers();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    const loads = audio.loadImpl.mock.calls.length;
+    const plays = audio.playImpl.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    await ready(audio);
+    expect(audio.playImpl).toHaveBeenCalledTimes(plays + 1);
+    expect(audio.paused).toBe(false);
+    await act(async () => { rejectOldPlay(new DOMException("Old load aborted", "NotSupportedError")); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+  });
+
+  it("bounds a resumed chapter's metadata wait and preserves its saved position", async () => {
+    tracks[1]!.positionSeconds = 47;
+    const { audio } = await startBook();
+    vi.useFakeTimers();
+    const plays = audio.playImpl.mock.calls.length;
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    expect(audio.playImpl).toHaveBeenCalledTimes(plays);
+    const loads = audio.loadImpl.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    await ready(audio);
+    expect(audio.currentTime).toBe(47);
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("position")).toHaveTextContent("47");
+  });
+
+  it.each(["loading", "play"] as const)("stops if the reloaded source stalls during %s and blocks late playback", async (stage) => {
+    const { audio } = await startBook();
+    const oldPlay = deferred<void>();
+    audio.playImpl.mockImplementation(() => oldPlay.promise);
+    vi.useFakeTimers();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    const loads = audio.loadImpl.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    if (stage === "play") await ready(audio);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    expect(screen.getByTestId("playing")).toHaveTextContent("false");
+    expect(screen.getByTestId("error")).toHaveTextContent("Timeout waiting for audio to become ready");
+    const plays = audio.playImpl.mock.calls.length;
+    await ready(audio);
+    await act(async () => { audio.paused = false; audio.emit("playing"); oldPlay.resolve(); });
+    expect(audio.paused).toBe(true);
+    expect(audio.playImpl).toHaveBeenCalledTimes(plays);
+  });
+
+  it.each(["pause", "select", "unmount"] as const)("cancels the pending-start watchdog on %s", async (action) => {
+    const { audio, unmount } = await startBook();
+    const oldPlay = deferred<void>();
+    audio.playImpl.mockImplementationOnce(() => oldPlay.promise);
+    vi.useFakeTimers();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    await act(async () => {
+      if (action === "unmount") unmount();
+      else screen.getByRole("button", { name: action === "pause" ? "Toggle" : "Choose C" }).click();
+    });
+    if (action === "select") await ready(audio);
+    const loads = audio.loadImpl.mock.calls.length;
+    const plays = audio.playImpl.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); oldPlay.resolve(); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads);
+    expect(audio.playImpl).toHaveBeenCalledTimes(plays);
+    if (action === "select") {
+      expect(audio.src).toContain("/tracks/3/audio");
+      expect(audio.currentTime).toBe(31);
+      expect(audio.paused).toBe(false);
+    } else expect(audio.paused).toBe(true);
+  });
+
+  it.each(["timeout-error", "error-timeout"] as const)("shares the single reload budget across %s", async (order) => {
+    const { audio } = await startBook();
+    const oldPlay = deferred<void>();
+    audio.playImpl.mockImplementation(() => oldPlay.promise);
+    vi.useFakeTimers();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    const loads = audio.loadImpl.mock.calls.length;
+    await act(async () => {
+      if (order === "timeout-error") await vi.advanceTimersByTimeAsync(30_000);
+      else { audio.error = { code: 4 }; audio.emit("error"); }
+    });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    await act(async () => {
+      if (order === "timeout-error") { audio.error = { code: 4 }; audio.emit("error"); }
+      else await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    expect(screen.getByTestId("playing")).toHaveTextContent("false");
+    expect(screen.getByTestId("error")).toHaveTextContent(order === "timeout-error"
+      ? "Audio source is not supported." : "Timeout waiting for audio to become ready");
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); oldPlay.resolve(); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    expect(audio.paused).toBe(true);
+  });
+
+  it("treats MediaSession Play as idempotent while a resumed chapter waits for metadata", async () => {
+    tracks[1]!.positionSeconds = 47;
+    const { audio } = await startBook();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    expect(audio.paused).toBe(true);
+    expect(screen.getByTestId("playing")).toHaveTextContent("true");
+    const session = navigator.mediaSession;
+    const playHandler = vi.mocked(session.setActionHandler).mock.calls.find(([action]) => action === "play")![1]!;
+    await act(async () => { playHandler({ action: "play" }); playHandler({ action: "play" }); });
+    expect(screen.getByTestId("playing")).toHaveTextContent("true");
+    await ready(audio);
+    expect(audio.currentTime).toBe(47);
+    expect(audio.paused).toBe(false);
+  });
+
+  it("does not resume after Pause while the failed chapter reloads", async () => {
+    const { user, audio } = await startBook();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    await waitFor(() => expect(audio.src).toContain("/tracks/2/audio"));
+    await ready(audio);
+    await waitFor(() => expect(screen.getByTestId("playing")).toHaveTextContent("true"));
+    await waitFor(() => expect(screen.getByTestId("queue-track")).toHaveTextContent("2"));
+    await act(async () => {
+      audio.error = { code: 4 }; audio.paused = true; audio.emit("error");
+    });
+    const playsBeforePause = audio.playImpl.mock.calls.length;
+    await user.click(screen.getByRole("button", { name: "Toggle" }));
+    audio.error = null;
+    await ready(audio);
+    expect(audio.playImpl).toHaveBeenCalledTimes(playsBeforePause);
+    expect(screen.getByTestId("playing")).toHaveTextContent("false");
+  });
+
+  it("keeps the manually chosen chapter during the previous chapter's media recovery", async () => {
+    const { user, audio } = await startBook();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    await waitFor(() => expect(audio.src).toContain("/tracks/2/audio"));
+    await ready(audio);
+    await waitFor(() => expect(screen.getByTestId("queue-track")).toHaveTextContent("2"));
+    await act(async () => {
+      audio.error = { code: 4 }; audio.paused = true; audio.emit("error");
+    });
+    const lateBReady = audio.captureEvent("canplay");
+    await user.click(screen.getByRole("button", { name: "Choose C" }));
+    await waitFor(() => expect(audio.src).toContain("/tracks/3/audio"));
+    audio.error = null;
+    await ready(audio);
+    await waitFor(() => expect(audio.paused).toBe(false));
+    expect(audio.currentTime).toBe(31);
+    const playsAtC = audio.playImpl.mock.calls.length;
+    const loadsAtC = audio.loadImpl.mock.calls.length;
+    await act(async () => { lateBReady(); });
+    expect(audio.src).toContain("/tracks/3/audio");
+    expect(audio.currentTime).toBe(31);
+    expect(audio.paused).toBe(false);
+    expect(audio.playImpl).toHaveBeenCalledTimes(playsAtC);
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loadsAtC);
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+  });
+
+  it("stops after one reload when the next chapter really has an unsupported source", async () => {
+    const { audio } = await startBook();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    await waitFor(() => expect(audio.src).toContain("/tracks/2/audio"));
+    await ready(audio);
+    await waitFor(() => expect(screen.getByTestId("queue-track")).toHaveTextContent("2"));
+    await act(async () => {
+      audio.error = { code: 4 }; audio.paused = true; audio.emit("error");
+    });
+    const loadsAfterRetry = audio.loadImpl.mock.calls.length;
+    await act(async () => { audio.error = { code: 4 }; audio.emit("error"); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loadsAfterRetry);
+    expect(screen.getByTestId("playing")).toHaveTextContent("false");
+    expect(screen.getByTestId("error")).toHaveTextContent("Audio source is not supported.");
+  });
+
   it.each(["completion", "queue"] as const)(
     "keeps C after B recovery and late A %s / B play responses", async (delayStage) => {
       const completionA = deferred<PlaybackUpdateResponse>();
@@ -256,12 +933,17 @@ describe("combined playback integration", () => {
         audio.currentTime = 23; audio.emit("timeupdate");
         audio.error = { code: 4 }; audio.paused = true; audio.emit("error");
       });
-      expect(screen.getByTestId("error")).not.toHaveTextContent("none");
-      expect(screen.getByTestId("playing")).toHaveTextContent("false");
       const loadsBeforeRecovery = audio.loadImpl.mock.calls.length;
       const playsBeforeRecovery = audio.playImpl.mock.calls.length;
-      await user.click(screen.getByRole("button", { name: "Toggle" }));
-      await waitFor(() => expect(audio.loadImpl).toHaveBeenCalledTimes(loadsBeforeRecovery + 1));
+      if (delayStage === "completion") {
+        expect(screen.getByTestId("error")).not.toHaveTextContent("none");
+        expect(screen.getByTestId("playing")).toHaveTextContent("false");
+        await user.click(screen.getByRole("button", { name: "Toggle" }));
+        await waitFor(() => expect(audio.loadImpl).toHaveBeenCalledTimes(loadsBeforeRecovery + 1));
+      } else {
+        expect(screen.getByTestId("error")).toHaveTextContent("none");
+        expect(screen.getByTestId("playing")).toHaveTextContent("true");
+      }
       const lateBReady = audio.captureEvent("canplay");
       audio.error = null;
       await ready(audio);

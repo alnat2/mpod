@@ -140,6 +140,7 @@ export function usePlaybackSync({
         didSeek?: boolean;
         durationSeconds?: number;
         target?: QueueEpisode;
+        onError?: (error: unknown) => void;
       } = {}
     ) => {
       const episode = options.target ?? currentEpisodeRef.current;
@@ -168,7 +169,7 @@ export function usePlaybackSync({
             episode,
             activeMediaDurationRef
           );
-        const response = await api.playback.update({
+        const payload = {
           ...(isAudiobook
             ? { audiobookId: mediaID, trackId }
             : { episodeId: mediaID }),
@@ -179,9 +180,11 @@ export function usePlaybackSync({
           completed,
           didSeek: options.didSeek ?? false,
           clientUpdatedAt: new Date().toISOString(),
-        });
+        };
+        const response = await api.playback.update(payload);
         return response;
-      } catch {
+      } catch (error) {
+        options.onError?.(error);
         // Silently fail for background sync.
         return null;
       }
