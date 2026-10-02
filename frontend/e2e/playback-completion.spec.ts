@@ -8,7 +8,6 @@ test("starts the topmost fallback after the last episode really ends", async ({
   await page.setViewportSize({ width: 1280, height: 900 });
   await installAppShellApiMocks(page);
 
-
   await page.addInitScript(() => {
     class FakeAudio extends EventTarget {
       src = "";
@@ -22,11 +21,12 @@ test("starts the topmost fallback after the last episode really ends", async ({
       error: MediaError | null = null;
       playCalls = 0;
 
-      constructor() {
-        super();
-        (
-          globalThis as typeof globalThis & { __mpodTestAudio?: FakeAudio }
-        ).__mpodTestAudio ??= this;
+      override addEventListener(...args: Parameters<EventTarget["addEventListener"]>) {
+        super.addEventListener(...args);
+        // The playback hook binds ended only on its active element, including after StrictMode setup.
+        if (args[0] === "ended") {
+          (globalThis as typeof globalThis & { __mpodTestAudio?: FakeAudio }).__mpodTestAudio = this;
+        }
       }
 
       load() {

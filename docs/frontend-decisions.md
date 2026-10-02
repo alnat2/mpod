@@ -325,6 +325,8 @@ Autostart recovery:
 - a stalled start gets one reload of the same source, preserving its saved start position; a confirmed unsupported-source error uses the same reload budget, preserving the current position once playback has started
 - the reloaded source gets a further 30-second start window; another timeout stops playback and reports an error
 - Pause, manual selection, and provider unmount cancel pending recovery; results from a superseded play attempt must not change the current attempt
+- removing the pending source from the queue or replacing the current chapter cancels its watchdog, readiness/retry listeners, and recovery; a queue refresh retaining the same source keeps its recovery budget
+- a queued pause from a retired load must not cancel playback intent while the new queue selection is still preparing
 - a system Media Session Play command is idempotent while playback is already intended, including metadata loading and buffering
 
 Prepared next source:

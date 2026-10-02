@@ -216,6 +216,7 @@ export function usePlaybackAudio({
   const confirmedTransitionRef = useRef<{ generation: number; sourceKey: string } | null>(null);
   const autoPlayRecoveryRef = useRef<{
     generation: number;
+    isCurrent: () => boolean;
     canRecover: () => boolean;
     recover: () => boolean;
   } | null>(null);
@@ -469,6 +470,8 @@ export function usePlaybackAudio({
       sourceSwitchingRef.current = true;
       sourceGenerationRef.current += 1;
       const currentGen = sourceGenerationRef.current;
+      const currentSelection = selectionGenerationRef.current;
+      const sourceKey = playbackMediaSourceKey(episode);
       resetActiveDuration();
       if (preparedAudio) switchAudio(preparedAudio);
       setPlaying(playingRef.current);
@@ -488,6 +491,15 @@ export function usePlaybackAudio({
       let startTimeout: ReturnType<typeof setTimeout> | null = null;
       let attemptGeneration = 0;
       let reloadAttempts = 0;
+
+      // Queue refreshes may keep this source; removing or replacing it invalidates the operation.
+      const isCurrentAutoPlay = () => !canceled &&
+        sourceGenerationRef.current === currentGen &&
+        selectionGenerationRef.current === currentSelection &&
+        audioRef.current === audio &&
+        playbackMediaSourceKey(currentEpisodeRef.current) === sourceKey &&
+        queueRef.current.some((item) => sameQueueItem(item, episode)) &&
+        matchesMediaSource(audio.src, getAudioSourceUrl(episode));
 
       const clearStartTimeout = () => {
         if (startTimeout !== null) {
@@ -539,13 +551,13 @@ export function usePlaybackAudio({
         clearStartTimeout();
         startTimeout = setTimeout(() => {
           startTimeout = null;
-          if (canceled || sourceGenerationRef.current !== currentGen || !playingRef.current) return;
+          if (!isCurrentAutoPlay() || !playingRef.current) return;
           if (!recoverAutoPlay()) stopAutoPlay("Timeout waiting for audio to become ready");
         }, AUTO_START_TIMEOUT_MS);
       };
 
       const recoverAutoPlay = () => {
-        if (canceled || sourceGenerationRef.current !== currentGen || !playingRef.current || reloadAttempts >= 1) return false;
+        if (!isCurrentAutoPlay() || !playingRef.current || reloadAttempts >= 1) return false;
         const resumePosition = playSucceeded ? audio.currentTime : nextPosition;
         reloadAttempts += 1;
         attemptGeneration += 1;
@@ -564,10 +576,10 @@ export function usePlaybackAudio({
         sourceReloadCleanupRef.current = reloadAudioSourceAtPosition(
           audio,
           resumePosition,
-          setPositionSeconds,
+          (position) => { if (isCurrentAutoPlay()) setPositionSeconds(position); },
           () => {
             sourceReloadCleanupRef.current = null;
-            if (canceled || sourceGenerationRef.current !== currentGen || !playingRef.current) return;
+            if (!isCurrentAutoPlay() || !playingRef.current) return;
             sourceSwitchingRef.current = false;
             sourceReadyRef.current = true;
             updateActiveDuration(currentGen);
@@ -576,7 +588,7 @@ export function usePlaybackAudio({
           },
           () => {
             sourceReloadCleanupRef.current = null;
-            if (canceled || sourceGenerationRef.current !== currentGen) return;
+            if (!isCurrentAutoPlay()) return;
             stopAutoPlay(describeMediaError(audio.error));
           }
         );
@@ -585,12 +597,13 @@ export function usePlaybackAudio({
       };
       autoPlayRecoveryRef.current = {
         generation: currentGen,
-        canRecover: () => !canceled && reloadAttempts < 1,
+        isCurrent: isCurrentAutoPlay,
+        canRecover: () => isCurrentAutoPlay() && reloadAttempts < 1,
         recover: recoverAutoPlay,
       };
 
       const tryPlay = async () => {
-        if (canceled || sourceGenerationRef.current !== currentGen || !playingRef.current || playSucceeded) return;
+        if (!isCurrentAutoPlay() || !playingRef.current || playSucceeded) return;
         if (playPending) return;
 
         if (playAttempts >= MAX_PLAY_ATTEMPTS) {
@@ -621,6 +634,7 @@ export function usePlaybackAudio({
           if (!playingRef.current && !audio.paused) audio.pause();
           return;
         }
+        if (!isCurrentAutoPlay()) return;
         playPending = false;
         if (!playingRef.current) {
           audio.pause();
@@ -642,7 +656,7 @@ export function usePlaybackAudio({
               audio.addEventListener("canplay", retryListener);
               retryTimeout = setTimeout(() => {
                 clearRetryWait();
-                if (!canceled && sourceGenerationRef.current === currentGen && playingRef.current) {
+                if (isCurrentAutoPlay() && playingRef.current) {
                   playingRef.current = false;
                   setPlaying(false);
                   setPlaybackError("Timeout waiting for audio to become ready");
@@ -687,7 +701,7 @@ export function usePlaybackAudio({
         },
         () => {
           sourcePrimeCleanupRef.current = null;
-          if (sourceGenerationRef.current !== currentGen) {
+          if (!isCurrentAutoPlay()) {
             return;
           }
           sourceSwitchingRef.current = false;
@@ -700,13 +714,13 @@ export function usePlaybackAudio({
         },
         () => {
           sourcePrimeCleanupRef.current = null;
-          if (sourceGenerationRef.current !== currentGen) return;
+          if (!isCurrentAutoPlay()) return;
           sourceSwitchingRef.current = false;
           sourceReadyRef.current = false;
           setPlaying(false);
           setPlaybackError(describeMediaError(audio.error));
         },
-        () => sourceGenerationRef.current === currentGen
+        isCurrentAutoPlay
       );
 
       if (preparedAudio || nextPosition === 0) {
@@ -1105,14 +1119,15 @@ export function usePlaybackAudio({
     };
 
     const onPause = () => {
-      if (audio.ended) {
-        completeCurrentPlayback();
-        return;
-      }
-      if (sourceSwitchingRef.current) {
+      // A retired load can queue pause after the queue has selected a new, unready source.
+      if (sourceSwitchingRef.current || !sourceReadyRef.current) {
         if (!playingRef.current) {
           retryCleanupRef.current?.();
         }
+        return;
+      }
+      if (audio.ended) {
+        completeCurrentPlayback();
         return;
       }
       updateActiveDuration(sourceGenerationRef.current);
@@ -1256,6 +1271,23 @@ export function usePlaybackAudio({
     updateActiveDuration,
     userInitiatedPlayRef,
   ]);
+
+  useEffect(() => {
+    const recovery = autoPlayRecoveryRef.current;
+    if (!recovery || recovery.generation !== sourceGenerationRef.current || recovery.isCurrent()) return;
+    cancelAutoAdvance();
+    sourcePrimeCleanupRef.current?.();
+    sourcePrimeCleanupRef.current = null;
+    sourceReloadCleanupRef.current?.();
+    sourceReloadCleanupRef.current = null;
+    sourceGenerationRef.current += 1;
+    selectionGenerationRef.current += 1;
+    sourceReadyRef.current = false;
+    // Keep playback intent for the new queue selection while retiring the old source.
+    sourceSwitchingRef.current = true;
+    audioRef.current?.pause();
+    sourceSwitchingRef.current = false;
+  }, [audioRef, cancelAutoAdvance, currentEpisode, queue, selectionGenerationRef, sourceReadyRef]);
 
   useEffect(() => {
     const itemKey = currentEpisode ? queueItemKey(currentEpisode) : null;

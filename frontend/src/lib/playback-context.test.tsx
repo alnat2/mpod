@@ -4053,8 +4053,10 @@ describe("PlaybackProvider", () => {
 
     await user.click(screen.getByRole("button", { name: "Play" }));
     const audio = FakeAudio.first;
-    audio.duration = 103;
-    audio.emit("loadedmetadata");
+    await act(async () => {
+      audio.duration = 103;
+      audio.emit("loadedmetadata");
+    });
 
     await waitFor(() =>
       expect(screen.getByTestId("state-playing")).toHaveTextContent("yes")
@@ -4064,12 +4066,14 @@ describe("PlaybackProvider", () => {
     const progressCountBeforeTicks = onProgressRender.mock.calls.length;
 
     // Simulate regular playback ticks on timeupdate
-    audio.currentTime = 10;
-    audio.emit("timeupdate");
-    audio.currentTime = 20;
-    audio.emit("timeupdate");
-    audio.currentTime = 30;
-    audio.emit("timeupdate");
+    await act(async () => {
+      audio.currentTime = 10;
+      audio.emit("timeupdate");
+      audio.currentTime = 20;
+      audio.emit("timeupdate");
+      audio.currentTime = 30;
+      audio.emit("timeupdate");
+    });
 
     await waitFor(() =>
       expect(screen.getByTestId("progress-pos")).toHaveTextContent("30")

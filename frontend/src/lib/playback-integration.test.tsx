@@ -63,6 +63,7 @@ function Harness() {
     <button onClick={playToggle}>Toggle</button>
     <button onClick={() => void playAudiobookTrack(10, track(3, { positionSeconds: 31 }))}>Choose C</button>
     <button onClick={() => updateQueue((items) => items.slice(0, 1))}>Remove next</button>
+    <button onClick={() => updateQueue((items) => items.filter((item) => item.type !== "audiobook"))}>Remove book</button>
     <button onClick={() => void reloadQueue()}>Reload</button>
     <button onClick={() => setSpeedLabel("Speed 2x")}>Speed 2x</button>
   </>;
@@ -779,6 +780,110 @@ describe("combined playback integration", () => {
       expect(audio.currentTime).toBe(31);
       expect(audio.paused).toBe(false);
     } else expect(audio.paused).toBe(true);
+  });
+
+  it.each([
+    ["metadata", "update"], ["metadata", "refresh"],
+    ["play", "update"], ["play", "refresh"],
+    ["reload", "update"], ["reload", "refresh"],
+  ] as const)("cancels a chapter's %s recovery when its book is removed by %s", async (stage, removal) => {
+    queue = [book, podcastEpisode(2)];
+    if (stage !== "play") tracks[1]!.positionSeconds = 47;
+    const { audio } = await startBook();
+    const oldPlay = deferred<void>();
+    if (stage === "play") audio.playImpl.mockImplementationOnce(() => oldPlay.promise);
+    vi.useFakeTimers();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    expect(audio.src).toContain("/tracks/2/audio");
+    if (stage === "reload") await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    const lateReady = audio.captureEvent("canplay");
+    queue = [podcastEpisode(2)];
+    await act(async () => {
+      screen.getByRole("button", { name: removal === "update" ? "Remove book" : "Reload" }).click();
+    });
+    expect(screen.getByTestId("episode")).toHaveTextContent("2");
+    // Retiring the old source can queue pause while the new source is still loading.
+    await act(async () => { audio.emit("pause"); });
+    const loads = audio.loadImpl.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads);
+    expect(audio.src).toContain("/episodes/2/audio");
+    await ready(audio);
+    expect(audio.paused).toBe(false);
+    const plays = audio.playImpl.mock.calls.length;
+    await act(async () => { lateReady(); oldPlay.resolve(); await vi.advanceTimersByTimeAsync(60_000); });
+    expect(audio.playImpl).toHaveBeenCalledTimes(plays);
+    expect(audio.src).toContain("/episodes/2/audio");
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+  });
+
+  it("retires the pending chapter when removing its book empties the queue", async () => {
+    const { audio } = await startBook();
+    const oldPlay = deferred<void>();
+    audio.playImpl.mockImplementationOnce(() => oldPlay.promise);
+    vi.useFakeTimers();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    const lateReady = audio.captureEvent("canplay");
+    queue = [];
+    await act(async () => { screen.getByRole("button", { name: "Remove book" }).click(); });
+    const loads = audio.loadImpl.mock.calls.length;
+    const plays = audio.playImpl.mock.calls.length;
+    await act(async () => {
+      audio.paused = false; oldPlay.resolve(); lateReady(); audio.emit("playing");
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(audio.src).toBe("");
+    expect(audio.paused).toBe(true);
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads);
+    expect(audio.playImpl).toHaveBeenCalledTimes(plays);
+    expect(screen.getByTestId("playing")).toHaveTextContent("false");
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+  });
+
+  it("cancels recovery when a queue refresh selects another chapter of the same book", async () => {
+    tracks[1]!.positionSeconds = 47;
+    const { audio } = await startBook();
+    vi.useFakeTimers();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    const lateReady = audio.captureEvent("canplay");
+    queue = [{ ...book, trackId: 3, trackNumber: 3, audioUrl: "/api/audiobooks/10/tracks/3/audio",
+      playback: { audiobookId: 10, trackId: 3, positionSeconds: 31, lastUpdated: stamp } }];
+    await act(async () => { screen.getByRole("button", { name: "Reload" }).click(); });
+    expect(audio.src).toContain("/tracks/3/audio");
+    const loads = audio.loadImpl.mock.calls.length;
+    await ready(audio);
+    const plays = audio.playImpl.mock.calls.length;
+    await act(async () => { lateReady(); await vi.advanceTimersByTimeAsync(60_000); });
+    expect(audio.src).toContain("/tracks/3/audio");
+    expect(audio.currentTime).toBe(31);
+    expect(audio.paused).toBe(false);
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads);
+    expect(audio.playImpl).toHaveBeenCalledTimes(plays);
+  });
+
+  it("keeps recovery when a queue refresh retains the same pending chapter", async () => {
+    tracks[1]!.positionSeconds = 47;
+    const { audio } = await startBook();
+    vi.useFakeTimers();
+    await act(async () => {
+      audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended");
+    });
+    queue = [{ ...book, trackId: 2, trackNumber: 2, audioUrl: "/api/audiobooks/10/tracks/2/audio" }];
+    await act(async () => { screen.getByRole("button", { name: "Reload" }).click(); });
+    const loads = audio.loadImpl.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(audio.loadImpl).toHaveBeenCalledTimes(loads + 1);
+    await ready(audio);
+    expect(audio.currentTime).toBe(47);
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
   });
 
   it.each(["timeout-error", "error-timeout"] as const)("shares the single reload budget across %s", async (order) => {
