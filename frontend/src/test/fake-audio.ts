@@ -45,6 +45,9 @@ export class FakeAudio {
   throwOnCurrentTimeSet = false;
   duration = 0;
   readyState = 0;
+  seeking = false;
+  preload = "";
+  buffered: TimeRanges = { length: 0, start: () => 0, end: () => 0 };
   playbackRate = 1;
   defaultPlaybackRate = 1;
   paused = true;
@@ -104,6 +107,10 @@ export class FakeAudio {
   load() {
     this.loadImpl();
     this.readyState = 0;
+  }
+
+  removeAttribute(name: string) {
+    if (name === "src") this.src = "";
   }
 
   // Freeze handlers to simulate an already queued callback from an older source.

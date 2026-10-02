@@ -49,17 +49,22 @@ const podcastEpisode = (id: number, isListened = false): QueueEpisode => ({
 });
 function Harness() {
   const { currentEpisode, queue, playing, playbackError, positionSeconds,
-    playQueueItem, playToggle, playAudiobookTrack } = usePlayback();
+    playQueueItem, playToggle, playAudiobookTrack, updateQueue, reloadQueue, setSpeedLabel, speedLabel } = usePlayback();
   return <>
     <div data-testid="source">{currentEpisode?.trackId ?? "none"}</div>
     <div data-testid="queue-track">{queue[0]?.trackId}</div>
     <div data-testid="playing">{String(playing)}</div>
     <div data-testid="error">{playbackError ?? "none"}</div>
     <div data-testid="position">{positionSeconds}</div>
+    <div data-testid="episode">{currentEpisode?.id}</div>
+    <div data-testid="speed">{speedLabel}</div>
     <button onClick={() => playQueueItem(queue[0]!)}>Book</button>
     {queue[1] && <button onClick={() => playQueueItem(queue[1]!)}>Second</button>}
     <button onClick={playToggle}>Toggle</button>
     <button onClick={() => void playAudiobookTrack(10, track(3, { positionSeconds: 31 }))}>Choose C</button>
+    <button onClick={() => updateQueue((items) => items.slice(0, 1))}>Remove next</button>
+    <button onClick={() => void reloadQueue()}>Reload</button>
+    <button onClick={() => setSpeedLabel("Speed 2x")}>Speed 2x</button>
   </>;
 }
 
@@ -125,6 +130,238 @@ describe("combined playback integration", () => {
     await waitFor(() => expect(audio.playImpl).toHaveBeenCalled());
     return { user, audio, unmount };
   }
+
+  async function prepareReserve(audio: FakeAudio, position = 0) {
+    await act(async () => { audio.emit("playing"); });
+    await waitFor(() => expect(FakeAudio.instances.length).toBeGreaterThan(1));
+    const reserve = FakeAudio.instances[1]!;
+    await act(async () => {
+      reserve.duration = 100;
+      reserve.readyState = 1;
+      reserve.emit("loadedmetadata");
+      reserve.buffered = { length: 1, start: () => position, end: () => position + 5 };
+      reserve.readyState = 4;
+      reserve.emit("canplay");
+    });
+    return reserve;
+  }
+
+  it.each(["book", "podcast"])("starts the buffered %s source without another load and ignores old element events", async (kind) => {
+    if (kind === "podcast") {
+      queue = [podcastEpisode(1), podcastEpisode(2)];
+      vi.mocked(api.playback.update).mockImplementation(async (payload) => ({
+        playback: { episodeId: payload.episodeId, positionSeconds: payload.positionSeconds, lastUpdated: stamp },
+        nextTarget: payload.completed ? { type: "episode", episodeId: 2 } : undefined,
+        nextEpisodeId: null,
+      }));
+    }
+    const user = userEvent.setup();
+    render(<PlaybackProvider><Harness /></PlaybackProvider>);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Book" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Book" }));
+    const audio = FakeAudio.first;
+    await ready(audio);
+    await waitFor(() => expect(audio.paused).toBe(false));
+    const activeCalls = vi.mocked(api.playback.setActive).mock.calls.length;
+    const reserve = await prepareReserve(audio);
+    expect(api.playback.setActive).toHaveBeenCalledTimes(activeCalls);
+    expect(reserve.playImpl).not.toHaveBeenCalled();
+    const loads = reserve.loadImpl.mock.calls.length;
+    const oldPause = audio.captureEvent("pause");
+    const oldPlaying = audio.captureEvent("playing");
+    const oldEnded = audio.captureEvent("ended");
+    const oldError = audio.captureEvent("error");
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    try {
+      await act(async () => { audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended"); });
+      await waitFor(() => expect(reserve.paused).toBe(false));
+      expect(reserve.loadImpl).toHaveBeenCalledTimes(loads);
+      expect(audio.src).toBe("");
+      expect(screen.getByTestId("playing")).toHaveTextContent("true");
+      await act(async () => {
+        reserve.currentTime = 8; reserve.emit("timeupdate");
+        audio.error = { code: 4 }; oldPause(); oldPlaying(); oldEnded(); oldError();
+      });
+      expect(reserve.paused).toBe(false);
+      expect(screen.getByTestId("position")).toHaveTextContent("8");
+      expect(screen.getByTestId("error")).toHaveTextContent("none");
+      expect(vi.mocked(api.playback.update).mock.calls.filter(([payload]) => payload.completed)).toHaveLength(1);
+      const events = JSON.parse(localStorage.getItem("mpod:temporary-playback-diagnostics") ?? "[]");
+      expect(events).toEqual(expect.arrayContaining([
+        expect.objectContaining({ event: "source_ready", code: "PRELOAD_READY" }),
+        expect.objectContaining({ event: "play_attempt", code: "PREPARED_SOURCE", documentHidden: true }),
+        expect.objectContaining({ event: "play_result", code: "START_TIMEOUT_CANCEL_PLAYING" }),
+      ]));
+    } finally {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    }
+  });
+
+  it("resumes a prepared chapter at its buffered saved position and keeps controls on the new element", async () => {
+    tracks[1] = track(2, { positionSeconds: 23 });
+    vi.spyOn(api.settings, "update").mockResolvedValue({ settings: {
+      dailyRefreshTime: "03:00", playbackSpeed: "Speed 1.3x", audiobookPlaybackSpeed: "Speed 2x",
+      proxyEnabled: false, proxyConfigured: false, appBuild: "test",
+    } });
+    const { user, audio } = await startBook();
+    const reserve = await prepareReserve(audio, 23);
+    await act(async () => { audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended"); });
+    await waitFor(() => expect(reserve.paused).toBe(false));
+    expect(reserve.currentTime).toBe(23);
+    await user.click(screen.getByRole("button", { name: "Speed 2x" }));
+    expect(reserve.playbackRate).toBe(2);
+    await user.click(screen.getByRole("button", { name: "Toggle" }));
+    expect(reserve.paused).toBe(true);
+    expect(screen.getByTestId("playing")).toHaveTextContent("false");
+    expect(reserve.loadImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["metadata", "error", "lost buffer"])("falls back without disturbing current playback when reserve has %s", async (state) => {
+    const { audio } = await startBook();
+    await act(async () => { audio.emit("playing"); });
+    const reserve = FakeAudio.instances[1]!;
+    await act(async () => {
+      reserve.readyState = state === "metadata" ? 1 : 4;
+      reserve.duration = 100;
+      reserve.emit("loadedmetadata");
+      if (state === "error") { reserve.error = { code: 4 }; reserve.emit("error"); }
+      if (state === "lost buffer") {
+        reserve.buffered = { length: 1, start: () => 0, end: () => 5 }; reserve.emit("canplay");
+        reserve.buffered = { length: 0, start: () => 0, end: () => 0 };
+      }
+    });
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("error")).toHaveTextContent("none");
+    await act(async () => { audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended"); });
+    expect(audio.src).toContain("/tracks/2/audio");
+    expect(reserve.playImpl).not.toHaveBeenCalled();
+    expect(reserve.src).toBe("");
+    await ready(audio);
+    expect(audio.paused).toBe(false);
+  });
+
+  it.each(["Pause", "selection", "unmount"])("disposes the reserve on %s and ignores late readiness", async (action) => {
+    const { audio, user, unmount } = await startBook();
+    const reserve = await prepareReserve(audio);
+    const lateReady = reserve.captureEvent("canplay");
+    if (action === "Pause") await user.click(screen.getByRole("button", { name: "Toggle" }));
+    else if (action === "selection") await user.click(screen.getByRole("button", { name: "Choose C" }));
+    else unmount();
+    expect(reserve.src).toBe("");
+    await act(async () => { reserve.readyState = 4; lateReady(); });
+    expect(reserve.playImpl).not.toHaveBeenCalled();
+  });
+
+  it("invalidates a prepared podcast when it leaves the queue", async () => {
+    queue = [book, podcastEpisode(2)];
+    tracks = [track(1)];
+    const { audio, user } = await startBook();
+    const reserve = await prepareReserve(audio);
+    expect(reserve.src).toContain("/episodes/2/audio");
+    await user.click(screen.getByRole("button", { name: "Remove next" }));
+    expect(reserve.src).toBe("");
+    expect(audio.paused).toBe(false);
+    expect(reserve.playImpl).not.toHaveBeenCalled();
+  });
+
+  it("reconciles a different authoritative target after starting the prepared prediction", async () => {
+    const { audio } = await startBook();
+    const reserve = await prepareReserve(audio);
+    const completion = deferred<PlaybackUpdateResponse>();
+    vi.mocked(api.playback.update).mockReturnValue(completion.promise);
+    await act(async () => { audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended"); });
+    await waitFor(() => expect(reserve.paused).toBe(false));
+    await act(async () => completion.resolve({
+      playback: { audiobookId: 10, trackId: 1, positionSeconds: 100, lastUpdated: stamp },
+      nextTarget: { type: "audiobook", audiobookId: 10, trackId: 3 }, nextEpisodeId: null,
+    }));
+    await waitFor(() => expect(reserve.src).toContain("/tracks/3/audio"));
+    await ready(reserve);
+    expect(reserve.currentTime).toBe(31);
+    expect(screen.getByTestId("source")).toHaveTextContent("3");
+    expect(reserve.paused).toBe(false);
+  });
+
+  it.each(["mixed", "wrap"])("uses the reserve after authoritative %s-queue completion", async (kind) => {
+    tracks = [track(1)];
+    const next = podcastEpisode(2);
+    queue = kind === "wrap" ? [next, book] : [book, next];
+    vi.mocked(api.playback.update).mockImplementation(async (payload) => {
+      if (payload.completed) queue = [next];
+      return {
+        playback: { audiobookId: 10, trackId: payload.trackId, positionSeconds: payload.positionSeconds, lastUpdated: stamp },
+        nextTarget: payload.completed ? { type: "episode", episodeId: 2 } : undefined, nextEpisodeId: null,
+      };
+    });
+    const user = userEvent.setup();
+    render(<PlaybackProvider><Harness /></PlaybackProvider>);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Second" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: kind === "wrap" ? "Second" : "Book" }));
+    const audio = FakeAudio.first;
+    await ready(audio);
+    const reserve = await prepareReserve(audio);
+    const loads = reserve.loadImpl.mock.calls.length;
+    await act(async () => { audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended"); });
+    await waitFor(() => expect(screen.getByTestId("episode")).toHaveTextContent("2"));
+    expect(reserve.paused).toBe(false);
+    expect(reserve.loadImpl).toHaveBeenCalledTimes(loads);
+    expect(reserve.playbackRate).toBe(1.3);
+  });
+
+  it("handles consecutive prepared chapters and Media Session Pause on the promoted element", async () => {
+    tracks[2] = track(3);
+    vi.mocked(api.playback.update).mockImplementation(async (payload) => ({
+      playback: { audiobookId: 10, trackId: payload.trackId, positionSeconds: payload.positionSeconds, lastUpdated: stamp },
+      nextTarget: payload.completed ? { type: "audiobook", audiobookId: 10, trackId: (payload.trackId ?? 0) + 1 } : undefined,
+      nextEpisodeId: null,
+    }));
+    const { audio } = await startBook();
+    const second = await prepareReserve(audio);
+    await act(async () => { audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended"); });
+    await waitFor(() => expect(second.paused).toBe(false));
+    await act(async () => { second.emit("playing"); });
+    await waitFor(() => expect(FakeAudio.instances.some((element) => element.src.includes("/tracks/3/audio"))).toBe(true));
+    const third = FakeAudio.instances.find((element) => element.src.includes("/tracks/3/audio"))!;
+    await act(async () => {
+      third.duration = 100; third.readyState = 4;
+      third.buffered = { length: 1, start: () => 0, end: () => 5 }; third.emit("canplay");
+      second.currentTime = 100; second.ended = true; second.paused = true; second.emit("ended");
+    });
+    await waitFor(() => expect(third.paused).toBe(false));
+    expect(third.loadImpl).toHaveBeenCalledTimes(1);
+    const setHandler = vi.mocked(navigator.mediaSession.setActionHandler);
+    const pause = setHandler.mock.calls.find(([action]) => action === "pause")![1]!;
+    await act(async () => pause({ action: "pause" }));
+    expect(third.paused).toBe(true);
+    expect(screen.getByTestId("playing")).toHaveTextContent("false");
+    expect(second.src).toBe("");
+  });
+
+  it("keeps recovery on a promoted element and ignores its late play result after Pause", async () => {
+    const { audio } = await startBook();
+    const reserve = await prepareReserve(audio);
+    const pending = deferred<void>();
+    reserve.playImpl.mockImplementationOnce(() => pending.promise);
+    vi.useFakeTimers();
+    await act(async () => { audio.currentTime = 100; audio.ended = true; audio.paused = true; audio.emit("ended"); });
+    expect(reserve.playImpl).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(reserve.loadImpl).toHaveBeenCalledTimes(2);
+    await ready(reserve);
+    expect(reserve.playImpl).toHaveBeenCalledTimes(2);
+    expect(reserve.paused).toBe(false);
+    const pause = vi.mocked(navigator.mediaSession.setActionHandler).mock.calls
+      .find(([action]) => action === "pause")![1]!;
+    await act(async () => pause({ action: "pause" }));
+    await act(async () => { reserve.paused = false; pending.resolve(); reserve.emit("playing"); });
+    expect(reserve.paused).toBe(true);
+    expect(screen.getByTestId("playing")).toHaveTextContent("false");
+    const events = JSON.parse(localStorage.getItem("mpod:temporary-playback-diagnostics") ?? "[]");
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event: "play_attempt", code: "COLD_SOURCE", trackId: 2 }),
+      expect.objectContaining({ event: "play_result", code: "START_TIMEOUT", trackId: 2 }),
+    ]));
+  });
 
   it("stops after three rejected auto plays and ignores further readiness", async () => {
     const { audio } = await startBook();
@@ -630,7 +867,8 @@ describe("combined playback integration", () => {
     expect(readTrace()).toEqual(expect.arrayContaining([
       expect.objectContaining({ event: "play_attempt", trackId: 2, documentHidden: true, mediaReadyState: 0 }),
     ]));
-    expect(readTrace().some((event) => event.event === "play_result" && event.trackId === 2)).toBe(false);
+    expect(readTrace().some((event) => event.event === "play_result" && event.trackId === 2 &&
+      ["RESOLVED", "PAUSED", "ERROR", "NOT_SUPPORTED"].includes(event.code ?? ""))).toBe(false);
 
     await act(async () => {
       document.dispatchEvent(new Event("visibilitychange"));

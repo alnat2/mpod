@@ -327,6 +327,23 @@ Autostart recovery:
 - Pause, manual selection, and provider unmount cancel pending recovery; results from a superseded play attempt must not change the current attempt
 - a system Media Session Play command is idempotent while playback is already intended, including metadata loading and buffering
 
+Prepared next source (test-branch prototype):
+- while the active audio is playing, preload one predicted next source in a paused reserve audio element; preparation never commits active playback, progress, or completion
+- prefer the next selected uncompleted audiobook chapter from the current cache, then sequential/wrapped queue candidates; backend `nextTarget` still reconciles the prediction after actual completion
+- readiness requires playback data buffered at the saved position, `HAVE_FUTURE_DATA`, and no pending seek or media error; metadata alone is insufficient
+- consume only a reserve matching the source key, saved position, source generation, and queue revision, rechecking readiness at the handoff
+- promote the prepared element without changing its `src`, seeking again, or calling `load()`; rebind active media listeners and release the previous element; queued events from a retired element cannot mutate active playback
+- an unavailable, stale, or failed reserve uses the existing cold-load/recovery path; reserve failure does not stop the current audio
+- Pause, manual selection, queue invalidation, and provider unmount dispose of the reserve; speed, seek, progress sync, and Media Session actions use the active element after promotion
+- preparation may issue audio requests earlier and buffer one additional source; browser preload and background playback policies still apply
+- this prototype is not a confirmed Android lockscreen fix until validated on the physical device
+
+Temporary transition diagnostics:
+- reuse an eligible preparation trace for completion so `PRELOAD_START`, `PRELOAD_READY`, `PRELOAD_USED`, or `PRELOAD_CANCEL_*` can be correlated with the actual transition; these markers use the existing event/code schema
+- `play_attempt` distinguishes `PREPARED_SOURCE` and `COLD_SOURCE`; watchdog markers include `START_TIMEOUT_ARMED`, `START_TIMEOUT`, and `START_TIMEOUT_CANCEL_*`
+- `CLIENT_<12-hex-source-digest>_<browser-family>` is compiled into the frontend from playback sources by Vite; it identifies the loaded playback code independently of the backend's `APP_BUILD` (it is not a Git commit hash)
+- visibility defaults to the actual document visibility for every recorded event, including completion and queue events
+
 ### Active Audio Duration Resolution
 
 Decision:

@@ -60,4 +60,19 @@ describe("temporary playback diagnostics", () => {
     const options = send.mock.calls[0]![1] as RequestInit;
     expect(new Headers(options.headers).get("X-Playback-Trace-ID")).toBe("trace-789");
   });
+
+  it("records actual visibility for events without audio details and identifies the client bundle", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Offline")));
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    try {
+      const diagnostics = await import("./playback-diagnostics");
+      const code = diagnostics.playbackClientCode();
+      expect(code).toMatch(/^CLIENT_[A-F0-9]{12}_[A-Z_]+$/);
+      diagnostics.recordPlaybackDiagnostic("trace-123", "ended", { code });
+      expect(JSON.parse(localStorage.getItem("mpod:temporary-playback-diagnostics") ?? "[]"))
+        .toEqual([expect.objectContaining({ code, documentHidden: true })]);
+    } finally {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    }
+  });
 });

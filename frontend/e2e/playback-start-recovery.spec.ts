@@ -24,7 +24,8 @@ for (const width of [1280, 390]) {
       window.Audio = class extends NativeAudio {
         constructor() {
           super();
-          (window as unknown as { testAudio: HTMLAudioElement }).testAudio = this;
+          const state = window as unknown as { testAudios?: HTMLAudioElement[] };
+          (state.testAudios ??= []).push(this);
         }
       };
     });
@@ -58,8 +59,8 @@ for (const width of [1280, 390]) {
     });
     await page.route("**/api/episodes/*/audio", async (route) => {
       const id = Number(new URL(route.request().url()).pathname.split("/").at(-2));
-      if (id === 2 && ++nextAudioRequests === 1) {
-        // Leave the initial load pending; the watchdog must replace it.
+      if (id === 2 && ++nextAudioRequests <= 2) {
+        // Neither the reserve nor the initial active load becomes ready.
         return;
       }
       const wav = silentWav(id === 1 ? 1 : 20);
@@ -75,12 +76,13 @@ for (const width of [1280, 390]) {
     await page.goto("/home");
     await page.getByRole("button", { name: "Play", exact: true }).first().click();
     await expect.poll(() => completed).toBe(true);
-    await expect.poll(() => nextAudioRequests).toBe(1);
+    await expect.poll(() => nextAudioRequests).toBe(2);
     await page.clock.runFor(30_000);
-    await expect.poll(() => nextAudioRequests).toBeGreaterThanOrEqual(2);
+    await expect.poll(() => nextAudioRequests).toBeGreaterThanOrEqual(3);
     await expect.poll(() => page.evaluate(() => {
-      const audio = (window as unknown as { testAudio: HTMLAudioElement }).testAudio;
-      return { paused: audio.paused, progressing: audio.currentTime > 0, source: audio.currentSrc };
+      const audio = (window as unknown as { testAudios: HTMLAudioElement[] }).testAudios
+        .find((element) => !element.paused && element.currentSrc.includes("/api/episodes/2/audio"));
+      return audio ? { paused: audio.paused, progressing: audio.currentTime > 0, source: audio.currentSrc } : null;
     })).toMatchObject({ paused: false, progressing: true, source: expect.stringContaining("/api/episodes/2/audio") });
     await page.screenshot({ path: test.info().outputPath(`playback-recovery-${width}.png`) });
   });

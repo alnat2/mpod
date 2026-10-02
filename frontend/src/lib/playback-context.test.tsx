@@ -1155,10 +1155,11 @@ describe("PlaybackProvider", () => {
       expect(screen.getByTestId("position")).toHaveTextContent("120");
     });
 
+    const elementsBeforeSpeedChange = FakeAudio.instances.length;
     await user.click(screen.getByRole("button", { name: "Speed 2x" }));
 
     expect(screen.getByTestId("speed")).toHaveTextContent("Speed 2x");
-    expect(FakeAudio.instances).toHaveLength(1);
+    expect(FakeAudio.instances).toHaveLength(elementsBeforeSpeedChange);
     expect(audio.currentTime).toBe(120);
     expect(audio.playbackRate).toBe(2);
     expect(screen.getByTestId("position")).toHaveTextContent("120");

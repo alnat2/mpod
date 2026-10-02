@@ -52,6 +52,15 @@ let flushing = false;
 let initialized = false;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Compiled into the client bundle, independent of the server's APP_BUILD.
+export function playbackClientCode(): string {
+  const ua = navigator.userAgent;
+  const browser = /Firefox|FxiOS/.test(ua) ? "FIREFOX" : /CriOS/.test(ua) ? "CHROME_IOS" :
+    /Chrome/.test(ua) ? /Android/.test(ua) ? "CHROME_ANDROID" : "CHROME" :
+      /Safari/.test(ua) ? "SAFARI" : "OTHER";
+  return `CLIENT_${import.meta.env.VITE_PLAYBACK_REVISION}_${browser}`;
+}
+
 function scheduleFlush(): void {
   if (flushTimer !== null) return;
   // Keep diagnostics off the synchronous audio-ended/autoplay path.
@@ -142,7 +151,8 @@ export function recordPlaybackDiagnostic(
 ): void {
   if (typeof window === "undefined") return;
   initializePlaybackDiagnostics();
-  readEvents().push({ id: newId(), traceId, at: new Date().toISOString(), event, ...details });
+  readEvents().push({ id: newId(), traceId, at: new Date().toISOString(), event,
+    documentHidden: document.visibilityState === "hidden", ...details });
   events = readEvents().slice(-MAX_EVENTS);
   persist();
   scheduleFlush();
