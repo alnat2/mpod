@@ -61,6 +61,7 @@ function Harness() {
     <button onClick={() => playQueueItem(queue[0]!)}>Book</button>
     {queue[1] && <button onClick={() => playQueueItem(queue[1]!)}>Second</button>}
     <button onClick={playToggle}>Toggle</button>
+    <button onClick={() => void playAudiobookTrack(10, track(2, { positionSeconds: 17 }))}>Choose B</button>
     <button onClick={() => void playAudiobookTrack(10, track(3, { positionSeconds: 31 }))}>Choose C</button>
     <button onClick={() => updateQueue((items) => items.slice(0, 1))}>Remove next</button>
     <button onClick={() => updateQueue((items) => items.filter((item) => item.type !== "audiobook"))}>Remove book</button>
@@ -995,6 +996,89 @@ describe("combined playback integration", () => {
     expect(audio.loadImpl).toHaveBeenCalledTimes(loadsAfterRetry);
     expect(screen.getByTestId("playing")).toHaveTextContent("false");
     expect(screen.getByTestId("error")).toHaveTextContent("Audio source is not supported.");
+  });
+
+  it("resumes from the local position while the pause save is pending", async () => {
+    const { user, audio } = await startBook();
+    await waitFor(() => expect(screen.getByTestId("playing")).toHaveTextContent("true"));
+    const pendingSave = deferred<PlaybackUpdateResponse>();
+    const update = vi.mocked(api.playback.update).mockReturnValue(pendingSave.promise);
+    const get = vi.mocked(api.playback.get);
+    get.mockResolvedValue({
+      playback: { audiobookId: 10, trackId: 1, positionSeconds: 42, lastUpdated: stamp },
+    });
+    const getCallsBeforePause = get.mock.calls.length;
+    audio.currentTime = 42;
+
+    await user.click(screen.getByRole("button", { name: "Toggle" }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      audiobookId: 10, trackId: 1, positionSeconds: 42, completed: false,
+    })));
+    await waitFor(() => expect(screen.getByTestId("position")).toHaveTextContent("42"));
+
+    await user.click(screen.getByRole("button", { name: "Toggle" }));
+    expect(get).toHaveBeenCalledTimes(getCallsBeforePause);
+    await waitFor(() => expect(audio.paused).toBe(false));
+    expect(audio.currentTime).toBe(42);
+    expect(get).toHaveBeenCalledTimes(getCallsBeforePause);
+    await act(async () => {
+      pendingSave.resolve({
+        playback: { audiobookId: 10, trackId: 1, positionSeconds: 42, lastUpdated: stamp },
+        nextEpisodeId: null,
+      });
+    });
+  });
+
+  it("keeps pending playback saves scoped to their audiobook chapter", async () => {
+    tracks[1] = track(2, { positionSeconds: 17 });
+    const { user, audio } = await startBook();
+    await waitFor(() => expect(screen.getByTestId("playing")).toHaveTextContent("true"));
+
+    const pendingChapterOneSave = deferred<PlaybackUpdateResponse>();
+    const update = vi.mocked(api.playback.update).mockImplementation(async (payload) => {
+      if (payload.trackId === 1) return pendingChapterOneSave.promise;
+      return {
+        playback: { audiobookId: 10, trackId: payload.trackId, positionSeconds: payload.positionSeconds, lastUpdated: stamp },
+        nextEpisodeId: null,
+      };
+    });
+    const get = vi.mocked(api.playback.get);
+
+    audio.currentTime = 42;
+    await user.click(screen.getByRole("button", { name: "Toggle" }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      audiobookId: 10, trackId: 1, positionSeconds: 42, completed: false,
+    })));
+
+    await user.click(screen.getByRole("button", { name: "Choose B" }));
+    await waitFor(() => expect(screen.getByTestId("source")).toHaveTextContent("2"));
+    await ready(audio);
+    await waitFor(() => expect(audio.paused).toBe(false));
+    expect(audio.currentTime).toBe(17);
+
+    const chapterTwoReadsBeforeResume = get.mock.calls.filter(
+      ([target]) => typeof target !== "number" && "trackId" in target && target.trackId === 2
+    ).length;
+    await user.click(screen.getByRole("button", { name: "Toggle" }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      audiobookId: 10, trackId: 2, positionSeconds: 17, completed: false,
+    })));
+    await waitFor(() => expect(audio.paused).toBe(true));
+    await act(async () => {});
+
+    await user.click(screen.getByRole("button", { name: "Toggle" }));
+    await waitFor(() => expect(get.mock.calls.filter(
+      ([target]) => typeof target !== "number" && "trackId" in target && target.trackId === 2
+    )).toHaveLength(chapterTwoReadsBeforeResume + 1));
+    await waitFor(() => expect(audio.paused).toBe(false));
+    expect(audio.currentTime).toBe(17);
+
+    await act(async () => {
+      pendingChapterOneSave.resolve({
+        playback: { audiobookId: 10, trackId: 1, positionSeconds: 42, lastUpdated: stamp },
+        nextEpisodeId: null,
+      });
+    });
   });
 
   it.each(["completion", "queue"] as const)(

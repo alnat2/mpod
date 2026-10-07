@@ -93,6 +93,7 @@ type UsePlaybackAudioOptions = {
     options?: {
       applyEvenIfNotNewer?: boolean;
       isActive?: () => boolean;
+      preferLocalPositionSeconds?: number;
     }
   ) => Promise<QueueEpisode>;
   loadQueue: (options?: {
@@ -1601,13 +1602,19 @@ export function usePlaybackAudio({
       sourceGenerationRef.current += 1;
       const currentGen = sourceGenerationRef.current;
       void (async () => {
+        const localPosition = Number.isFinite(audio.currentTime)
+          ? audio.currentTime
+          : positionSecondsRef.current;
         const syncedEpisode = await refreshPlaybackState(currentEpisode, {
           isActive: () => sourceGenerationRef.current === currentGen,
+          preferLocalPositionSeconds: localPosition,
         });
         if (sourceGenerationRef.current !== currentGen) return;
         void commitActivePlayback(syncedEpisode);
         const nextPosition =
-          syncedEpisode.playback?.positionSeconds ?? positionSecondsRef.current ?? 0;
+          syncedEpisode.playback?.positionSeconds ??
+          localPosition ??
+          0;
         sourceReadyRef.current = false;
         sourcePrimeCleanupRef.current = primeAudioSource(
           audio,

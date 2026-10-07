@@ -118,6 +118,9 @@ export function usePlaybackSync({
   const queueRequests = useLatestRequest();
   const settingsRequests = useLatestRequest();
   const completedPlaybackTargetsRef = useRef(new Set<string>());
+  const pendingPlaybackWritesRef = useRef(
+    new Map<string, Promise<unknown>>()
+  );
   const playbackTargetKey = useCallback((episode: QueueEpisode) => {
     return playbackMediaSourceKey(episode);
   }, []);
@@ -162,32 +165,37 @@ export function usePlaybackSync({
         completedPlaybackTargetsRef.current.add(targetKey);
       }
 
-      try {
-        const durationSeconds =
-          options.durationSeconds ??
-          playbackDurationSeconds(
-            episode,
-            activeMediaDurationRef
-          );
-        const payload = {
-          ...(isAudiobook
-            ? { audiobookId: mediaID, trackId }
-            : { episodeId: mediaID }),
-          positionSeconds: Math.round(
-            clampPosition(nextPositionSeconds, durationSeconds)
-          ),
-          durationSeconds: Math.round(durationSeconds),
-          completed,
-          didSeek: options.didSeek ?? false,
-          clientUpdatedAt: new Date().toISOString(),
-        };
-        const response = await api.playback.update(payload);
-        return response;
-      } catch (error) {
-        options.onError?.(error);
-        // Silently fail for background sync.
-        return null;
-      }
+      const write = (async () => {
+        try {
+          const durationSeconds =
+            options.durationSeconds ??
+            playbackDurationSeconds(episode, activeMediaDurationRef);
+          const response = await api.playback.update({
+            ...(isAudiobook
+              ? { audiobookId: mediaID, trackId }
+              : { episodeId: mediaID }),
+            positionSeconds: Math.round(
+              clampPosition(nextPositionSeconds, durationSeconds)
+            ),
+            durationSeconds: Math.round(durationSeconds),
+            completed,
+            didSeek: options.didSeek ?? false,
+            clientUpdatedAt: new Date().toISOString(),
+          });
+          return response;
+        } catch (error) {
+          options.onError?.(error);
+          // Silently fail for background sync.
+          return null;
+        }
+      })();
+      pendingPlaybackWritesRef.current.set(targetKey, write);
+      void write.finally(() => {
+        if (pendingPlaybackWritesRef.current.get(targetKey) === write) {
+          pendingPlaybackWritesRef.current.delete(targetKey);
+        }
+      });
+      return write;
     },
     [
       activeMediaDurationRef,
@@ -253,7 +261,8 @@ export function usePlaybackSync({
   const commitCurrentPlayback = useCallback(
     (options: { beacon?: boolean } = {}) => {
       const audio = audioRef.current;
-      if (!audio || !currentEpisodeRef.current) {
+      const episode = currentEpisodeRef.current;
+      if (!audio || !episode) {
         return;
       }
 
@@ -261,9 +270,32 @@ export function usePlaybackSync({
         return;
       }
 
+      if (!options.beacon) {
+        const isAudiobook = isAudiobookQueueItem(episode);
+        const localPlayback: PlaybackState = {
+          ...(isAudiobook
+            ? {
+                audiobookId: episode.audiobookId ?? episode.id,
+                trackId:
+                  episode.trackId ??
+                  (episode.playback?.trackId as number | undefined),
+              }
+            : { episodeId: episode.id }),
+          positionSeconds: Math.round(audio.currentTime),
+          lastUpdated: new Date().toISOString(),
+        };
+        writePlaybackState(queueItemKey(episode), localPlayback);
+      }
+
       void commitPlayback(audio.currentTime);
     },
-    [audioRef, commitPlayback, commitPlaybackBeacon, currentEpisodeRef]
+    [
+      audioRef,
+      commitPlayback,
+      commitPlaybackBeacon,
+      currentEpisodeRef,
+      writePlaybackState,
+    ]
   );
 
   const commitActivePlayback = useCallback(
@@ -293,9 +325,31 @@ export function usePlaybackSync({
       options: {
         applyEvenIfNotNewer?: boolean;
         isActive?: () => boolean;
+        preferLocalPositionSeconds?: number;
       } = {}
     ) => {
       try {
+        const targetKey = playbackTargetKey(episode);
+        if (
+          pendingPlaybackWritesRef.current.has(targetKey) &&
+          options.preferLocalPositionSeconds !== undefined
+        ) {
+          const localPlayback: PlaybackState = {
+            ...(isAudiobookQueueItem(episode)
+              ? {
+                  audiobookId: episode.audiobookId ?? episode.id,
+                  trackId:
+                    episode.trackId ??
+                    (episode.playback?.trackId as number | undefined),
+                }
+              : { episodeId: episode.id }),
+            positionSeconds: options.preferLocalPositionSeconds,
+            lastUpdated: new Date().toISOString(),
+          };
+          writePlaybackState(queueItemKey(episode), localPlayback);
+          return { ...episode, playback: localPlayback };
+        }
+
         const audiobook = isAudiobookQueueItem(episode);
         const trackId = audiobook
           ? (episode.trackId ??
@@ -360,6 +414,7 @@ export function usePlaybackSync({
       activeMediaDurationRef,
       audioRef,
       currentEpisodeRef,
+      playbackTargetKey,
       setPositionSeconds,
       sourcePrimedRef,
       sourceReadyRef,
