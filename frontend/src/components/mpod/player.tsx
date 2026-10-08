@@ -91,7 +91,10 @@ function TransportButton({
             className
           )}
           type="button"
-          onClick={onClick}
+          onClick={(event) => {
+            onClick?.();
+            event.currentTarget?.blur();
+          }}
         >
           <HugeiconsIcon
             icon={icon}
@@ -212,7 +215,10 @@ function LabeledSeekControl({
             align === "end" ? "items-end" : "items-center"
           )}
           type="button"
-          onClick={onClick}
+          onClick={(event) => {
+            onClick?.();
+            event.currentTarget?.blur();
+          }}
         >
           <span className="flex flex-col items-center justify-end gap-0.5">
             <PlayerAssetIcon
@@ -456,7 +462,10 @@ export function Player({
                   size="icon"
                   aria-label={playing ? "Pause" : "Play"}
                   className="size-14 rounded-full p-0 shadow-md"
-                  onClick={onPlay}
+                  onClick={(event) => {
+                    onPlay?.();
+                    event.currentTarget?.blur();
+                  }}
                 >
                   {playing ? (
                     <HugeiconsIcon

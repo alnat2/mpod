@@ -25,9 +25,21 @@ function Tooltip({
 }
 
 function TooltipTrigger({
+  onClick,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
+  return (
+    <TooltipPrimitive.Trigger
+      data-slot="tooltip-trigger"
+      onClick={(event) => {
+        onClick?.(event);
+        if (!event.defaultPrevented) {
+          event.currentTarget?.blur();
+        }
+      }}
+      {...props}
+    />
+  );
 }
 
 function TooltipContent({

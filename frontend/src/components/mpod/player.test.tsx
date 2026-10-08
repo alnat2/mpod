@@ -39,12 +39,12 @@ describe("Player", () => {
     expect(mobileNotes).not.toBeNull();
 
     const mobile = within(mobileControls! as HTMLElement);
-    await user.click(
-      mobile.getByRole("button", { name: "Go back 15 seconds" })
-    );
-    await user.click(
-      mobile.getByRole("button", { name: "Go forward 30 seconds" })
-    );
+    const backBtn = mobile.getByRole("button", { name: "Go back 15 seconds" });
+    const forwardBtn = mobile.getByRole("button", { name: "Go forward 30 seconds" });
+    await user.click(backBtn);
+    expect(backBtn).not.toHaveFocus();
+    await user.click(forwardBtn);
+    expect(forwardBtn).not.toHaveFocus();
     await user.click(mobileNotes! as HTMLElement);
 
     expect(mobile.getByRole("button", { name: "Speed 1.3x" })).toHaveTextContent(

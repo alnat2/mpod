@@ -584,8 +584,8 @@ export function HomeScreen() {
               />
               <PlaylistQueue
                 summary={queueSummary(visibleQueue, durationForQueueEpisode)}
-                className="w-full shrink-0 md:max-w-[1040px]"
-                bodyClassName="mpod-scroll h-[236px] shrink-0 overflow-y-auto overscroll-contain pb-20 md:h-[218px] md:pb-0"
+                className="min-h-0 w-full flex-1 md:max-w-[1040px]"
+                bodyClassName="mpod-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain"
               >
                 {visibleQueue.map((episode) => {
                   const itemKey = queueItemKey(episode);

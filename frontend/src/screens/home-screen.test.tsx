@@ -192,12 +192,18 @@ vi.mock("@/components/mpod", () => ({
     children,
     summary,
     bodyClassName,
+    className,
   }: {
     children: ReactNode;
     summary?: string;
     bodyClassName?: string;
+    className?: string;
   }) => (
-    <div data-testid="playlist-queue" data-body-class={bodyClassName}>
+    <div
+      data-testid="playlist-queue"
+      data-class={className}
+      data-body-class={bodyClassName}
+    >
       <div>{summary}</div>
       {children}
     </div>
@@ -442,8 +448,12 @@ describe("HomeScreen", () => {
     render(<HomeScreen />);
 
     expect(screen.getByTestId("playlist-queue")).toHaveAttribute(
+      "data-class",
+      expect.stringContaining("flex-1")
+    );
+    expect(screen.getByTestId("playlist-queue")).toHaveAttribute(
       "data-body-class",
-      expect.stringContaining("h-[236px]")
+      expect.stringContaining("flex-1")
     );
     expect(screen.getByTestId("playlist-queue")).toHaveAttribute(
       "data-body-class",
