@@ -569,6 +569,68 @@ describe("SubscriptionsScreen", () => {
     expect(screen.getByText("Second sanitized notes")).toBeInTheDocument();
   });
 
+  it("fetches episode details on demand and displays show notes when omitted from initial list", async () => {
+    const user = userEvent.setup();
+    const episodeWithoutNotes: Episode = {
+      ...baseEpisode,
+      id: 301,
+      title: "Episode without notes in list",
+      description: undefined,
+      showNotes: undefined,
+    };
+
+    const getEpisodeRequest = deferred<Awaited<ReturnType<typeof api.episodes.get>>>();
+    const getSpy = vi.spyOn(api.episodes, "get").mockReturnValue(getEpisodeRequest.promise);
+    vi.spyOn(api.episodes, "list").mockResolvedValue({
+      episodes: [episodeWithoutNotes],
+    });
+
+    renderSubscriptionsScreen();
+
+    const row = await screen.findByTestId("episode-row-Episode without notes in list");
+    await user.click(within(row).getByRole("button", { name: "Show notes" }));
+
+    expect(await screen.findByTestId("modal")).toBeInTheDocument();
+    expect(screen.getByText("Loading show notes...")).toBeInTheDocument();
+    expect(getSpy).toHaveBeenCalledWith(301);
+
+    await act(async () => {
+      getEpisodeRequest.resolve({
+        episode: {
+          ...episodeWithoutNotes,
+          showNotes: "Fetched detailed show notes from API",
+        },
+      });
+    });
+
+    expect(await screen.findByText("Fetched detailed show notes from API")).toBeInTheDocument();
+    expect(screen.queryByText("Loading show notes...")).not.toBeInTheDocument();
+  });
+
+  it("displays error message if fetching show notes fails", async () => {
+    const user = userEvent.setup();
+    const episodeWithoutNotes: Episode = {
+      ...baseEpisode,
+      id: 302,
+      title: "Episode with failed notes fetch",
+      description: undefined,
+      showNotes: undefined,
+    };
+
+    vi.spyOn(api.episodes, "get").mockRejectedValue(new Error("Network failed"));
+    vi.spyOn(api.episodes, "list").mockResolvedValue({
+      episodes: [episodeWithoutNotes],
+    });
+
+    renderSubscriptionsScreen();
+
+    const row = await screen.findByTestId("episode-row-Episode with failed notes fetch");
+    await user.click(within(row).getByRole("button", { name: "Show notes" }));
+
+    expect(await screen.findByTestId("modal")).toBeInTheDocument();
+    expect(await screen.findByText("Failed to load show notes.")).toBeInTheDocument();
+  });
+
   it("virtualizes long episode lists and renders more rows after scrolling", async () => {
     const manyEpisodes = Array.from({ length: 20 }, (_, index) => ({
       ...baseEpisode,

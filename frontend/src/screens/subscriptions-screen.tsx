@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -80,6 +80,8 @@ export function SubscriptionsScreen() {
   } = useSubscriptionsCache();
   const [modal, setModal] = useState<AddPodcastModalMode | "show-notes">(null);
   const [showNotesEpisodeId, setShowNotesEpisodeId] = useState<number | null>(null);
+  const [showNotesLoading, setShowNotesLoading] = useState(false);
+  const [showNotesError, setShowNotesError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   const { error, loading, setError } = useSubscriptionsData({
@@ -136,7 +138,7 @@ export function SubscriptionsScreen() {
     visiblePodcasts.find((podcast) => podcast.id === selectedPodcastId) ??
     visiblePodcasts[0];
   const showNotesPodcast =
-    visiblePodcasts.find((podcast) =>
+    podcastsWithPending.find((podcast) =>
       podcast.episodes.some((episode) => episode.id === showNotesEpisodeId)
     ) ?? null;
   const showNotesEpisode =
@@ -202,8 +204,83 @@ export function SubscriptionsScreen() {
 
   function showEpisodeNotes(episodeId: number) {
     setShowNotesEpisodeId(episodeId);
+    setShowNotesError(false);
+    const existingEpisode = podcastsWithPending
+      .flatMap((podcast) => podcast.episodes)
+      .find((episode) => episode.id === episodeId);
+    const hasNotes =
+      existingEpisode &&
+      (existingEpisode.showNotes !== undefined ||
+        existingEpisode.description !== undefined);
+    setShowNotesLoading(!hasNotes);
     setModal("show-notes");
   }
+
+  function closeShowNotes() {
+    setModal(null);
+    setShowNotesEpisodeId(null);
+    setShowNotesLoading(false);
+    setShowNotesError(false);
+  }
+
+  useEffect(() => {
+    if (modal !== "show-notes" || showNotesEpisodeId == null) {
+      return;
+    }
+
+    if (
+      !showNotesEpisode ||
+      showNotesEpisode.showNotes !== undefined ||
+      showNotesEpisode.description !== undefined ||
+      showNotesError
+    ) {
+      setShowNotesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    api.episodes
+      .get(showNotesEpisodeId)
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+        const fullEpisode = response.episode;
+        setPodcasts((currentPodcasts) =>
+          currentPodcasts.map((podcast) =>
+            podcast.id === fullEpisode.podcastId
+              ? {
+                  ...podcast,
+                  episodes: podcast.episodes.map((ep) =>
+                    ep.id === fullEpisode.id
+                      ? {
+                          ...ep,
+                          showNotes: fullEpisode.showNotes ?? null,
+                          description: fullEpisode.description ?? null,
+                        }
+                      : ep
+                  ),
+                }
+              : podcast
+          )
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setShowNotesError(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setShowNotesLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [modal, setPodcasts, showNotesEpisode, showNotesEpisodeId, showNotesError]);
 
   function renderPodcastCard(podcast: CachedSubscriptionPodcast) {
     return (
@@ -359,20 +436,18 @@ export function SubscriptionsScreen() {
       {modal === "show-notes" && showNotesEpisode && showNotesPodcast ? (
         <ModalScreen
           title="Show notes"
-          onClose={() => {
-            setModal(null);
-            setShowNotesEpisodeId(null);
-          }}
+          onClose={closeShowNotes}
         >
           <ShowNotes
             podcastTitle={showNotesPodcast.title}
             episodeTitle={showNotesEpisode.title}
-            onClose={() => {
-              setModal(null);
-              setShowNotesEpisodeId(null);
-            }}
+            onClose={closeShowNotes}
           >
-            {getEpisodeShowNotes(showNotesEpisode)}
+            {showNotesLoading
+              ? "Loading show notes..."
+              : showNotesError
+                ? "Failed to load show notes."
+                : getEpisodeShowNotes(showNotesEpisode)}
           </ShowNotes>
         </ModalScreen>
       ) : null}

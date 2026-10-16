@@ -194,6 +194,7 @@ Rules:
 - action availability and labels continue to reflect the current episode state
 - Subscriptions episode cards do not show a drag handle
 - Player playlist episode cards show a drag handle for queue reordering
+- in Subscriptions, opening Show notes fetches episode details on demand via `GET /api/episodes/:id` when notes are omitted from the initial list, caching the fetched content in client state
 
 ### Subscription List Defaults
 
