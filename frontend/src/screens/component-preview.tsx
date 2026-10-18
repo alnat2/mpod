@@ -1,4 +1,5 @@
 import { useSearchParams } from "react-router-dom";
+import { useTheme } from "next-themes";
 import {
   AddPodcast,
   AppShell,
@@ -155,6 +156,7 @@ function PreviewSection({
 
 export function ComponentPreview() {
   const [searchParams] = useSearchParams();
+  const { resolvedTheme, setTheme } = useTheme();
   const modalParam = searchParams.get("modal");
 
   if (modalParam === "shownotes") {
@@ -191,7 +193,17 @@ export function ComponentPreview() {
   return (
     <main className="flex min-h-screen flex-col gap-8 overflow-auto bg-background p-8 text-foreground">
       <header className="flex flex-col gap-2">
-        <h1 className="text-3xl leading-9 font-semibold">mpod component preview</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl leading-9 font-semibold">mpod component preview</h1>
+          <button
+            id="theme-toggle-btn"
+            type="button"
+            className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors cursor-pointer"
+            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+          >
+            Toggle Theme ({resolvedTheme})
+          </button>
+        </div>
         <p className="text-sm text-muted-foreground">
           Review surface for recreated components. Each item is one component instance;
           visual states are controlled by props in the component code.
