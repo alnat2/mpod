@@ -59,6 +59,7 @@ const durationCache = new Map<string, number>();
 const failedKeys = new Set<string>();
 const activeProbes = new Map<string, ActiveProbe>();
 const probeQueue: ProbeItem[] = [];
+const probeQueueKeys = new Set<string>();
 
 // Consumers registration
 const consumersByKey = new Map<string, Set<symbol>>();
@@ -92,6 +93,7 @@ function pumpQueue() {
 
   while (activeProbes.size < MAX_CONCURRENT_PROBES && probeQueue.length > 0) {
     const item = probeQueue.shift()!;
+    probeQueueKeys.delete(item.key);
 
     if (
       durationCache.has(item.key) ||
@@ -193,6 +195,7 @@ function updateConsumerSubscriptions(consumerId: symbol, items: ProbeItem[]) {
           const qIdx = probeQueue.findIndex((item) => item.key === key);
           if (qIdx !== -1) {
             probeQueue.splice(qIdx, 1);
+            probeQueueKeys.delete(key);
           }
 
           const active = activeProbes.get(key);
@@ -217,9 +220,10 @@ function updateConsumerSubscriptions(consumerId: symbol, items: ProbeItem[]) {
       !durationCache.has(item.key) &&
       !activeProbes.has(item.key) &&
       !failedKeys.has(item.key) &&
-      !probeQueue.some((q) => q.key === item.key)
+      !probeQueueKeys.has(item.key)
     ) {
       probeQueue.push(item);
+      probeQueueKeys.add(item.key);
     }
   }
 
@@ -244,6 +248,7 @@ function removeConsumerSubscriptions(consumerId: symbol) {
         const qIdx = probeQueue.findIndex((item) => item.key === key);
         if (qIdx !== -1) {
           probeQueue.splice(qIdx, 1);
+          probeQueueKeys.delete(key);
         }
 
         const active = activeProbes.get(key);
@@ -267,6 +272,7 @@ export function resetAudioMetadataQueueForTesting() {
   }
   activeProbes.clear();
   probeQueue.length = 0;
+  probeQueueKeys.clear();
   durationCache.clear();
   failedKeys.clear();
   consumersByKey.clear();
@@ -284,7 +290,7 @@ export function useAudioMetadataDurations(
     instanceIdRef.current = Symbol("useAudioMetadataDurations");
   }
 
-  const missingDurationKey = useMemo(() => {
+  const missingItems = useMemo<ProbeItem[]>(() => {
     void version;
     return episodes
       .filter((episode) => {
@@ -294,42 +300,49 @@ export function useAudioMetadataDurations(
         const key = getItemKey(episode);
         return !durationCache.has(key);
       })
-      .map(
-        (episode) =>
-          `${episode.type || "episode"}:${episode.id}:${episode.audioUrl || ""}`
-      )
-      .sort()
-      .join(",");
+      .map((episode) => {
+        const type = episode.type || "episode";
+        const key = getItemKey(episode);
+        const url = resolveAudioUrl(episode);
+        return {
+          key,
+          type,
+          id: episode.id,
+          audioUrl: episode.audioUrl,
+          url: url || "",
+        };
+      })
+      .filter((item) => Boolean(item.url));
   }, [episodes, version]);
+
+  const subscribedKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (typeof Audio === "undefined") {
       return;
     }
 
-    const id = instanceIdRef.current!;
-    const missingItems: ProbeItem[] = missingDurationKey
-      .split(",")
-      .filter(Boolean)
-      .map((str) => {
-        const parts = str.split(":");
-        const type = (parts[0] || "episode") as "episode" | "audiobook";
-        const idNum = Number(parts[1]);
-        const audioUrl = parts.slice(2).join(":") || undefined;
-        const key = `${type}:${idNum}`;
-        const url = resolveAudioUrl({ type, id: idNum, audioUrl });
-        return {
-          key,
-          type,
-          id: idNum,
-          audioUrl,
-          url: url || "",
-        };
-      })
-      .filter((item) => Boolean(item.url));
+    const currentKeys = new Set(missingItems.map((item) => item.key));
+    const prevKeys = subscribedKeysRef.current;
 
+    let isSame = currentKeys.size === prevKeys.size;
+    if (isSame) {
+      for (const k of currentKeys) {
+        if (!prevKeys.has(k)) {
+          isSame = false;
+          break;
+        }
+      }
+    }
+
+    if (isSame) {
+      return;
+    }
+
+    subscribedKeysRef.current = currentKeys;
+    const id = instanceIdRef.current!;
     updateConsumerSubscriptions(id, missingItems);
-  }, [missingDurationKey]);
+  }, [missingItems]);
 
   useEffect(
     () => () => {
