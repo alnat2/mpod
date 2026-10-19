@@ -23,6 +23,7 @@ import {
 } from "@/lib/api";
 import { useLatestRequest } from "@/lib/use-latest-request";
 import { PlaybackProvider } from "@/lib/playback-context";
+import { prefetchRoute } from "@/lib/route-prefetch";
 import { SubscriptionsCacheProvider } from "@/lib/subscriptions-cache-provider";
 
 const SetupScreen = lazy(async () => {
@@ -248,6 +249,11 @@ function AppRoutes() {
   }, [loadSession]);
 
   useEffect(() => {
+    prefetchRoute(
+      window.location.pathname === "/"
+        ? "/subscriptions"
+        : window.location.pathname
+    );
     void loadSession();
   }, [loadSession]);
 
