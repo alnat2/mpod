@@ -397,8 +397,9 @@ export function useSubscriptionActions({
     clearPodcastExit(exitingIds);
 
     try {
-      if (actionableEpisodes.length === 1) {
-        await api.episodes.setListened(actionableEpisodes[0].id, isListened);
+      const firstEpisode = actionableEpisodes[0];
+      if (actionableEpisodes.length === 1 && firstEpisode) {
+        await api.episodes.setListened(firstEpisode.id, isListened);
       } else {
         await api.episodes.setBulkListened(
           actionableEpisodes.map((episode) => episode.id),

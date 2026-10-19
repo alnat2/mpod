@@ -25,6 +25,8 @@ describe("useSubscriptionActions - markListened", () => {
             id: 1,
             title: "Test Podcast",
             rssUrl: "https://example.com/feed.xml",
+            lastChecked: null,
+            updateTime: null,
             episodes: [
               {
                 id: 101,
