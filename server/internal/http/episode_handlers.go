@@ -93,6 +93,35 @@ func (r *Router) handleEpisodePatch(w nethttp.ResponseWriter, req *nethttp.Reque
 	})
 }
 
+func (r *Router) handleEpisodesBulkListened(w nethttp.ResponseWriter, req *nethttp.Request) {
+	if _, ok := r.requireUser(w, req); !ok {
+		return
+	}
+
+	var payload struct {
+		EpisodeIDs []int64 `json:"episodeIds"`
+		IsListened *bool   `json:"isListened"`
+	}
+	if !r.decodeJSON(w, req, &payload) {
+		return
+	}
+	if payload.IsListened == nil || len(payload.EpisodeIDs) == 0 {
+		r.writeAPIError(w, nethttp.StatusBadRequest, "INVALID_EPISODES_PAYLOAD", "episodeIds and isListened are required")
+		return
+	}
+
+	result, err := r.episodeActions.SetBulkListened(req.Context(), payload.EpisodeIDs, *payload.IsListened)
+	if err != nil {
+		r.writeAPIError(w, nethttp.StatusInternalServerError, "EPISODES_BULK_LISTENED_FAILED", "Failed to update episodes")
+		return
+	}
+
+	r.writeJSON(w, nethttp.StatusOK, map[string]any{
+		"success":      true,
+		"updatedCount": result.UpdatedCount,
+	})
+}
+
 func (r *Router) handleEpisodeDownload(w nethttp.ResponseWriter, req *nethttp.Request) {
 	if _, ok := r.requireUser(w, req); !ok {
 		return

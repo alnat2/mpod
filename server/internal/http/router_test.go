@@ -3286,6 +3286,60 @@ func TestEpisodePatchKeepsEpisodeUnlistenedWhenDownloadDeletionFails(t *testing.
 	}
 }
 
+func TestEpisodesBulkListened(t *testing.T) {
+	handler, db := newTestRouter(t)
+	cookie := register(t, handler, "admin", "secret")
+
+	mustExecHTTP(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, is_listened) VALUES (1, 1, 'ep-1', 'Ep 1', 'https://example.com/1.mp3', 0)`)
+	mustExecHTTP(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, is_listened) VALUES (2, 1, 'ep-2', 'Ep 2', 'https://example.com/2.mp3', 0)`)
+	mustExecHTTP(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1), (2, 2)`)
+
+	unauthReq := httptest.NewRequest(nethttp.MethodPost, "/api/episodes/bulk-listened", bytes.NewReader([]byte(`{"episodeIds":[1,2],"isListened":true}`)))
+	unauthRec := httptest.NewRecorder()
+	handler.ServeHTTP(unauthRec, unauthReq)
+	if unauthRec.Code != nethttp.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", unauthRec.Code)
+	}
+
+	badReq := httptest.NewRequest(nethttp.MethodPost, "/api/episodes/bulk-listened", bytes.NewReader([]byte(`{"episodeIds":[1]}`)))
+	badReq.AddCookie(cookie)
+	badRec := httptest.NewRecorder()
+	handler.ServeHTTP(badRec, badReq)
+	if badRec.Code != nethttp.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", badRec.Code)
+	}
+	assertErrorCode(t, badRec.Body.Bytes(), "INVALID_EPISODES_PAYLOAD")
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/episodes/bulk-listened", bytes.NewReader([]byte(`{"episodeIds":[1,2],"isListened":true}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Success      bool  `json:"success"`
+		UpdatedCount int64 `json:"updatedCount"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if !resp.Success || resp.UpdatedCount != 2 {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+
+	patchReq := httptest.NewRequest(nethttp.MethodPatch, "/api/episodes/bulk-listened", bytes.NewReader([]byte(`{"episodeIds":[1],"isListened":false}`)))
+	patchReq.AddCookie(cookie)
+	patchRec := httptest.NewRecorder()
+	handler.ServeHTTP(patchRec, patchReq)
+	if patchRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 from PATCH, got %d body=%s", patchRec.Code, patchRec.Body.String())
+	}
+}
+
 func TestEpisodeDownloadReturnsServerErrorOnClientFailure(t *testing.T) {
 	client := newRouterTestClient(func(req *nethttp.Request) (*nethttp.Response, error) {
 		return nil, io.EOF

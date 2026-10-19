@@ -316,6 +316,11 @@ export const api = {
         `/api/episodes/${episodeId}`,
         { method: "PATCH", body: { isListened } }
       ),
+    setBulkListened: (episodeIds: number[], isListened: boolean) =>
+      apiRequest<{ success: true; updatedCount: number }>(
+        "/api/episodes/bulk-listened",
+        { method: "POST", body: { episodeIds, isListened } }
+      ),
   },
   playlist: {
     list: () => apiRequest<{ items: MaybeArray<PlaylistItem> }>("/api/playlist"),

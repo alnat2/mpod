@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/cross/mpod/server/internal/downloads"
 	"github.com/cross/mpod/server/internal/playlist"
@@ -18,6 +19,10 @@ var (
 
 type MarkPodcastListenedResult struct {
 	MarkedEpisodes int64 `json:"markedEpisodes"`
+}
+
+type BulkListenedResult struct {
+	UpdatedCount int64 `json:"updatedCount"`
 }
 
 type Actions struct {
@@ -66,6 +71,121 @@ func (a *Actions) SetListened(ctx context.Context, episodeID int64, listened boo
 	}
 
 	return nil
+}
+
+func (a *Actions) SetBulkListened(ctx context.Context, episodeIDs []int64, listened bool) (BulkListenedResult, error) {
+	if len(episodeIDs) == 0 {
+		return BulkListenedResult{UpdatedCount: 0}, nil
+	}
+
+	seen := make(map[int64]struct{}, len(episodeIDs))
+	uniqueIDs := make([]int64, 0, len(episodeIDs))
+	for _, id := range episodeIDs {
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			uniqueIDs = append(uniqueIDs, id)
+		}
+	}
+
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return BulkListenedResult{}, fmt.Errorf("begin bulk listened tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	placeholders := make([]string, len(uniqueIDs))
+	args := make([]any, len(uniqueIDs))
+	for i, id := range uniqueIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	inClause := strings.Join(placeholders, ",")
+
+	var downloadedPaths []string
+	if listened {
+		rows, err := tx.QueryContext(ctx, fmt.Sprintf(`
+			SELECT downloaded_path
+			FROM episodes
+			WHERE id IN (%s)
+			  AND downloaded_path IS NOT NULL
+			  AND downloaded_path <> ''
+		`, inClause), args...)
+		if err != nil {
+			return BulkListenedResult{}, fmt.Errorf("load episodes downloaded paths: %w", err)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var path string
+			if err := rows.Scan(&path); err != nil {
+				return BulkListenedResult{}, fmt.Errorf("scan episode downloaded path: %w", err)
+			}
+			downloadedPaths = append(downloadedPaths, path)
+		}
+		if err := rows.Err(); err != nil {
+			return BulkListenedResult{}, fmt.Errorf("iterate episodes downloaded paths: %w", err)
+		}
+		rows.Close()
+
+		if a.downloads != nil {
+			for _, id := range uniqueIDs {
+				_ = a.downloads.CancelDownload(ctx, id)
+			}
+		}
+
+		updateRes, err := tx.ExecContext(ctx, fmt.Sprintf(`
+			UPDATE episodes SET is_listened = 1, downloaded_path = NULL WHERE id IN (%s)
+		`, inClause), args...)
+		if err != nil {
+			return BulkListenedResult{}, fmt.Errorf("mark episodes listened: %w", err)
+		}
+		rowsAffected, err := updateRes.RowsAffected()
+		if err != nil {
+			return BulkListenedResult{}, fmt.Errorf("check mark episodes listened rows affected: %w", err)
+		}
+
+		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`
+			DELETE FROM playlist WHERE episode_id IN (%s)
+		`, inClause), args...); err != nil {
+			return BulkListenedResult{}, fmt.Errorf("remove episodes from playlist: %w", err)
+		}
+
+		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`
+			UPDATE active_playback
+			SET episode_id = NULL, last_updated = CURRENT_TIMESTAMP
+			WHERE singleton_id = 1
+			  AND episode_id IN (%s)
+		`, inClause), args...); err != nil {
+			return BulkListenedResult{}, fmt.Errorf("clear active playback for episodes: %w", err)
+		}
+
+		if err := tx.Commit(); err != nil {
+			return BulkListenedResult{}, fmt.Errorf("commit bulk listened tx: %w", err)
+		}
+
+		for _, path := range downloadedPaths {
+			_ = os.Remove(path)
+		}
+
+		return BulkListenedResult{UpdatedCount: rowsAffected}, nil
+	}
+
+	updateRes, err := tx.ExecContext(ctx, fmt.Sprintf(`
+		UPDATE episodes SET is_listened = 0 WHERE id IN (%s)
+	`, inClause), args...)
+	if err != nil {
+		return BulkListenedResult{}, fmt.Errorf("mark episodes unlistened: %w", err)
+	}
+	rowsAffected, err := updateRes.RowsAffected()
+	if err != nil {
+		return BulkListenedResult{}, fmt.Errorf("check mark episodes unlistened rows affected: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return BulkListenedResult{}, fmt.Errorf("commit bulk unlistened tx: %w", err)
+	}
+
+	return BulkListenedResult{UpdatedCount: rowsAffected}, nil
 }
 
 func (a *Actions) MarkPodcastListened(ctx context.Context, podcastID int64) (MarkPodcastListenedResult, error) {

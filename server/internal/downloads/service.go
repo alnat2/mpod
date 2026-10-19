@@ -197,6 +197,10 @@ func (s *Service) Delete(ctx context.Context, episodeID int64) (EpisodeDownload,
 	return EpisodeDownload{ID: episodeID, Downloaded: false}, nil
 }
 
+func (s *Service) CancelDownload(ctx context.Context, episodeID int64) error {
+	return s.cancelDownload(ctx, episodeID)
+}
+
 func (s *Service) cancelDownload(ctx context.Context, episodeID int64) error {
 	s.mu.Lock()
 	call := s.inFlight[episodeID]

@@ -235,6 +235,8 @@ func NewRouterWithServices(logger *log.Logger, cfg config.Config, db *sql.DB, sc
 	mux.HandleFunc("DELETE /api/playlist/{episodeId}", r.handlePlaylistRemove)
 	mux.HandleFunc("PATCH /api/playlist/reorder", r.handlePlaylistReorder)
 	mux.HandleFunc("GET /api/episodes", r.handleEpisodesList)
+	mux.HandleFunc("POST /api/episodes/bulk-listened", r.handleEpisodesBulkListened)
+	mux.HandleFunc("PATCH /api/episodes/bulk-listened", r.handleEpisodesBulkListened)
 	mux.HandleFunc("GET /api/episodes/{id}", r.handleEpisodeGet)
 	mux.HandleFunc("PATCH /api/episodes/{id}", r.handleEpisodePatch)
 	mux.HandleFunc("POST /api/episodes/{id}/download", r.handleEpisodeDownload)

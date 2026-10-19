@@ -380,3 +380,88 @@ func activeEpisodeID(t *testing.T, db *storage.DB) sql.NullInt64 {
 	}
 	return episodeID
 }
+
+func TestSetBulkListened(t *testing.T) {
+	db := newActionsTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	path1 := filepath.Join(downloadDir, "1", "ep1.mp3")
+	path2 := filepath.Join(downloadDir, "1", "ep2.mp3")
+	if err := os.MkdirAll(filepath.Dir(path1), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(path1, []byte("audio1"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := os.WriteFile(path2, []byte("audio2"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	mustExecActions(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecActions(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path, is_listened) VALUES (1, 1, 'ep-1', 'Ep 1', 'https://example.com/1.mp3', ?, 0)`, path1)
+	mustExecActions(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path, is_listened) VALUES (2, 1, 'ep-2', 'Ep 2', 'https://example.com/2.mp3', ?, 0)`, path2)
+	mustExecActions(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url, downloaded_path, is_listened) VALUES (3, 1, 'ep-3', 'Ep 3', 'https://example.com/3.mp3', NULL, 0)`)
+
+	mustExecActions(t, db, `INSERT INTO playlist (episode_id, position) VALUES (1, 1), (2, 2)`)
+	mustExecActions(t, db, `INSERT INTO active_playback (singleton_id, episode_id, last_updated) VALUES (1, 1, CURRENT_TIMESTAMP)`)
+
+	actions := NewActions(db.SQL, downloads.NewService(db.SQL, nil, downloadDir))
+
+	// Empty list
+	emptyRes, err := actions.SetBulkListened(context.Background(), nil, true)
+	if err != nil || emptyRes.UpdatedCount != 0 {
+		t.Fatalf("expected 0 for empty list, got %v, err=%v", emptyRes, err)
+	}
+
+	// Bulk mark listened for episodes 1 and 2 (with duplicate ID 1)
+	res, err := actions.SetBulkListened(context.Background(), []int64{1, 2, 1}, true)
+	if err != nil {
+		t.Fatalf("SetBulkListened failed: %v", err)
+	}
+	if res.UpdatedCount != 2 {
+		t.Fatalf("expected UpdatedCount=2, got %d", res.UpdatedCount)
+	}
+
+	for _, epID := range []int64{1, 2} {
+		var isListened bool
+		var downloadedPath sql.NullString
+		if err := db.SQL.QueryRow(`SELECT is_listened, downloaded_path FROM episodes WHERE id = ?`, epID).Scan(&isListened, &downloadedPath); err != nil {
+			t.Fatalf("query ep %d: %v", epID, err)
+		}
+		if !isListened {
+			t.Fatalf("expected ep %d to be listened", epID)
+		}
+		if downloadedPath.Valid {
+			t.Fatalf("expected downloaded_path to be NULL for ep %d", epID)
+		}
+		if count := playlistCountForEpisode(t, db, epID); count != 0 {
+			t.Fatalf("expected ep %d to be removed from playlist", epID)
+		}
+	}
+
+	if _, err := os.Stat(path1); !os.IsNotExist(err) {
+		t.Fatalf("expected path1 to be removed")
+	}
+	if _, err := os.Stat(path2); !os.IsNotExist(err) {
+		t.Fatalf("expected path2 to be removed")
+	}
+
+	if active := activeEpisodeID(t, db); active.Valid {
+		t.Fatalf("expected active playback episode_id to be cleared, got %d", active.Int64)
+	}
+
+	// Bulk mark unlistened
+	unres, err := actions.SetBulkListened(context.Background(), []int64{1, 2}, false)
+	if err != nil {
+		t.Fatalf("SetBulkListened unlistened failed: %v", err)
+	}
+	if unres.UpdatedCount != 2 {
+		t.Fatalf("expected UpdatedCount=2, got %d", unres.UpdatedCount)
+	}
+
+	var isListened1 bool
+	if err := db.SQL.QueryRow(`SELECT is_listened FROM episodes WHERE id = 1`).Scan(&isListened1); err != nil || isListened1 {
+		t.Fatalf("expected ep 1 to be unlistened, got %v, err=%v", isListened1, err)
+	}
+}
