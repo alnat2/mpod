@@ -27,7 +27,7 @@ describe("screen-cache", () => {
         hasCover: false,
         files: [],
       },
-    ];
+    ] as unknown as Parameters<typeof setCachedAudiobooks>[0];
     setCachedAudiobooks(books);
     expect(getCachedAudiobooks()).toEqual(books);
     clearCachedAudiobooks();
@@ -41,8 +41,11 @@ describe("screen-cache", () => {
         dailyRefreshTime: "03:00",
         proxyConfigured: false,
         proxyEnabled: false,
+        playbackSpeed: "1.0",
+        appBuild: "test",
       },
       scheduler: {
+        state: "idle",
         lastRunAt: null,
         lastSuccessAt: null,
         lastFailureAt: null,
@@ -58,5 +61,42 @@ describe("screen-cache", () => {
 
     clearCachedSettings();
     expect(getCachedSettings()).toBeNull();
+  });
+
+  it("initializes settings cache when cache was null if base settings are provided", () => {
+    expect(getCachedSettings()).toBeNull();
+    updateCachedSettings({
+      settings: {
+        dailyRefreshTime: "04:00",
+        proxyConfigured: true,
+        proxyEnabled: true,
+        playbackSpeed: "1.0",
+        appBuild: "test",
+      },
+      scheduler: {
+        state: "idle",
+        lastRunAt: null,
+        lastSuccessAt: null,
+        lastFailureAt: null,
+      },
+      dailyRefreshTime: "04:00",
+    });
+    expect(getCachedSettings()).toEqual({
+      settings: {
+        dailyRefreshTime: "04:00",
+        proxyConfigured: true,
+        proxyEnabled: true,
+        playbackSpeed: "1.0",
+        appBuild: "test",
+      },
+      scheduler: {
+        state: "idle",
+        lastRunAt: null,
+        lastSuccessAt: null,
+        lastFailureAt: null,
+      },
+      proxyStatus: null,
+      dailyRefreshTime: "04:00",
+    });
   });
 });

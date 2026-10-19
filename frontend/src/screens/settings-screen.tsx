@@ -24,7 +24,6 @@ import {
   clearCachedAudiobooks,
   clearCachedSettings,
   getCachedSettings,
-  setCachedSettings,
   updateCachedSettings,
 } from "@/lib/screen-cache";
 
@@ -187,11 +186,10 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
           setSettings(values);
           setDailyRefreshTime(values.dailyRefreshTime);
           setScheduler(status);
-          setCachedSettings({
+          updateCachedSettings({
             settings: values,
             dailyRefreshTime: values.dailyRefreshTime,
             scheduler: status,
-            proxyStatus: proxyStatus ?? null,
           });
           setLoading(false);
         }

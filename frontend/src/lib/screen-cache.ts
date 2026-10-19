@@ -38,6 +38,13 @@ export function setCachedSettings(cache: SettingsMemoryCache): void {
 export function updateCachedSettings(patch: Partial<SettingsMemoryCache>): void {
   if (settingsMemoryCache) {
     settingsMemoryCache = { ...settingsMemoryCache, ...patch };
+  } else if (patch.settings && patch.scheduler && patch.dailyRefreshTime) {
+    settingsMemoryCache = {
+      settings: patch.settings,
+      scheduler: patch.scheduler,
+      dailyRefreshTime: patch.dailyRefreshTime,
+      proxyStatus: patch.proxyStatus ?? null,
+    };
   }
 }
 

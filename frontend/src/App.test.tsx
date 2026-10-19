@@ -50,8 +50,13 @@ const playbackProviderMock = vi.fn(
   }
 );
 
+const reloadQueueMock = vi.fn();
+
 vi.mock("@/lib/playback-context", () => ({
   PlaybackProvider: (props: { children: ReactNode }) => playbackProviderMock(props),
+  usePlaybackDispatch: () => ({
+    reloadQueue: reloadQueueMock,
+  }),
 }));
 
 vi.mock("@/components/mpod", async () => {

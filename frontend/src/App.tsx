@@ -22,8 +22,9 @@ import {
   type AuthSession,
 } from "@/lib/api";
 import { useLatestRequest } from "@/lib/use-latest-request";
-import { PlaybackProvider } from "@/lib/playback-context";
+import { PlaybackProvider, usePlaybackDispatch } from "@/lib/playback-context";
 import { prefetchRoute } from "@/lib/route-prefetch";
+import { clearCachedAudiobooks, clearCachedSettings } from "@/lib/screen-cache";
 import { SubscriptionsCacheProvider } from "@/lib/subscriptions-cache-provider";
 
 const SetupScreen = lazy(async () => {
@@ -155,23 +156,28 @@ function PublicLayout() {
 
 function AuthenticatedAppLayout() {
   const location = useLocation();
-  const [onAddHandler, setOnAddHandler] = useState<(() => void) | undefined>();
+  const onAddHandlerRef = useRef<(() => void) | undefined>(undefined);
   const [addModalMode, setAddModalMode] = useState<AddPodcastModalMode>(null);
+  const { reloadQueue } = usePlaybackDispatch();
+
+  const setOnAddPodcast = useCallback((handler: (() => void) | undefined) => {
+    onAddHandlerRef.current = handler;
+  }, []);
 
   const handleAdd = useCallback(() => {
-    if (onAddHandler) {
-      onAddHandler();
+    if (onAddHandlerRef.current) {
+      onAddHandlerRef.current();
     } else {
       setAddModalMode("rss");
     }
-  }, [onAddHandler]);
+  }, []);
 
   const shellContextValue = useMemo(
     () => ({
       insideAppShell: true,
-      setOnAddPodcast: setOnAddHandler,
+      setOnAddPodcast,
     }),
-    []
+    [setOnAddPodcast]
   );
 
   return (
@@ -191,6 +197,9 @@ function AuthenticatedAppLayout() {
         mode={addModalMode}
         onClose={() => setAddModalMode(null)}
         onModeChange={setAddModalMode}
+        onComplete={() => {
+          void reloadQueue();
+        }}
       />
     </AppShellContext.Provider>
   );
@@ -215,6 +224,10 @@ function AppRoutes() {
       try {
         const nextSession = await api.auth.session();
         if (sessionRequests.isLatestRequest(requestGeneration)) {
+          if (!nextSession.authenticated) {
+            clearCachedSettings();
+            clearCachedAudiobooks();
+          }
           setSession(nextSession);
         }
       } catch {
@@ -258,7 +271,12 @@ function AppRoutes() {
   }, [loadSession]);
 
   useEffect(
-    () => subscribeToUnauthorized(refreshSessionOnce),
+    () =>
+      subscribeToUnauthorized(() => {
+        clearCachedSettings();
+        clearCachedAudiobooks();
+        refreshSessionOnce();
+      }),
     [refreshSessionOnce]
   );
 

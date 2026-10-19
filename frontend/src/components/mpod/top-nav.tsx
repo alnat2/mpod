@@ -27,12 +27,7 @@ const defaultNavItems: NavItem[] = [
   { label: "Settings", href: "/settings" },
 ];
 
-function getActiveNavItem(pathname: string): string {
-  if (pathname.startsWith("/subscriptions")) return "Subscriptions";
-  if (pathname.startsWith("/audiobooks") || pathname.startsWith("/abooks")) return "Audiobooks";
-  if (pathname.startsWith("/settings")) return "Settings";
-  return "Player";
-}
+import { getActiveNavItem } from "./nav-utils";
 
 export function TopNav({
   activeItem,
@@ -60,14 +55,10 @@ export function TopNav({
                 asChild
                 variant={isActive ? "secondary" : "ghost"}
                 className={cn("px-4 py-2 text-sm font-medium", isActive && "font-semibold")}
+                onMouseEnter={() => prefetchRoute(item.href)}
+                onFocus={() => prefetchRoute(item.href)}
               >
-                <Link
-                  to={item.href}
-                  onMouseEnter={() => prefetchRoute(item.href)}
-                  onFocus={() => prefetchRoute(item.href)}
-                >
-                  {item.label}
-                </Link>
+                <Link to={item.href}>{item.label}</Link>
               </Button>
             );
           })}

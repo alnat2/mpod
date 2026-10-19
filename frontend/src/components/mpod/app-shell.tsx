@@ -1,4 +1,4 @@
-import { useContext, useEffect } from "react";
+import { useContext, useEffect, useRef } from "react";
 import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
@@ -9,6 +9,10 @@ import { PageHeader } from "./page-header";
 import { TopNav } from "./top-nav";
 
 type AppShellProps = {
+  /**
+   * Optional active navigation tab. When rendered inside AuthenticatedAppLayout,
+   * the active tab is automatically derived from the router location.
+   */
   activeNavItem?: string;
   children?: ReactNode;
   className?: string;
@@ -33,15 +37,22 @@ export function AppShell({
 }: AppShellProps) {
   const context = useContext(AppShellContext);
   const isInside = context.insideAppShell;
+  const onAddPodcastRef = useRef(onAddPodcast);
 
   useEffect(() => {
-    if (isInside && onAddPodcast) {
-      context.setOnAddPodcast(onAddPodcast);
+    onAddPodcastRef.current = onAddPodcast;
+  });
+
+  useEffect(() => {
+    if (isInside) {
+      context.setOnAddPodcast(() => {
+        onAddPodcastRef.current?.();
+      });
       return () => {
         context.setOnAddPodcast(undefined);
       };
     }
-  }, [isInside, onAddPodcast, context]);
+  }, [isInside, context]);
 
   if (isInside) {
     return (

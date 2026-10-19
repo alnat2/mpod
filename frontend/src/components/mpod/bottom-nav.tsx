@@ -92,12 +92,7 @@ const defaultItems: BottomNavItem[] = [
   },
 ];
 
-function getActiveNavItem(pathname: string): string {
-  if (pathname.startsWith("/subscriptions")) return "Subscriptions";
-  if (pathname.startsWith("/audiobooks") || pathname.startsWith("/abooks")) return "Audiobooks";
-  if (pathname.startsWith("/settings")) return "Settings";
-  return "Player";
-}
+import { getActiveNavItem } from "./nav-utils";
 
 export function BottomNav({
   activeItem,
@@ -150,6 +145,7 @@ export function BottomNav({
                 className="flex h-14 shrink-0 flex-col items-center justify-center gap-[3px] py-[3px]"
                 onMouseEnter={() => item.href && prefetchRoute(item.href)}
                 onFocus={() => item.href && prefetchRoute(item.href)}
+                onTouchStart={() => item.href && prefetchRoute(item.href)}
               >
                 {content}
               </Link>
