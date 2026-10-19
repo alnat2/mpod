@@ -20,6 +20,13 @@ import { useLatestRequest } from "@/lib/use-latest-request";
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
 import { ErrorBanner, ScreenBannerStack } from "./screen-states";
 import { applyTimeMask, getErrorMessage, isValid24HourTime } from "./screen-utils";
+import {
+  clearCachedAudiobooks,
+  clearCachedSettings,
+  getCachedSettings,
+  setCachedSettings,
+  updateCachedSettings,
+} from "@/lib/screen-cache";
 
 type SettingsScreenProps = {
   onSessionChange?: () => void | Promise<void>;
@@ -136,12 +143,13 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
   const isMobile = useIsMobileViewport();
   const navigate = useNavigate();
   const { resolvedTheme, setTheme } = useTheme();
+  const cached = getCachedSettings();
   const [modal, setModal] = useState<AddPodcastModalMode>(null);
-  const [settings, setSettings] = useState<SettingsValues | null>(null);
-  const [proxyStatus, setProxyStatus] = useState<ProxyRuntimeStatus | null>(null);
-  const [scheduler, setScheduler] = useState<SchedulerStatus | null>(null);
-  const [dailyRefreshTime, setDailyRefreshTime] = useState("03:00");
-  const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState<SettingsValues | null>(() => cached?.settings ?? null);
+  const [proxyStatus, setProxyStatus] = useState<ProxyRuntimeStatus | null>(() => cached?.proxyStatus ?? null);
+  const [scheduler, setScheduler] = useState<SchedulerStatus | null>(() => cached?.scheduler ?? null);
+  const [dailyRefreshTime, setDailyRefreshTime] = useState(() => cached?.dailyRefreshTime ?? "03:00");
+  const [loading, setLoading] = useState(() => cached === null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -164,7 +172,9 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
     let cancelled = false;
 
     async function loadSettings() {
-      setLoading(true);
+      if (!getCachedSettings()) {
+        setLoading(true);
+      }
       setError(null);
 
       try {
@@ -177,6 +187,12 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
           setSettings(values);
           setDailyRefreshTime(values.dailyRefreshTime);
           setScheduler(status);
+          setCachedSettings({
+            settings: values,
+            dailyRefreshTime: values.dailyRefreshTime,
+            scheduler: status,
+            proxyStatus: proxyStatus ?? null,
+          });
           setLoading(false);
         }
 
@@ -184,6 +200,7 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
           ({ proxy }) => {
             if (!cancelled) {
               setProxyStatus(proxy);
+              updateCachedSettings({ proxyStatus: proxy });
             }
           },
           () => {
@@ -251,6 +268,10 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
       });
       setSettings(values);
       setDailyRefreshTime(values.dailyRefreshTime);
+      updateCachedSettings({
+        settings: values,
+        dailyRefreshTime: values.dailyRefreshTime,
+      });
       setReloadKey((current) => current + 1);
     } catch (caught) {
       setActionError(getErrorMessage(caught));
@@ -271,6 +292,10 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
       setSettings(values);
       const { proxy } = await api.settings.proxyStatus();
       setProxyStatus(proxy);
+      updateCachedSettings({
+        settings: values,
+        proxyStatus: proxy,
+      });
     } catch (caught) {
       setActionError(getErrorMessage(caught));
     }
@@ -281,6 +306,8 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
 
     try {
       await api.auth.logout();
+      clearCachedSettings();
+      clearCachedAudiobooks();
       await onSessionChange?.();
       navigate("/login", { replace: true });
     } catch (caught) {

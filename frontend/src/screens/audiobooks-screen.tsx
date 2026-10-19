@@ -17,6 +17,7 @@ import { usePlaybackDispatch } from "@/lib/playback-context";
 import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
 import { ErrorBanner, ScreenBannerStack } from "./screen-states";
+import { getCachedAudiobooks, setCachedAudiobooks } from "@/lib/screen-cache";
 import { getErrorMessage } from "./screen-utils";
 
 export type AudiobooksScreenProps = {
@@ -46,8 +47,9 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
   void props;
   const isMobile = useIsMobileViewport();
   const { reloadQueue } = usePlaybackDispatch();
-  const [audiobooks, setAudiobooks] = useState<Audiobook[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cached = getCachedAudiobooks();
+  const [audiobooks, setAudiobooks] = useState<Audiobook[]>(() => cached ?? []);
+  const [loading, setLoading] = useState(() => cached === null);
   const [rescanning, setRescanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState<string[]>([]);
@@ -64,7 +66,9 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
       try {
         const response = await api.audiobooks.list(controller.signal);
         if (!controller.signal.aborted) {
-          setAudiobooks(response.audiobooks ?? []);
+          const list = response.audiobooks ?? [];
+          setAudiobooks(list);
+          setCachedAudiobooks(list);
           setError(null);
         }
       } catch (caught) {
