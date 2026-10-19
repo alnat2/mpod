@@ -1,8 +1,9 @@
 import { HugeiconsIcon } from "@hugeicons/react";
 import { PlusSignSquareIcon } from "@hugeicons/core-free-icons";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { prefetchRoute } from "@/lib/route-prefetch";
 import { cn } from "@/lib/utils";
 
 import { Logo } from "./logo";
@@ -26,12 +27,22 @@ const defaultNavItems: NavItem[] = [
   { label: "Settings", href: "/settings" },
 ];
 
+function getActiveNavItem(pathname: string): string {
+  if (pathname.startsWith("/subscriptions")) return "Subscriptions";
+  if (pathname.startsWith("/audiobooks") || pathname.startsWith("/abooks")) return "Audiobooks";
+  if (pathname.startsWith("/settings")) return "Settings";
+  return "Player";
+}
+
 export function TopNav({
-  activeItem = "Player",
+  activeItem,
   className,
   navItems = defaultNavItems,
   onAdd,
 }: TopNavProps) {
+  const location = useLocation();
+  const currentActive = activeItem ?? getActiveNavItem(location.pathname);
+
   return (
     <header className={cn("flex h-[64px] w-full shrink-0 items-center justify-center bg-background", className)}>
       <div className="flex h-full w-full max-w-[1200px] items-center gap-7 overflow-hidden px-6 xl:px-0">
@@ -39,9 +50,9 @@ export function TopNav({
         <nav className="flex h-[33px] shrink-0 items-start gap-1" aria-label="Primary navigation">
           {navItems.map((item) => {
             const isActive =
-              item.label === activeItem ||
-              (item.label === "Podcasts" && activeItem === "Subscriptions") ||
-              (item.label === "Abooks" && activeItem === "Audiobooks");
+              item.label === currentActive ||
+              (item.label === "Podcasts" && currentActive === "Subscriptions") ||
+              (item.label === "Abooks" && currentActive === "Audiobooks");
 
             return (
               <Button
@@ -50,7 +61,13 @@ export function TopNav({
                 variant={isActive ? "secondary" : "ghost"}
                 className={cn("px-4 py-2 text-sm font-medium", isActive && "font-semibold")}
               >
-                <Link to={item.href}>{item.label}</Link>
+                <Link
+                  to={item.href}
+                  onMouseEnter={() => prefetchRoute(item.href)}
+                  onFocus={() => prefetchRoute(item.href)}
+                >
+                  {item.label}
+                </Link>
               </Button>
             );
           })}
@@ -59,11 +76,12 @@ export function TopNav({
         <Button className="px-3" type="button" variant="secondary" onClick={onAdd}>
           <HugeiconsIcon
             icon={PlusSignSquareIcon}
-            className="size-4"
-            data-icon="inline-start"
+            className="size-5"
+            strokeWidth={1.5}
             aria-hidden="true"
+            data-icon-name="hugeicons/plus-sign-square"
           />
-          Add
+          <span className="text-sm leading-5 font-medium">Add</span>
         </Button>
       </div>
     </header>

@@ -7,8 +7,9 @@ import {
   Settings01Icon,
 } from "@hugeicons/core-free-icons";
 import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
+import { prefetchRoute } from "@/lib/route-prefetch";
 import { cn } from "@/lib/utils";
 
 type BottomNavItem = {
@@ -91,11 +92,21 @@ const defaultItems: BottomNavItem[] = [
   },
 ];
 
+function getActiveNavItem(pathname: string): string {
+  if (pathname.startsWith("/subscriptions")) return "Subscriptions";
+  if (pathname.startsWith("/audiobooks") || pathname.startsWith("/abooks")) return "Audiobooks";
+  if (pathname.startsWith("/settings")) return "Settings";
+  return "Player";
+}
+
 export function BottomNav({
-  activeItem = "Player",
+  activeItem,
   className,
   onAdd,
 }: BottomNavProps) {
+  const location = useLocation();
+  const currentActive = activeItem ?? getActiveNavItem(location.pathname);
+
   return (
     <nav
       aria-label="Primary navigation"
@@ -107,9 +118,9 @@ export function BottomNav({
       <div className="flex h-[65px] w-full min-w-0 items-center justify-between">
         {defaultItems.map((item) => {
           const isActive =
-            item.label === activeItem ||
-            (item.label === "Podcasts" && activeItem === "Subscriptions") ||
-            (item.label === "Abooks" && activeItem === "Audiobooks");
+            item.label === currentActive ||
+            (item.label === "Podcasts" && currentActive === "Subscriptions") ||
+            (item.label === "Abooks" && currentActive === "Audiobooks");
           const content = (
             <>
               <span
@@ -137,6 +148,8 @@ export function BottomNav({
                 key={item.label}
                 to={item.href}
                 className="flex h-14 shrink-0 flex-col items-center justify-center gap-[3px] py-[3px]"
+                onMouseEnter={() => item.href && prefetchRoute(item.href)}
+                onFocus={() => item.href && prefetchRoute(item.href)}
               >
                 {content}
               </Link>

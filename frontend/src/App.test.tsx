@@ -54,20 +54,25 @@ vi.mock("@/lib/playback-context", () => ({
   PlaybackProvider: (props: { children: ReactNode }) => playbackProviderMock(props),
 }));
 
-vi.mock("@/components/mpod", () => ({
-  AuthShell: ({
-    headline,
-    children,
-  }: {
-    headline: string;
-    children?: ReactNode;
-  }) => (
-    <div>
-      <h1>{headline}</h1>
-      {children}
-    </div>
-  ),
-}));
+vi.mock("@/components/mpod", async () => {
+  const actual = await vi.importActual<Record<string, unknown>>("@/components/mpod");
+  return {
+    ...actual,
+    AuthShell: ({
+      headline,
+      children,
+    }: {
+      headline: string;
+      children?: ReactNode;
+    }) => (
+      <div>
+        <h1>{headline}</h1>
+        {children}
+      </div>
+    ),
+    AppShell: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  };
+});
 
 vi.mock("@/screens/auth-screens", () => ({
   SetupScreen: (props: { onAuthenticated?: () => void | Promise<void> }) =>

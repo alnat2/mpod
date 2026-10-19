@@ -3,6 +3,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -12,7 +13,8 @@ import { Outlet, Navigate, Route, Routes } from "react-router-dom";
 import { BrowserRouter, useLocation } from "react-router-dom";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthShell } from "@/components/mpod";
+import { AppShell, AppShellContext, AuthShell } from "@/components/mpod";
+import { AddPodcastModal, type AddPodcastModalMode } from "@/screens/add-podcast-modal";
 import { ScreenErrorBoundary } from "@/components/screen-error-boundary";
 import {
   api,
@@ -139,7 +141,7 @@ function ScreenLoadingFallback() {
   );
 }
 
-function AnimatedLayout() {
+function PublicLayout() {
   const location = useLocation();
   return (
     <RouteTransition routeKey={location.pathname}>
@@ -147,6 +149,49 @@ function AnimatedLayout() {
         <Outlet />
       </Suspense>
     </RouteTransition>
+  );
+}
+
+function AuthenticatedAppLayout() {
+  const location = useLocation();
+  const [onAddHandler, setOnAddHandler] = useState<(() => void) | undefined>();
+  const [addModalMode, setAddModalMode] = useState<AddPodcastModalMode>(null);
+
+  const handleAdd = useCallback(() => {
+    if (onAddHandler) {
+      onAddHandler();
+    } else {
+      setAddModalMode("rss");
+    }
+  }, [onAddHandler]);
+
+  const shellContextValue = useMemo(
+    () => ({
+      insideAppShell: true,
+      setOnAddPodcast: setOnAddHandler,
+    }),
+    []
+  );
+
+  return (
+    <AppShellContext.Provider value={shellContextValue}>
+      <AppShell
+        mainClassName="xl:max-w-[1280px]"
+        pageHeaderVisible={false}
+        onAddPodcast={handleAdd}
+      >
+        <RouteTransition routeKey={location.pathname}>
+          <Suspense fallback={<ScreenLoadingFallback />}>
+            <Outlet />
+          </Suspense>
+        </RouteTransition>
+      </AppShell>
+      <AddPodcastModal
+        mode={addModalMode}
+        onClose={() => setAddModalMode(null)}
+        onModeChange={setAddModalMode}
+      />
+    </AppShellContext.Provider>
   );
 }
 
@@ -268,7 +313,7 @@ function AppRoutes() {
 
   const routes = (
     <Routes>
-      <Route element={<AnimatedLayout />}>
+      <Route element={<PublicLayout />}>
         <Route
           path="/"
           element={
@@ -300,6 +345,8 @@ function AppRoutes() {
             )
           }
         />
+      </Route>
+      <Route element={<AuthenticatedAppLayout />}>
         <Route
           path="/subscriptions"
           element={

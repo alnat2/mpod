@@ -1,7 +1,9 @@
+import { useContext, useEffect } from "react";
 import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
+import { AppShellContext } from "./app-shell-context";
 import { BottomNav } from "./bottom-nav";
 import { PageHeader } from "./page-header";
 import { TopNav } from "./top-nav";
@@ -15,7 +17,7 @@ type AppShellProps = {
   pageActions?: ComponentProps<typeof PageHeader>["actions"];
   pageHeaderVisible?: boolean;
   pageSubtitle?: string;
-  pageTitle: string;
+  pageTitle?: string;
 };
 
 export function AppShell({
@@ -27,13 +29,47 @@ export function AppShell({
   pageActions,
   pageHeaderVisible = true,
   pageSubtitle,
-  pageTitle,
+  pageTitle = "",
 }: AppShellProps) {
+  const context = useContext(AppShellContext);
+  const isInside = context.insideAppShell;
+
+  useEffect(() => {
+    if (isInside && onAddPodcast) {
+      context.setOnAddPodcast(onAddPodcast);
+      return () => {
+        context.setOnAddPodcast(undefined);
+      };
+    }
+  }, [isInside, onAddPodcast, context]);
+
+  if (isInside) {
+    return (
+      <div
+        className={cn(
+          "flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden",
+          mainClassName,
+          className
+        )}
+      >
+        {pageHeaderVisible ? (
+          <PageHeader
+            className="py-4 md:py-5"
+            actions={pageActions}
+            subtitle={pageSubtitle}
+            title={pageTitle}
+          />
+        ) : null}
+        <div className="min-h-0 flex-1">{children}</div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
         "flex h-dvh w-full min-w-0 flex-col items-center overflow-hidden bg-background px-5 md:h-full md:px-6 md:pb-8 xl:px-20",
-        className,
+        className
       )}
     >
       <TopNav
@@ -44,7 +80,7 @@ export function AppShell({
       <main
         className={cn(
           "flex min-h-0 w-full max-w-[1200px] min-w-0 flex-1 flex-col overflow-hidden pb-[calc(65px+env(safe-area-inset-bottom))] text-foreground md:pb-0",
-          mainClassName,
+          mainClassName
         )}
       >
         {pageHeaderVisible ? (

@@ -1,4 +1,5 @@
 export { AppShell } from "./app-shell";
+export { AppShellContext, useAppShellContext, type AppShellContextType } from "./app-shell-context";
 export { AddPodcast } from "./add-podcast";
 export { Artwork } from "./artwork";
 export { AuthCard } from "./auth-card";
