@@ -20,12 +20,8 @@ import {
   type AuthSession,
 } from "@/lib/api";
 import { useLatestRequest } from "@/lib/use-latest-request";
+import { PlaybackProvider } from "@/lib/playback-context";
 import { SubscriptionsCacheProvider } from "@/lib/subscriptions-cache-provider";
-
-const AuthenticatedPlaybackProvider = lazy(async () => {
-  const module = await import("@/lib/playback-context");
-  return { default: module.PlaybackProvider };
-});
 
 const SetupScreen = lazy(async () => {
   const module = await import("@/screens/auth-screens");
@@ -131,11 +127,25 @@ function RouteTransition({
   );
 }
 
+function ScreenLoadingFallback() {
+  return (
+    <div
+      className="flex h-full w-full items-center justify-center p-8 text-sm text-muted-foreground"
+      role="status"
+      aria-live="polite"
+    >
+      Loading...
+    </div>
+  );
+}
+
 function AnimatedLayout() {
   const location = useLocation();
   return (
     <RouteTransition routeKey={location.pathname}>
-      <Outlet />
+      <Suspense fallback={<ScreenLoadingFallback />}>
+        <Outlet />
+      </Suspense>
     </RouteTransition>
   );
 }
@@ -193,11 +203,7 @@ function AppRoutes() {
   }, [loadSession]);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      void loadSession();
-    }, 0);
-
-    return () => window.clearTimeout(timeout);
+    void loadSession();
   }, [loadSession]);
 
   useEffect(
@@ -367,17 +373,15 @@ function AppRoutes() {
     </Routes>
   );
 
-  return (
-    <Suspense fallback={<LoadingScreen />}>
-      {authenticated ? (
-        <AuthenticatedPlaybackProvider>
-          <SubscriptionsCacheProvider>{routes}</SubscriptionsCacheProvider>
-        </AuthenticatedPlaybackProvider>
-      ) : (
-        routes
-      )}
-    </Suspense>
+  const content = authenticated ? (
+    <PlaybackProvider>
+      <SubscriptionsCacheProvider>{routes}</SubscriptionsCacheProvider>
+    </PlaybackProvider>
+  ) : (
+    routes
   );
+
+  return <Suspense fallback={<LoadingScreen />}>{content}</Suspense>;
 }
 
 export default function App() {

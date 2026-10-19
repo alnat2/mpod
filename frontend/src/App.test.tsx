@@ -346,4 +346,35 @@ describe("App routing", () => {
     expect(playbackProviderMountSpy).toHaveBeenCalledTimes(1);
     expect(playbackProviderUnmountSpy).not.toHaveBeenCalled();
   });
+
+  it("does not unmount the playback provider or flash global loading screen when an authenticated route suspends", async () => {
+    let resolveSettings: () => void;
+    const settingsPromise = new Promise<void>((resolve) => {
+      resolveSettings = resolve;
+    });
+
+    settingsScreenMock.mockImplementationOnce(() => {
+      throw settingsPromise;
+    });
+
+    window.history.replaceState({}, "", "/settings");
+    mockSession({
+      authenticated: true,
+      user: { id: 1, username: "qa" },
+      setupRequired: false,
+    });
+
+    render(<App />);
+    expect(await screen.findByText("Loading...")).toBeInTheDocument();
+    expect(screen.queryByText("Checking session")).not.toBeInTheDocument();
+    expect(playbackProviderMountSpy).toHaveBeenCalledTimes(1);
+    expect(playbackProviderUnmountSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveSettings!();
+    });
+
+    expect(await screen.findByText("Settings screen")).toBeInTheDocument();
+    expect(playbackProviderUnmountSpy).not.toHaveBeenCalled();
+  });
 });
