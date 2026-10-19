@@ -43,6 +43,11 @@ function isAudioFile(relPath?: string | null): boolean {
   return AUDIO_FILE_EXTENSIONS.has(relPath.slice(lastDot).toLowerCase());
 }
 
+const audiobookTitleCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
+
 export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
   void props;
   const isMobile = useIsMobileViewport();
@@ -216,7 +221,7 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
     }));
 
     const sortedFolders = [...generalFolders, ...audiobookFolders].sort((a, b) =>
-      a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" })
+      audiobookTitleCollator.compare(a.title, b.title)
     );
 
     const sortedFiles = directFileBooks
@@ -227,7 +232,7 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
         book,
       }))
       .sort((a, b) =>
-        a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" })
+        audiobookTitleCollator.compare(a.title, b.title)
       );
 
     return {

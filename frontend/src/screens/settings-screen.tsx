@@ -244,12 +244,22 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
     }
 
     const interval = window.setInterval(() => {
-      void refreshSchedulerStatus();
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        void refreshSchedulerStatus();
+      }
     }, 15000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshSchedulerStatus();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [reloadKey, statusPollRequests]);
 

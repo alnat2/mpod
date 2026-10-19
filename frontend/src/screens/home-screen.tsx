@@ -330,6 +330,10 @@ export function HomeScreen() {
 
   const visibleQueue = queue;
   const durationForQueueEpisode = useAudioMetadataDurations(visibleQueue);
+  const queueSummaryText = useMemo(
+    () => queueSummary(visibleQueue, durationForQueueEpisode),
+    [visibleQueue, durationForQueueEpisode]
+  );
 
   const showNotesEpisode =
     visibleQueue.find(
@@ -583,7 +587,7 @@ export function HomeScreen() {
                 onChapters={handleOpenChapters}
               />
               <PlaylistQueue
-                summary={queueSummary(visibleQueue, durationForQueueEpisode)}
+                summary={queueSummaryText}
                 className="min-h-0 w-full flex-1 md:max-w-[1040px]"
                 bodyClassName="mpod-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain"
               >

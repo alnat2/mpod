@@ -73,10 +73,13 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const currentEpisodeRef = useRef<QueueEpisode | null>(null);
   const currentEpisodeDurationRef = useRef(0);
   const pendingPlayEpisodeIdRef = useRef<number | null>(null);
-  const activeEpisode =
-    activeItemKey !== null
-      ? queue.find((episode) => queueItemKey(episode) === activeItemKey) ?? null
-      : null;
+  const activeEpisode = useMemo(
+    () =>
+      activeItemKey !== null
+        ? queue.find((episode) => queueItemKey(episode) === activeItemKey) ?? null
+        : null,
+    [activeItemKey, queue]
+  );
   const currentEpisode = activeEpisode ?? queue[0] ?? null;
   const isAudiobook =
     currentEpisode?.type === "audiobook" || Boolean(currentEpisode?.audiobookId);
