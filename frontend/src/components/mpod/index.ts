@@ -21,3 +21,5 @@ export { FileManagerItem, type FileManagerItemProps, type FileManagerItemType } 
 export { AudiobookChaptersModal, type AudiobookChaptersModalProps } from "./audiobook-chapters-modal";
 export { AudiobookPlaybackChaptersModal } from "./audiobook-playback-chapters-modal";
 export { TopNav } from "./top-nav";
+export { getActiveNavItem } from "./nav-utils";
+

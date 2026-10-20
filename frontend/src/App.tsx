@@ -13,7 +13,12 @@ import { Outlet, Navigate, Route, Routes } from "react-router-dom";
 import { BrowserRouter, useLocation } from "react-router-dom";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AppShell, AppShellContext, AuthShell } from "@/components/mpod";
+import {
+  AppShell,
+  AppShellContext,
+  AuthShell,
+  getActiveNavItem,
+} from "@/components/mpod";
 import { AddPodcastModal, type AddPodcastModalMode } from "@/screens/add-podcast-modal";
 import { ScreenErrorBoundary } from "@/components/screen-error-boundary";
 import {
@@ -156,6 +161,7 @@ function PublicLayout() {
 
 function AuthenticatedAppLayout() {
   const location = useLocation();
+  const activeNavItem = getActiveNavItem(location.pathname);
   const onAddHandlerRef = useRef<(() => void) | undefined>(undefined);
   const [addModalMode, setAddModalMode] = useState<AddPodcastModalMode>(null);
   const { reloadQueue } = usePlaybackDispatch();
@@ -181,17 +187,20 @@ function AuthenticatedAppLayout() {
   );
 
   return (
-    <AppShellContext.Provider value={shellContextValue}>
+    <>
       <AppShell
+        activeNavItem={activeNavItem}
         mainClassName="xl:max-w-[1280px]"
         pageHeaderVisible={false}
         onAddPodcast={handleAdd}
       >
-        <RouteTransition routeKey={location.pathname}>
-          <Suspense fallback={<ScreenLoadingFallback />}>
-            <Outlet />
-          </Suspense>
-        </RouteTransition>
+        <AppShellContext.Provider value={shellContextValue}>
+          <RouteTransition routeKey={location.pathname}>
+            <Suspense fallback={<ScreenLoadingFallback />}>
+              <Outlet />
+            </Suspense>
+          </RouteTransition>
+        </AppShellContext.Provider>
       </AppShell>
       <AddPodcastModal
         mode={addModalMode}
@@ -201,7 +210,7 @@ function AuthenticatedAppLayout() {
           void reloadQueue();
         }}
       />
-    </AppShellContext.Provider>
+    </>
   );
 }
 
