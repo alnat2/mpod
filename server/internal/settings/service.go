@@ -17,6 +17,7 @@ var (
 )
 
 const (
+	DefaultDailyRefreshTime       = "03:00"
 	DefaultPlaybackSpeed          = "Speed 1.3x"
 	DefaultAudiobookPlaybackSpeed = "Speed 1x"
 )
@@ -97,6 +98,9 @@ func (s *Service) Get(ctx context.Context) (Values, error) {
 		WHERE key = 'daily_refresh_time'
 	`).Scan(&values.DailyRefreshTime); err != nil {
 		return Values{}, fmt.Errorf("load settings: %w", err)
+	}
+	if _, err := time.Parse("15:04", strings.TrimSpace(values.DailyRefreshTime)); err != nil {
+		values.DailyRefreshTime = DefaultDailyRefreshTime
 	}
 	playbackSpeed, err := s.loadPlaybackSpeed(ctx)
 	if err != nil {

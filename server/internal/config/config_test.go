@@ -25,6 +25,19 @@ func TestLoadAppliesDefaultsAndEnv(t *testing.T) {
 	}
 }
 
+func TestLoadFallsBackTo0300WhenDailyRefreshTimeInvalid(t *testing.T) {
+	t.Setenv("SESSION_SECRET", "secret")
+	t.Setenv("DAILY_REFRESH_TIME", "invalid-time")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.DailyRefreshTime != "03:00" {
+		t.Fatalf("expected fallback 03:00, got %q", cfg.DailyRefreshTime)
+	}
+}
+
 func TestLoadRequiresSessionSecret(t *testing.T) {
 	t.Setenv("SESSION_SECRET", "")
 

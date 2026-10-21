@@ -1,5 +1,5 @@
 export function formatDigitsToTime(digits: string, hasHours = false): string {
-  if (!digits) return hasHours ? "0:00:00" : "0:00";
+  if (!digits) return hasHours ? "0:00:00" : "00:00";
 
   if (hasHours || digits.length > 4) {
     const padded = digits.padStart(6, "0");
@@ -9,7 +9,7 @@ export function formatDigitsToTime(digits: string, hasHours = false): string {
 
   const padded = digits.padStart(4, "0");
   const minutes = parseInt(padded.slice(0, -2), 10);
-  return `${minutes}:${padded.slice(-2)}`;
+  return `${minutes.toString().padStart(2, "0")}:${padded.slice(-2)}`;
 }
 
 export function parseDigitsToSeconds(digits: string, hasHours = false): number {

@@ -3,15 +3,19 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api";
 
 import {
+  DEFAULT_DAILY_REFRESH_TIME,
   applyTimeMask,
   formatClock,
   formatDateTime,
   formatDurationHHMM,
   formatEpisodeDate,
   formatDuration,
+  formatEpisodeDuration,
   formatPlaybackProgressDuration,
+  formatRemainingTime,
   getErrorMessage,
   isValid24HourTime,
+  normalizeDailyRefreshTime,
 } from "./screen-utils";
 
 describe("screen-utils", () => {
@@ -26,8 +30,8 @@ describe("screen-utils", () => {
   });
 
   it("formats durations in HH:MM mask format", () => {
-    expect(formatDurationHHMM(undefined)).toBe("00:00");
-    expect(formatDurationHHMM(0)).toBe("00:00");
+    expect(formatDurationHHMM(undefined)).toBe("");
+    expect(formatDurationHHMM(0)).toBe("");
     expect(formatDurationHHMM(54 * 60)).toBe("00:54");
     expect(formatDurationHHMM(72 * 60)).toBe("01:12");
     expect(formatDurationHHMM(84 * 60)).toBe("01:24");
@@ -36,11 +40,13 @@ describe("screen-utils", () => {
 
   it("formats playback progress duration", () => {
     // Unplayed track
-    expect(formatPlaybackProgressDuration(0, 54 * 60)).toBe("00:54");
-    expect(formatPlaybackProgressDuration(undefined, 84 * 60)).toBe("01:24");
+    expect(formatPlaybackProgressDuration(0, 54 * 60)).toBe("54:00");
+    expect(formatPlaybackProgressDuration(undefined, 84 * 60)).toBe("1:24:00");
+    expect(formatPlaybackProgressDuration(0, 0)).toBe("");
+    expect(formatPlaybackProgressDuration(undefined, undefined)).toBe("");
     // Partially played track
-    expect(formatPlaybackProgressDuration(72 * 60, 84 * 60)).toBe("01:12 / 01:24");
-    expect(formatPlaybackProgressDuration(15 * 60, 54 * 60)).toBe("00:15 / 00:54");
+    expect(formatPlaybackProgressDuration(72 * 60, 84 * 60)).toBe("1:12:00 / 1:24:00");
+    expect(formatPlaybackProgressDuration(15 * 60, 54 * 60)).toBe("15:00 / 54:00");
   });
 
   it("formats durations for minutes and hours", () => {
@@ -51,13 +57,56 @@ describe("screen-utils", () => {
     expect(formatDuration(60 * 60 * 2)).toBe("2h");
   });
 
-  it("formats playback clock labels", () => {
-    expect(formatClock(undefined)).toBe("0:00");
-    expect(formatClock(5)).toBe("0:05");
-    expect(formatClock(125)).toBe("2:05");
+  it("formats playback clock labels according to standard mm:ss and h:mm:ss", () => {
+    // Fault tolerance (null, undefined, NaN, negative)
+    expect(formatClock(undefined)).toBe("00:00");
+    expect(formatClock(null)).toBe("00:00");
+    expect(formatClock(Number.NaN)).toBe("00:00");
+    expect(formatClock(-5)).toBe("00:00");
+    expect(formatClock(0)).toBe("00:00");
+
+    // Tracks < 1 hour: strictly mm:ss with leading zeroes
+    expect(formatClock(5)).toBe("00:05");
+    expect(formatClock(45)).toBe("00:45");
+    expect(formatClock(125)).toBe("02:05");
+    expect(formatClock(5 * 60 + 3)).toBe("05:03");
     expect(formatClock(23 * 60 + 14)).toBe("23:14");
+
+    // Tracks >= 1 hour: strictly h:mm:ss without leading zeroes for hours
     expect(formatClock(3600)).toBe("1:00:00");
+    expect(formatClock(3600 + 25 * 60 + 39)).toBe("1:25:39");
+    expect(formatClock(2 * 3600)).toBe("2:00:00");
+    expect(formatClock(10 * 3600 + 4 * 60 + 2)).toBe("10:04:02");
     expect(formatClock(16 * 3600 + 22 * 60 + 14)).toBe("16:22:14");
+  });
+
+  it("formats episode duration for list cards with empty string fallback", () => {
+    expect(formatEpisodeDuration(undefined)).toBe("");
+    expect(formatEpisodeDuration(null)).toBe("");
+    expect(formatEpisodeDuration(0)).toBe("");
+    expect(formatEpisodeDuration(-10)).toBe("");
+    expect(formatEpisodeDuration(Number.NaN)).toBe("");
+    expect(formatEpisodeDuration(54 * 60)).toBe("54:00");
+    expect(formatEpisodeDuration(3600 + 25 * 60 + 39)).toBe("1:25:39");
+  });
+
+  it("formats remaining time without ever showing negative values", () => {
+    expect(formatRemainingTime(60, 61)).toBe("00:00");
+    expect(formatRemainingTime(60, 5)).toBe("00:55");
+    expect(formatRemainingTime(3600, 3500)).toBe("01:40");
+    expect(formatRemainingTime(0, 0)).toBe("00:00");
+    expect(formatRemainingTime(undefined, 10)).toBe("00:00");
+  });
+
+  it("normalizes daily refresh time with safe fallback to 03:00", () => {
+    expect(normalizeDailyRefreshTime("03:00")).toBe("03:00");
+    expect(normalizeDailyRefreshTime("09:15")).toBe("09:15");
+    expect(normalizeDailyRefreshTime("21:30")).toBe("21:30");
+    expect(normalizeDailyRefreshTime("")).toBe(DEFAULT_DAILY_REFRESH_TIME);
+    expect(normalizeDailyRefreshTime(null)).toBe(DEFAULT_DAILY_REFRESH_TIME);
+    expect(normalizeDailyRefreshTime("invalid")).toBe(DEFAULT_DAILY_REFRESH_TIME);
+    expect(normalizeDailyRefreshTime("25:00")).toBe(DEFAULT_DAILY_REFRESH_TIME);
+    expect(normalizeDailyRefreshTime("9:15")).toBe(DEFAULT_DAILY_REFRESH_TIME);
   });
 
   it("formats episode dates as dd.MM.yy", () => {

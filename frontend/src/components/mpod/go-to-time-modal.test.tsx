@@ -5,11 +5,11 @@ import { formatDigitsToTime, parseDigitsToSeconds } from "./go-to-time-utils";
 
 describe("GoToTimeModal helpers", () => {
   it("formats digits to time string correctly", () => {
-    expect(formatDigitsToTime("")).toBe("0:00");
+    expect(formatDigitsToTime("")).toBe("00:00");
     expect(formatDigitsToTime("", true)).toBe("0:00:00");
-    expect(formatDigitsToTime("5")).toBe("0:05");
-    expect(formatDigitsToTime("35")).toBe("0:35");
-    expect(formatDigitsToTime("125")).toBe("1:25");
+    expect(formatDigitsToTime("5")).toBe("00:05");
+    expect(formatDigitsToTime("35")).toBe("00:35");
+    expect(formatDigitsToTime("125")).toBe("01:25");
     expect(formatDigitsToTime("1234")).toBe("12:34");
     expect(formatDigitsToTime("12345", true)).toBe("1:23:45");
     expect(formatDigitsToTime("123456", true)).toBe("12:34:56");
@@ -67,24 +67,24 @@ describe("GoToTimeModal component", () => {
     );
 
     expect(screen.getAllByText("Go to time").length).toBeGreaterThan(0);
-    expect(screen.getByTestId("go-to-time-display")).toHaveTextContent("0:00");
+    expect(screen.getByTestId("go-to-time-display")).toHaveTextContent("00:00");
 
     // Click keys '1', '2', '3', '0'
     fireEvent.click(screen.getByRole("button", { name: "1" }));
-    expect(screen.getByTestId("go-to-time-display")).toHaveTextContent("0:01");
+    expect(screen.getByTestId("go-to-time-display")).toHaveTextContent("00:01");
 
     fireEvent.click(screen.getByRole("button", { name: "2" }));
-    expect(screen.getByTestId("go-to-time-display")).toHaveTextContent("0:12");
+    expect(screen.getByTestId("go-to-time-display")).toHaveTextContent("00:12");
 
     fireEvent.click(screen.getByRole("button", { name: "3" }));
-    expect(screen.getByTestId("go-to-time-display")).toHaveTextContent("1:23");
+    expect(screen.getByTestId("go-to-time-display")).toHaveTextContent("01:23");
 
     fireEvent.click(screen.getByRole("button", { name: "0" }));
     expect(screen.getByTestId("go-to-time-display")).toHaveTextContent("12:30");
 
     // Click Backspace
     fireEvent.click(screen.getByRole("button", { name: "Backspace" }));
-    expect(screen.getByTestId("go-to-time-display")).toHaveTextContent("1:23");
+    expect(screen.getByTestId("go-to-time-display")).toHaveTextContent("01:23");
 
     // Click Done
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
@@ -104,10 +104,10 @@ describe("GoToTimeModal component", () => {
       />
     );
 
-    // Click '5', '00' -> '500' -> 5:00 (300s)
+    // Click '5', '00' -> '500' -> 05:00 (300s)
     fireEvent.click(screen.getByRole("button", { name: "5" }));
     fireEvent.click(screen.getByRole("button", { name: "00" }));
-    expect(screen.getByTestId("go-to-time-display")).toHaveTextContent("5:00");
+    expect(screen.getByTestId("go-to-time-display")).toHaveTextContent("05:00");
 
     // Try typing 5000 -> exceeds 600s total duration -> should clamp to 600s on Done
     fireEvent.click(screen.getByRole("button", { name: "0" }));

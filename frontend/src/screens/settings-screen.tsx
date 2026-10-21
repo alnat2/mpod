@@ -19,7 +19,13 @@ import { useLatestRequest } from "@/lib/use-latest-request";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
 import { ErrorBanner, ScreenBannerStack } from "./screen-states";
-import { applyTimeMask, getErrorMessage, isValid24HourTime } from "./screen-utils";
+import {
+  DEFAULT_DAILY_REFRESH_TIME,
+  applyTimeMask,
+  getErrorMessage,
+  isValid24HourTime,
+  normalizeDailyRefreshTime,
+} from "./screen-utils";
 import {
   clearCachedAudiobooks,
   clearCachedSettings,
@@ -147,7 +153,9 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
   const [settings, setSettings] = useState<SettingsValues | null>(() => cached?.settings ?? null);
   const [proxyStatus, setProxyStatus] = useState<ProxyRuntimeStatus | null>(() => cached?.proxyStatus ?? null);
   const [scheduler, setScheduler] = useState<SchedulerStatus | null>(() => cached?.scheduler ?? null);
-  const [dailyRefreshTime, setDailyRefreshTime] = useState(() => cached?.dailyRefreshTime ?? "03:00");
+  const [dailyRefreshTime, setDailyRefreshTime] = useState(() =>
+    normalizeDailyRefreshTime(cached?.dailyRefreshTime)
+  );
   const [loading, setLoading] = useState(() => cached === null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -183,12 +191,13 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
         ]);
 
         if (!cancelled) {
+          const normalizedTime = normalizeDailyRefreshTime(values.dailyRefreshTime);
           setSettings(values);
-          setDailyRefreshTime(values.dailyRefreshTime);
+          setDailyRefreshTime(normalizedTime);
           setScheduler(status);
           updateCachedSettings({
             settings: values,
-            dailyRefreshTime: values.dailyRefreshTime,
+            dailyRefreshTime: normalizedTime,
             scheduler: status,
           });
           setLoading(false);
@@ -391,7 +400,11 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                           const digits = dailyRefreshTime.replace(/\D/g, "");
                           if (digits.length > 0 && digits.length <= 2 && Number(digits) <= 23) {
                             setDailyRefreshTime(`${digits.padStart(2, "0")}:00`);
+                          } else {
+                            setDailyRefreshTime(DEFAULT_DAILY_REFRESH_TIME);
                           }
+                        } else if (!dailyRefreshTime) {
+                          setDailyRefreshTime(DEFAULT_DAILY_REFRESH_TIME);
                         }
                       }}
                     />

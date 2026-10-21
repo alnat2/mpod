@@ -16,7 +16,7 @@ import type {
   CachedSubscriptionPodcast,
 } from "@/lib/subscriptions-cache";
 
-import { formatDurationHHMM } from "./screen-utils";
+import { formatEpisodeDuration } from "./screen-utils";
 import { useAudioMetadataDurations } from "./use-audio-metadata-durations";
 
 const EPISODE_ROW_HEIGHT = 70;
@@ -142,7 +142,7 @@ export function SubscriptionsDesktopEpisodeList({
         />
       ) : null}
       {virtualEpisodeWindow.items.map((episode) => {
-        const duration = formatDurationHHMM(durationForEpisode(episode));
+        const duration = formatEpisodeDuration(durationForEpisode(episode));
         const subtitle = episode.inPlaylist ? "In playlist" : undefined;
         const playlistAction = {
           label: episode.inPlaylist

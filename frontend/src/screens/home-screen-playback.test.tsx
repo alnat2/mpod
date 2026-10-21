@@ -256,7 +256,7 @@ describe("HomeScreen Playback Integration", () => {
     });
     expect(screen.getAllByText("First queued episode")).toHaveLength(2);
     expect(screen.getByText("Second queued episode")).toBeInTheDocument();
-    expect(screen.getByText("0:15")).toBeInTheDocument();
+    expect(screen.getByText("00:15")).toBeInTheDocument();
 
     const firstRow = document.querySelector<HTMLElement>('[data-episode-row-id="1"]')!;
     expect(firstRow).toBeInTheDocument();
@@ -297,19 +297,19 @@ describe("HomeScreen Playback Integration", () => {
       audio.currentTime = 30;
       audio.emit("timeupdate");
     });
-    expect(await screen.findByText("0:30")).toBeInTheDocument();
+    expect(await screen.findByText("00:30")).toBeInTheDocument();
 
     await act(async () => {
       audio.currentTime = 45;
       audio.emit("timeupdate");
     });
-    expect(await screen.findByText("0:45")).toBeInTheDocument();
+    expect(await screen.findByText("00:45")).toBeInTheDocument();
 
     await act(async () => {
       audio.currentTime = 60;
       audio.emit("timeupdate");
     });
-    expect(await screen.findByText("1:00")).toBeInTheDocument();
+    expect(await screen.findByText("01:00")).toBeInTheDocument();
 
     // Player must have re-rendered with new positions
     expect(playerRenderCount).toBeGreaterThan(rendersAfterReady.player);
@@ -338,7 +338,7 @@ describe("HomeScreen Playback Integration", () => {
     });
     expect(screen.getAllByText("First queued episode")).toHaveLength(2);
     expect(screen.getByText("Second queued episode")).toBeInTheDocument();
-    expect(screen.getByText("0:15")).toBeInTheDocument();
+    expect(screen.getByText("00:15")).toBeInTheDocument();
 
     const firstRow = document.querySelector<HTMLElement>('[data-episode-row-id="1"]')!;
     expect(firstRow).toBeInTheDocument();
@@ -378,13 +378,13 @@ describe("HomeScreen Playback Integration", () => {
       audio.currentTime = 75;
       audio.emit("timeupdate");
     });
-    expect(await screen.findByText("1:15")).toBeInTheDocument();
+    expect(await screen.findByText("01:15")).toBeInTheDocument();
 
     await act(async () => {
       audio.currentTime = 90;
       audio.emit("timeupdate");
     });
-    expect(await screen.findByText("1:30")).toBeInTheDocument();
+    expect(await screen.findByText("01:30")).toBeInTheDocument();
 
     expect(playerRenderCount).toBeGreaterThan(rendersAfterReady.player);
     expect(episodeRowRenderCount).toBe(rendersAfterReady.episodeRow);
@@ -569,7 +569,7 @@ describe("HomeScreen Playback Integration", () => {
         expect(screen.queryByText("Loading playlist")).not.toBeInTheDocument();
       });
       expect(screen.getAllByText("Fresh queued episode")).toHaveLength(2);
-      expect(screen.getByText("0:00")).toBeInTheDocument();
+      expect(screen.getByText("00:00")).toBeInTheDocument();
 
       const audio = FakeAudio.first;
       expect(audio).toBeDefined();
@@ -590,7 +590,7 @@ describe("HomeScreen Playback Integration", () => {
         audio.currentTime = 42;
         audio.emit("timeupdate");
       });
-      expect(await screen.findByText("0:42")).toBeInTheDocument();
+      expect(await screen.findByText("00:42")).toBeInTheDocument();
 
       // Pause playback
       const pauseButton = within(desktopControls).getByRole("button", { name: "Pause" });
@@ -614,7 +614,7 @@ describe("HomeScreen Playback Integration", () => {
 
       // Playback must resume from the current advanced position (42s), not 0
       expect(audio.currentTime).toBe(42);
-      expect(screen.getByText("0:42")).toBeInTheDocument();
+      expect(screen.getByText("00:42")).toBeInTheDocument();
     });
 
     it("resumes playback at seeked position when server has no saved playback position", async () => {
@@ -641,7 +641,7 @@ describe("HomeScreen Playback Integration", () => {
         expect(screen.queryByText("Loading playlist")).not.toBeInTheDocument();
       });
       expect(screen.getAllByText("Fresh queued episode")).toHaveLength(2);
-      expect(screen.getByText("0:00")).toBeInTheDocument();
+      expect(screen.getByText("00:00")).toBeInTheDocument();
 
       const audio = FakeAudio.first;
       expect(audio).toBeDefined();
@@ -652,12 +652,12 @@ describe("HomeScreen Playback Integration", () => {
       const forwardButton = within(desktopControls).getByRole("button", { name: "Go forward 30 seconds" });
       fireEvent.click(forwardButton);
 
-      expect(await screen.findByText("0:30")).toBeInTheDocument();
+      expect(await screen.findByText("00:30")).toBeInTheDocument();
       expect(audio.currentTime).toBe(30);
 
       // Seek forward again to 60s
       fireEvent.click(forwardButton);
-      expect(await screen.findByText("1:00")).toBeInTheDocument();
+      expect(await screen.findByText("01:00")).toBeInTheDocument();
       expect(audio.currentTime).toBe(60);
 
       // Now resume with empty server playback record
@@ -674,7 +674,7 @@ describe("HomeScreen Playback Integration", () => {
 
       // Must resume from the seeked position (60s), not initial 0
       expect(audio.currentTime).toBe(60);
-      expect(screen.getByText("1:00")).toBeInTheDocument();
+      expect(screen.getByText("01:00")).toBeInTheDocument();
     });
 
     it("respects server playback position priority when available", async () => {
@@ -713,7 +713,7 @@ describe("HomeScreen Playback Integration", () => {
 
       // Server position (120s) must take priority
       expect(audio.currentTime).toBe(120);
-      expect(await screen.findByText("2:00")).toBeInTheDocument();
+      expect(await screen.findByText("02:00")).toBeInTheDocument();
     });
   });
 });

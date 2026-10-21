@@ -3,6 +3,8 @@ package config
 import (
 	"errors"
 	"os"
+	"strings"
+	"time"
 )
 
 type Config struct {
@@ -38,6 +40,10 @@ func Load() (Config, error) {
 		SOCKS5Password:   os.Getenv("SOCKS5_PASSWORD"),
 		Environment:      envOrDefault("APP_ENV", "development"),
 		AppBuild:         envOrDefault("APP_BUILD", "dev"),
+	}
+
+	if _, err := time.Parse("15:04", strings.TrimSpace(cfg.DailyRefreshTime)); err != nil {
+		cfg.DailyRefreshTime = "03:00"
 	}
 
 	if cfg.SessionSecret == "" {

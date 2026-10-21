@@ -215,8 +215,8 @@ func (s *Service) maybeRun(ctx context.Context) {
 	now := s.now().In(s.location)
 	hour, minute, err := parseClock(values.DailyRefreshTime)
 	if err != nil {
-		s.logger.Printf("scheduler invalid refresh time %q: %v", values.DailyRefreshTime, err)
-		return
+		s.logger.Printf("scheduler invalid refresh time %q: %v; falling back to 03:00", values.DailyRefreshTime, err)
+		hour, minute, _ = parseClock("03:00")
 	}
 	if now.Hour() != hour || now.Minute() != minute {
 		return

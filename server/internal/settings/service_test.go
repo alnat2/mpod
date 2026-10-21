@@ -23,6 +23,24 @@ func TestGetReturnsStoredValues(t *testing.T) {
 	}
 }
 
+func TestGetFallsBackToDefaultWhenDBValueInvalid(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	if _, err := db.SQL.Exec(`UPDATE settings SET value = 'garbage' WHERE key = 'daily_refresh_time'`); err != nil {
+		t.Fatalf("failed to inject invalid refresh time: %v", err)
+	}
+
+	service := NewService(db.SQL, false, "test-build")
+	values, err := service.Get(context.Background())
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if values.DailyRefreshTime != DefaultDailyRefreshTime {
+		t.Fatalf("expected fallback %q, got %q", DefaultDailyRefreshTime, values.DailyRefreshTime)
+	}
+}
+
 func TestUpdatePersistsAudiobookPlaybackSpeedIndependently(t *testing.T) {
 	db := newTestDB(t)
 	defer db.Close()

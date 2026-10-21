@@ -28,6 +28,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { formatClock } from "@/screens/screen-utils";
 
 import { Artwork } from "./artwork";
 import { BottomSheet } from "./bottom-sheet";
@@ -112,27 +113,15 @@ function compactSpeedLabel(speedLabel: PlaybackSpeedLabel) {
   return speedLabel.replace(/^Speed\s/, "").replace(/x$/, "");
 }
 
-function formatSeekTime(seconds: number) {
-  const roundedSeconds = Math.max(0, Math.round(seconds));
-  const hours = Math.floor(roundedSeconds / 3600);
-  const minutes = Math.floor((roundedSeconds % 3600) / 60);
-  const remainingSeconds = roundedSeconds % 60;
-
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
-  }
-
-  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-}
-
 function seekValueText(progressValue: number, durationSeconds?: number) {
   if (!durationSeconds || durationSeconds <= 0) {
     return `${Math.round(progressValue)}%`;
   }
 
-  const elapsedSeconds = (durationSeconds * progressValue) / 100;
-  return `${formatSeekTime(elapsedSeconds)} elapsed, ${formatSeekTime(
-    durationSeconds - elapsedSeconds
+  const elapsedSeconds = Math.max(0, (durationSeconds * progressValue) / 100);
+  const remainingSeconds = Math.max(0, durationSeconds - elapsedSeconds);
+  return `${formatClock(elapsedSeconds)} elapsed, ${formatClock(
+    remainingSeconds
   )} remaining`;
 }
 

@@ -295,6 +295,34 @@ func TestMaybeRunUsesConfiguredTimezone(t *testing.T) {
 	}
 }
 
+func TestMaybeRunFallsBackTo0300WhenRefreshTimeInvalid(t *testing.T) {
+	db := newTestDB(t)
+	defer db.Close()
+
+	if _, err := db.SQL.Exec(`UPDATE settings SET value = 'garbage' WHERE key = 'daily_refresh_time'`); err != nil {
+		t.Fatalf("update settings: %v", err)
+	}
+
+	var called atomic.Int32
+	service, err := NewService(db.SQL, log.New(io.Discard, "", 0), settings.NewService(db.SQL, false, "test-build"), func(context.Context) error {
+		called.Add(1)
+		return nil
+	}, "UTC")
+	if err != nil {
+		t.Fatalf("NewService failed: %v", err)
+	}
+	service.now = func() time.Time {
+		return time.Date(2026, time.April, 21, 3, 0, 0, 0, time.UTC)
+	}
+
+	service.maybeRun(context.Background())
+	waitForSchedulerIdle(t, service)
+
+	if called.Load() != 1 {
+		t.Fatalf("expected fallback to 03:00 to trigger run at 03:00, got %d", called.Load())
+	}
+}
+
 func waitForSchedulerIdle(t *testing.T, service *Service) {
 	t.Helper()
 

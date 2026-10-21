@@ -377,7 +377,7 @@ describe("HomeScreen", () => {
     const row = await screen.findByTestId("episode-row-Oathbringer");
     expect(row).toHaveAttribute("data-current", "yes");
     expect(row).toHaveAttribute("data-subtitle", "Chapter 3 / 12");
-    expect(row).toHaveAttribute("data-duration", "01:00");
+    expect(row).toHaveAttribute("data-duration", "1:00:00");
   });
 
   it("uses totalTrackCount for chapter denominator when only partial chapters are in playlist", async () => {
@@ -412,7 +412,7 @@ describe("HomeScreen", () => {
       "data-subtitle",
       "Chapter 26 / 26"
     );
-    expect(row).toHaveAttribute("data-duration", "00:30");
+    expect(row).toHaveAttribute("data-duration", "30:00");
   });
 
   it("shows played / total duration for partially played playlist items", async () => {
@@ -441,7 +441,7 @@ describe("HomeScreen", () => {
     const row = await screen.findByTestId("episode-row-Partially Played Episode");
     expect(row).toHaveAttribute("data-current", "yes");
     expect(row).toHaveAttribute("data-subtitle", "Tech Podcast");
-    expect(row).toHaveAttribute("data-duration", "01:12 / 01:24");
+    expect(row).toHaveAttribute("data-duration", "1:12:00 / 1:24:00");
   });
 
   it("gives the playlist body a real scroll viewport", () => {
@@ -466,7 +466,7 @@ describe("HomeScreen", () => {
 
     const row = await screen.findByTestId("episode-row-First queued episode");
     expect(row).toHaveAttribute("data-subtitle", "Queue Podcast");
-    expect(row).toHaveAttribute("data-duration", "00:30");
+    expect(row).toHaveAttribute("data-duration", "30:00");
   });
 
   it("does not reload the queue when the playback provider has already loaded it", async () => {
@@ -520,7 +520,7 @@ describe("HomeScreen", () => {
 
     render(<HomeScreen />);
 
-    expect(await screen.findByTestId("elapsed-label")).toHaveTextContent("1:36");
+    expect(await screen.findByTestId("elapsed-label")).toHaveTextContent("01:36");
     expect(screen.getByTestId("duration-label")).toHaveTextContent("38:24");
     expect(screen.getByTestId("progress-value")).toHaveTextContent("4");
   });
@@ -550,7 +550,7 @@ describe("HomeScreen", () => {
   it("does not re-render queue episode rows when only playback position updates", async () => {
     render(<HomeScreen />);
 
-    expect(await screen.findByTestId("elapsed-label")).toHaveTextContent("1:36");
+    expect(await screen.findByTestId("elapsed-label")).toHaveTextContent("01:36");
     const initialRenderCount = episodeRowRenderCount;
     expect(initialRenderCount).toBeGreaterThan(0);
 
@@ -559,7 +559,7 @@ describe("HomeScreen", () => {
       progressListeners.forEach((listener) => listener());
     });
 
-    expect(await screen.findByTestId("elapsed-label")).toHaveTextContent("2:00");
+    expect(await screen.findByTestId("elapsed-label")).toHaveTextContent("02:00");
     expect(episodeRowRenderCount).toBe(initialRenderCount);
   });
 

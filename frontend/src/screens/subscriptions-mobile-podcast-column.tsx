@@ -12,7 +12,7 @@ import { EpisodeRow, PlaylistQueue } from "@/components/mpod";
 import { Button } from "@/components/ui/button";
 import { api, type Episode, type Podcast } from "@/lib/api";
 
-import { formatDurationHHMM } from "./screen-utils";
+import { formatEpisodeDuration } from "./screen-utils";
 import { useAudioMetadataDurations } from "./use-audio-metadata-durations";
 
 type PodcastWithEpisodes = Podcast & {
@@ -171,7 +171,7 @@ export function MobilePodcastColumn({
             />
           ) : null}
           {virtualEpisodeWindow.items.map((episode) => {
-            const duration = formatDurationHHMM(durationForEpisode(episode));
+            const duration = formatEpisodeDuration(durationForEpisode(episode));
             const playlistAction = {
               label: episode.inPlaylist
                 ? "Remove from playlist"
