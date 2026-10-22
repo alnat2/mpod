@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTheme } from "next-themes";
 import {
@@ -18,6 +19,12 @@ import {
   ShowNotes,
   TopNav,
 } from "@/components/mpod";
+import { SubscriptionsMobilePodcastCarousel } from "@/screens/subscriptions-mobile-podcast-carousel";
+import { SubscriptionsMobileEpisodeList } from "@/screens/subscriptions-mobile-episode-list";
+import type {
+  CachedSubscriptionEpisode,
+  CachedSubscriptionPodcast,
+} from "@/lib/subscriptions-cache";
 import { AudiobookPlaybackChaptersModal } from "@/components/mpod/audiobook-playback-chapters-modal";
 import { ModalScreen } from "@/components/mpod/modal-screen";
 import { Button } from "@/components/ui/button";
@@ -154,10 +161,116 @@ function PreviewSection({
   );
 }
 
+const previewSubscriptionEpisodes: CachedSubscriptionEpisode[] = [
+  {
+    id: 1,
+    podcastId: 1,
+    title: "Why store loyalty cards became a UX minefield",
+    description: "Culture stories behind everyday design",
+    audioUrl: "https://example.com/audio1.mp3",
+    duration: 3240,
+    downloaded: false,
+    isListened: false,
+    publishedAt: "2026-05-21T10:00:00Z",
+    inPlaylist: false,
+  },
+  {
+    id: 2,
+    podcastId: 1,
+    title: "How public transit maps teach invisible habits",
+    description: "Transit systems shape how we navigate physical spaces.",
+    audioUrl: "https://example.com/audio2.mp3",
+    duration: 2160,
+    downloaded: true,
+    isListened: false,
+    publishedAt: "2026-05-14T10:00:00Z",
+    inPlaylist: true,
+  },
+  {
+    id: 3,
+    podcastId: 1,
+    title: "The app menu nobody understands but everyone uses",
+    description: "Hamburger buttons vs bottom tabs.",
+    audioUrl: "https://example.com/audio3.mp3",
+    duration: 2580,
+    downloaded: false,
+    isListened: true,
+    publishedAt: "2026-05-07T10:00:00Z",
+    inPlaylist: false,
+  },
+];
+
+const previewSubscriptionPodcasts: CachedSubscriptionPodcast[] = [
+  {
+    id: 1,
+    title: "Decoder Ring",
+    description: "Culture stories behind everyday design",
+    rssUrl: "https://example.com/decoder.xml",
+    lastChecked: null,
+    updateTime: null,
+    episodes: previewSubscriptionEpisodes,
+  },
+  {
+    id: 2,
+    title: "99% Invisible",
+    description: "Design and architecture in the unnoticed world",
+    rssUrl: "https://example.com/99pi.xml",
+    lastChecked: null,
+    updateTime: null,
+    episodes: previewSubscriptionEpisodes,
+  },
+  {
+    id: 3,
+    title: "Grammar Girl",
+    description: "Friendly guides to grammar, punctuation, and style",
+    rssUrl: "https://example.com/grammargirl.xml",
+    lastChecked: null,
+    updateTime: null,
+    episodes: previewSubscriptionEpisodes,
+  },
+];
+
 export function ComponentPreview() {
   const [searchParams] = useSearchParams();
   const { resolvedTheme, setTheme } = useTheme();
+  const [selectedMobilePodcastId, setSelectedMobilePodcastId] = useState<number>(1);
   const modalParam = searchParams.get("modal");
+  const viewParam = searchParams.get("view");
+
+  if (viewParam === "mobile-subscriptions") {
+    const selectedPodcast =
+      previewSubscriptionPodcasts.find((p) => p.id === selectedMobilePodcastId) ??
+      previewSubscriptionPodcasts[0]!;
+
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-background p-4 text-foreground">
+        <div className="flex h-[720px] w-[390px] max-w-full flex-col overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-2xl">
+          <div className="mb-2 shrink-0">
+            <SubscriptionsMobilePodcastCarousel
+              podcasts={previewSubscriptionPodcasts}
+              selectedPodcastId={selectedMobilePodcastId}
+              onSelectPodcast={setSelectedMobilePodcastId}
+              onRefreshPodcast={() => undefined}
+              onUnsubscribePodcast={() => undefined}
+              refreshingPodcastIds={new Set()}
+              exitingPodcastIds={new Set()}
+            />
+          </div>
+          <div className="min-h-0 flex-1">
+            <SubscriptionsMobileEpisodeList
+              podcast={selectedPodcast}
+              visibleEpisodes={previewSubscriptionEpisodes}
+              onAddToPlaylist={() => undefined}
+              onMarkAllListened={() => undefined}
+              onMarkListened={() => undefined}
+              onRemoveFromPlaylist={() => undefined}
+              onShowNotes={() => undefined}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (modalParam === "shownotes") {
     return (
@@ -417,6 +530,38 @@ export function ComponentPreview() {
           >
             Open Audiobook Chapters Modal
           </a>
+        </div>
+      </PreviewSection>
+
+      {/* 12. Mobile Subscriptions Carousel & Episode List */}
+      <PreviewSection title="12. Mobile Subscriptions Carousel & Episode List (390px mobile container)">
+        <div className="flex h-[720px] w-[390px] max-w-full flex-col overflow-hidden rounded-2xl border border-border bg-background p-3 shadow-md">
+          <div className="mb-2 shrink-0">
+            <SubscriptionsMobilePodcastCarousel
+              podcasts={previewSubscriptionPodcasts}
+              selectedPodcastId={selectedMobilePodcastId}
+              onSelectPodcast={setSelectedMobilePodcastId}
+              onRefreshPodcast={() => undefined}
+              onUnsubscribePodcast={() => undefined}
+              refreshingPodcastIds={new Set()}
+              exitingPodcastIds={new Set()}
+            />
+          </div>
+          <div className="min-h-0 flex-1">
+            <SubscriptionsMobileEpisodeList
+              podcast={
+                previewSubscriptionPodcasts.find(
+                  (p) => p.id === selectedMobilePodcastId
+                ) ?? previewSubscriptionPodcasts[0]!
+              }
+              visibleEpisodes={previewSubscriptionEpisodes}
+              onAddToPlaylist={() => undefined}
+              onMarkAllListened={() => undefined}
+              onMarkListened={() => undefined}
+              onRemoveFromPlaylist={() => undefined}
+              onShowNotes={() => undefined}
+            />
+          </div>
         </div>
       </PreviewSection>
 

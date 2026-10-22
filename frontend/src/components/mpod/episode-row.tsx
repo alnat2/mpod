@@ -154,14 +154,18 @@ export const EpisodeRow = memo(function EpisodeRow({
         "w-full shrink-0 bg-card text-foreground shadow-xs border border-transparent",
         isMobile
           ? cn(
-              "relative grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2 overflow-hidden rounded-[16px] py-3 pr-3 pl-8",
+              "relative grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2 overflow-hidden rounded-[16px] py-3 pr-3",
+              showDragHandle ? "pl-8" : "pl-3",
               compactMobile
                 ? "h-[96px] grid-rows-[20px_44px]"
                 : "h-[116px] grid-rows-[40px_44px]"
             )
           : isDesktop
             ? "flex h-[70px] items-center gap-3 rounded px-3"
-            : "relative grid h-[116px] grid-cols-[minmax(0,1fr)_auto] grid-rows-[40px_44px] gap-x-2 gap-y-2 overflow-hidden rounded-[16px] py-3 pr-3 pl-8 md:flex md:h-[70px] md:items-center md:gap-3 md:rounded md:px-3 md:py-0",
+            : cn(
+                "relative grid h-[116px] grid-cols-[minmax(0,1fr)_auto] grid-rows-[40px_44px] gap-x-2 gap-y-2 overflow-hidden rounded-[16px] py-3 pr-3 md:flex md:h-[70px] md:items-center md:gap-3 md:rounded md:px-3 md:py-0",
+                showDragHandle ? "pl-8" : "pl-3"
+              ),
         draggable && "cursor-grab",
         dragging && "opacity-60",
         current && "bg-accent border-border",

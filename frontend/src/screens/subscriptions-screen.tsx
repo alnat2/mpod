@@ -14,11 +14,6 @@ import {
   PodcastCard,
   ShowNotes,
 } from "@/components/mpod";
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-} from "@/components/ui/carousel";
 import { api } from "@/lib/api";
 import { usePlaybackDispatch } from "@/lib/playback-context";
 import {
@@ -31,7 +26,8 @@ import { cn } from "@/lib/utils";
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
 import { SubscriptionsDesktopEpisodeList } from "./subscriptions-desktop-episode-list";
 import { SubscriptionsEmptyState } from "./subscriptions-empty-state";
-import { MobilePodcastColumn } from "./subscriptions-mobile-podcast-column";
+import { SubscriptionsMobileEpisodeList } from "./subscriptions-mobile-episode-list";
+import { SubscriptionsMobilePodcastCarousel } from "./subscriptions-mobile-podcast-carousel";
 import { SubscriptionsPodcastCarousel } from "./subscriptions-podcast-carousel";
 import {
   SubscriptionsPageHeader,
@@ -351,44 +347,39 @@ export function SubscriptionsScreen() {
             ) : visiblePodcasts.length > 0 ? (
               <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col gap-4 md:gap-6">
                 {isMobile ? (
-                  <Carousel
-                    className="h-full w-full overflow-hidden [&_[data-slot=carousel-content]]:h-full [&_[data-slot=carousel-content]]:px-5 [&_[data-slot=carousel-content]]:overflow-visible"
-                    opts={{ align: "start", containScroll: "trimSnaps" }}
-                  >
-                    <CarouselContent className="ml-0 gap-1 h-full">
-                      {visiblePodcasts.map((podcast) => {
-                        const episodes = podcast.episodes.filter(
-                          (episode) => showAll || isVisibleByDefault(episode)
-                        );
-                        return (
-                          <CarouselItem
-                            key={podcast.id}
-                            className="pl-0 basis-full min-w-[320px] max-w-[340px] h-full"
-                          >
-                            <MobilePodcastColumn
-                              podcast={podcast}
-                              visibleEpisodes={episodes}
-                              showAll={showAll}
-                              podcastCardNode={renderPodcastCard(podcast)}
-                              onMarkAllListened={(podcastId) =>
-                                void markAllListened(podcastId)
-                              }
-                              onMarkListened={(items, isListened) =>
-                                void markListened(items, isListened)
-                              }
-                              onRemoveFromPlaylist={(episode) =>
-                                void removeFromPlaylist(episode)
-                              }
-                              onAddToPlaylist={(id) =>
-                                void runAction(() => api.playlist.add(id))
-                              }
-                              onShowNotes={showEpisodeNotes}
-                            />
-                          </CarouselItem>
-                        );
-                      })}
-                    </CarouselContent>
-                  </Carousel>
+                  selectedPodcast ? (
+                    <>
+                      <SubscriptionsMobilePodcastCarousel
+                        podcasts={visiblePodcasts}
+                        selectedPodcastId={selectedPodcast.id}
+                        onSelectPodcast={(id) => setSelectedPodcastId(id)}
+                        onRefreshPodcast={(id) => void refreshPodcast(id)}
+                        onUnsubscribePodcast={(podcast) =>
+                          void scheduleUnsubscribePodcast(podcast)
+                        }
+                        refreshingPodcastIds={refreshingPodcastIds}
+                        exitingPodcastIds={exitingPodcastIds}
+                      />
+                      <SubscriptionsMobileEpisodeList
+                        key={`${selectedPodcast.id}-${showAll ? "all" : "unlistened"}`}
+                        podcast={selectedPodcast}
+                        visibleEpisodes={visibleEpisodes}
+                        onMarkAllListened={(podcastId) =>
+                          void markAllListened(podcastId)
+                        }
+                        onMarkListened={(items, isListened) =>
+                          void markListened(items, isListened)
+                        }
+                        onRemoveFromPlaylist={(episode) =>
+                          void removeFromPlaylist(episode)
+                        }
+                        onAddToPlaylist={(id) =>
+                          void runAction(() => api.playlist.add(id))
+                        }
+                        onShowNotes={showEpisodeNotes}
+                      />
+                    </>
+                  ) : null
                 ) : selectedPodcast ? (
                   <>
                     <SubscriptionsPodcastCarousel

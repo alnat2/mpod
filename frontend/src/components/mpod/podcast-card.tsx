@@ -17,6 +17,7 @@ type PodcastCardProps = {
   onRefresh?: () => void;
   onUnsubscribe?: () => void;
   refreshing?: boolean;
+  layout?: "auto" | "horizontal" | "vertical";
 };
 
 export function PodcastCard({
@@ -30,7 +31,79 @@ export function PodcastCard({
   onRefresh,
   onUnsubscribe,
   refreshing = false,
+  layout = "auto",
 }: PodcastCardProps) {
+  if (layout === "horizontal") {
+    return (
+      <div
+        role={onSelect ? "button" : undefined}
+        tabIndex={onSelect ? 0 : undefined}
+        onClick={onSelect}
+        onKeyDown={(event) => {
+          if (!onSelect) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect();
+          }
+        }}
+        className={cn(
+          "relative flex h-[160px] w-full flex-row items-center gap-3.5 rounded-2xl border border-border/40 bg-card p-3.5 text-card-foreground shadow-sm",
+          onSelect && "cursor-pointer outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+          selected && "bg-accent",
+          className
+        )}
+      >
+        <Artwork
+          className="size-24 shrink-0 rounded-lg"
+          src={artworkUrl}
+          alt={artworkAlt}
+          title={title}
+        />
+        <div className="flex h-full min-w-0 flex-1 flex-col justify-between py-0.5">
+          <div className="flex flex-col gap-0.5">
+            <h3 className="line-clamp-2 text-base font-semibold leading-snug text-card-foreground">
+              {title}
+            </h3>
+            <p className="line-clamp-1 text-xs text-muted-foreground">
+              {description}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 flex-1 gap-1.5 rounded-lg px-2 text-xs shadow-xs"
+              type="button"
+              disabled={refreshing}
+              onClick={(event) => {
+                event.stopPropagation();
+                onRefresh?.();
+              }}
+            >
+              <HugeiconsIcon
+                icon={refreshing ? Loading02Icon : Refresh01Icon}
+                className={cn("size-3.5", refreshing && "animate-spin")}
+                data-icon="inline-start"
+              />
+              Refresh
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-8 flex-1 gap-1.5 rounded-lg px-2 text-xs"
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onUnsubscribe?.();
+              }}
+            >
+              Unsubscribe
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div
       role={onSelect ? "button" : undefined}

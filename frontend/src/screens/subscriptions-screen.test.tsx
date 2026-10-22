@@ -530,7 +530,7 @@ describe("SubscriptionsScreen", () => {
     expect(screen.queryByText("Episode notes")).not.toBeInTheDocument();
   });
 
-  it("opens show notes from a mobile carousel podcast that is not selected", async () => {
+  it("opens show notes from a mobile carousel podcast after selecting it", async () => {
     const user = userEvent.setup();
     const secondPodcast: Podcast = {
       ...podcast,
@@ -558,6 +558,11 @@ describe("SubscriptionsScreen", () => {
     });
 
     renderSubscriptionsScreen();
+
+    const secondPodcastButton = await screen.findByRole("button", {
+      name: "Second Show",
+    });
+    await user.click(secondPodcastButton);
 
     const secondRow = await screen.findByTestId("episode-row-Second episode");
     await user.click(
