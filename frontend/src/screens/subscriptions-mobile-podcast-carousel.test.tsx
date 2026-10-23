@@ -129,4 +129,28 @@ describe("SubscriptionsMobilePodcastCarousel", () => {
     await user.click(unsubscribeButtons[0]!);
     expect(onUnsubscribePodcast).toHaveBeenCalledWith(mockPodcasts[0]);
   });
+
+  it("configures slide basis to match 20px mobile margins and renders actions in a full-width bottom row", () => {
+    render(
+      <SubscriptionsMobilePodcastCarousel
+        podcasts={mockPodcasts}
+        selectedPodcastId={1}
+        onSelectPodcast={vi.fn()}
+        onRefreshPodcast={vi.fn()}
+        onUnsubscribePodcast={vi.fn()}
+        refreshingPodcastIds={new Set()}
+        exitingPodcastIds={new Set()}
+      />
+    );
+
+    const slides = screen.getAllByRole("group");
+    expect(slides[0]!.className).toContain("basis-[calc(100%-40px)]");
+
+    // Refresh and Unsubscribe buttons should be inside a full-width bottom row
+    const refreshButton = screen.getAllByRole("button", { name: "Refresh" })[0]!;
+    const actionsRow = refreshButton.parentElement;
+    expect(actionsRow).not.toBeNull();
+    expect(actionsRow!.className).toContain("w-full");
+    expect(actionsRow!.className).toContain("justify-center");
+  });
 });

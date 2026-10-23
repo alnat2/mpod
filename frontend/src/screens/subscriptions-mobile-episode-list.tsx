@@ -107,7 +107,7 @@ export function SubscriptionsMobileEpisodeList({
 
   return (
     <PlaylistQueue
-      className="min-h-0 w-full flex-1"
+      className="min-h-0 w-full flex-1 px-5"
       bodyClassName="mpod-scroll block min-h-0 flex-1 overflow-y-auto pb-20"
       bodyRef={episodeListRef}
       bodyOnScroll={(event) =>

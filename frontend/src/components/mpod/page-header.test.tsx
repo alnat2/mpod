@@ -25,4 +25,19 @@ describe("PageHeader", () => {
       screen.getByText("Current IP: 43.32.112.45 • Geo: UK")
     ).toBeInTheDocument();
   });
+
+  it("applies compact heading size on mobile layout to prevent clipping long titles", () => {
+    const { rerender } = render(
+      <PageHeader title="Subscriptions" layout="mobile" />
+    );
+
+    const mobileHeading = screen.getByRole("heading", { name: "Subscriptions" });
+    expect(mobileHeading.className).toContain("text-2xl");
+    expect(mobileHeading.className).toContain("leading-8");
+
+    rerender(<PageHeader title="Subscriptions" layout="desktop" />);
+    const desktopHeading = screen.getByRole("heading", { name: "Subscriptions" });
+    expect(desktopHeading.className).toContain("text-3xl");
+    expect(desktopHeading.className).toContain("leading-9");
+  });
 });

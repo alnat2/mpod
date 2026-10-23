@@ -101,7 +101,7 @@ export function SubscriptionsMobilePodcastCarousel({
           return (
             <CarouselItem
               key={podcast.id}
-              className="h-[160px] basis-[calc(100%-48px)] min-w-[280px] max-w-[360px] shrink-0 grow-0 pl-0"
+              className="h-[160px] basis-[calc(100%-40px)] min-w-[280px] max-w-[360px] shrink-0 grow-0 pl-0"
               role="group"
               aria-roledescription="slide"
               aria-label={`${podcast.title} (${index + 1} of ${podcasts.length})`}

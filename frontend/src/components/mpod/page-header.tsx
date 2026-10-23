@@ -42,7 +42,16 @@ export function PageHeader({
       )}
     >
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
-        <h1 className="w-full text-3xl leading-9 font-semibold tracking-normal text-foreground">
+        <h1
+          className={cn(
+            "w-full font-semibold tracking-normal text-foreground",
+            isMobile
+              ? "text-2xl leading-8"
+              : isDesktop
+                ? "text-3xl leading-9"
+                : "text-2xl leading-8 md:text-3xl md:leading-9"
+          )}
+        >
           {title}
         </h1>
         {subtitle ? (
