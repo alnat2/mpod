@@ -263,17 +263,15 @@ export const EpisodeRow = memo(function EpisodeRow({
             ) : null}
           </div>
         ) : null}
-        {!isMobile && (resolvedSubtitle || durationLabel || dateLabel) ? (
-          <div
+        {!isMobile && resolvedSubtitle ? (
+          <p
             className={cn(
-              "flex min-w-0 items-center gap-2 truncate text-xs leading-4 text-muted-foreground",
-              !isDesktop && "hidden md:flex"
+              "min-w-0 truncate text-xs leading-4 text-muted-foreground",
+              !isDesktop && "hidden md:block"
             )}
           >
-            {resolvedSubtitle ? <span>{resolvedSubtitle}</span> : null}
-            {durationLabel ? <span>{durationLabel}</span> : null}
-            {dateLabel ? <span>{dateLabel}</span> : null}
-          </div>
+            {resolvedSubtitle}
+          </p>
         ) : null}
       </div>
       {!isDesktop ? (
@@ -281,6 +279,18 @@ export const EpisodeRow = memo(function EpisodeRow({
           {resolvedActions.map((action) => (
             <EpisodeIconButton action={action} key={action.label} mobile />
           ))}
+        </div>
+      ) : null}
+      {!isMobile && (dateLabel || durationLabel) ? (
+        <div
+          className={cn(
+            "shrink-0 items-center text-xs leading-4 text-muted-foreground whitespace-nowrap",
+            isDesktop ? "flex" : "hidden md:flex"
+          )}
+        >
+          {dateLabel ? <span>{dateLabel}</span> : null}
+          {dateLabel && durationLabel ? <span className="mx-1.5">•</span> : null}
+          {durationLabel ? <span>{durationLabel}</span> : null}
         </div>
       ) : null}
       {!isMobile ? (

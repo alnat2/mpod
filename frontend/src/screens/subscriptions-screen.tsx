@@ -281,6 +281,7 @@ export function SubscriptionsScreen() {
   function renderPodcastCard(podcast: CachedSubscriptionPodcast) {
     return (
       <PodcastCard
+        layout="horizontal"
         selected={podcast.id === selectedPodcast?.id}
         title={podcast.title}
         description={podcast.description ?? podcast.rssUrl}

@@ -7,7 +7,6 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
-import { cn } from "@/lib/utils";
 
 type SubscriptionsPodcastCarouselProps<T extends { id: number }> = {
   podcasts: T[];
@@ -27,9 +26,7 @@ export function SubscriptionsPodcastCarousel<T extends { id: number }>({
           containScroll: "trimSnaps",
         }}
       >
-        <CarouselContent
-          className={cn("ml-0 gap-5", podcasts.length < 4 && "justify-center")}
-        >
+        <CarouselContent className="ml-0 gap-5">
           {podcasts.map((podcast) => (
             <CarouselItem key={podcast.id} className="basis-[285px] pl-0">
               {renderPodcastCard(podcast)}

@@ -49,7 +49,7 @@ export function PodcastCard({
         className={cn(
           "relative flex h-[160px] w-full flex-col justify-between rounded-2xl border border-border bg-card p-3 text-card-foreground shadow-sm",
           onSelect && "cursor-pointer outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-          selected && "bg-accent",
+          selected && "border-ring bg-accent",
           className
         )}
       >
@@ -120,7 +120,7 @@ export function PodcastCard({
       className={cn(
         "flex w-full flex-col items-center gap-4 rounded-2xl border border-border bg-card p-3 text-card-foreground md:h-[420px] md:max-w-none md:w-[285px] md:gap-5 md:rounded-lg md:px-3 md:py-5 md:text-center",
         onSelect && "cursor-pointer outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-        selected && "bg-accent",
+        selected && "border-ring bg-accent",
         className
       )}
     >
