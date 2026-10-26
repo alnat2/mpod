@@ -278,6 +278,7 @@ const HomeScreenQueueItem = memo(function HomeScreenQueueItem({
       compactMobile={isMobile && isAudiobook}
       showDragHandle
       current={isCurrentEpisode}
+      showPodcastTitle={isAudiobook}
       title={episode.title}
       podcastTitle={isAudiobook ? (episode.author || "Audiobook") : episode.podcastTitle}
       subtitle={subtitle}

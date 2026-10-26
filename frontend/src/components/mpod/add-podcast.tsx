@@ -190,7 +190,7 @@ export function AddPodcast({
                 {isOpml ? "Importing..." : "Adding..."}
               </>
             ) : isOpml ? (
-              "Add Feed"
+              "Import file"
             ) : (
               "Add Feed"
             )}

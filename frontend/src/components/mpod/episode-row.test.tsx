@@ -34,7 +34,7 @@ describe("EpisodeRow", () => {
       "truncate"
     );
     expect(screen.getByText("22m")).toBeInTheDocument();
-    expect(screen.queryByText("21.05.26")).not.toBeInTheDocument();
+    expect(screen.getByText("21.05.26")).toBeInTheDocument();
   });
 
   it("uses the compact 96px Figma row for mobile audiobooks", () => {

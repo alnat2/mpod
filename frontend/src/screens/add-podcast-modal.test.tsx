@@ -95,7 +95,7 @@ describe("AddPodcastModal", () => {
 
     expect(input).not.toBeNull();
     await user.upload(input as HTMLInputElement, file);
-    await user.click(screen.getByRole("button", { name: "Add Feed" }));
+    await user.click(screen.getByRole("button", { name: "Import file" }));
 
     await waitFor(() => {
       expect(importSpy).toHaveBeenCalledWith(file);
@@ -115,7 +115,7 @@ describe("AddPodcastModal", () => {
       />
     );
 
-    const importButton = screen.getByRole("button", { name: "Add Feed" });
+    const importButton = screen.getByRole("button", { name: "Import file" });
     expect(importButton).toBeDisabled();
 
     const input = container.querySelector('input[type="file"]');
@@ -158,7 +158,7 @@ describe("AddPodcastModal", () => {
 
     expect(input).not.toBeNull();
     await user.upload(input as HTMLInputElement, file);
-    await user.click(screen.getByRole("button", { name: "Add Feed" }));
+    await user.click(screen.getByRole("button", { name: "Import file" }));
 
     expect(
       await screen.findByRole("button", { name: "Importing..." })

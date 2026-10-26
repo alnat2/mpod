@@ -43,6 +43,7 @@ type EpisodeRowProps = {
   inPlaylist?: boolean;
   layout?: "auto" | "desktop" | "mobile";
   title: string;
+  showPodcastTitle?: boolean;
   podcastTitle?: string;
   subtitle?: string;
   dateLabel?: string;
@@ -109,8 +110,10 @@ export const EpisodeRow = memo(function EpisodeRow({
   currentStatusLabel,
   layout = "auto",
   title,
+  showPodcastTitle = true,
   podcastTitle,
   subtitle,
+  dateLabel,
   durationLabel,
   thumbnailUrl,
   thumbnailAlt = "",
@@ -142,7 +145,7 @@ export const EpisodeRow = memo(function EpisodeRow({
       { label: "Remove from playlist", icon: PlayListRemoveIcon },
       { label: "Show notes", icon: ViewIcon },
     ];
-  const resolvedSubtitle = subtitle ?? podcastTitle;
+  const resolvedSubtitle = showPodcastTitle ? (subtitle ?? podcastTitle) : undefined;
   const mobileInfoLabel = currentStatusLabel ?? resolvedSubtitle;
   const desktopActions = children ?? resolvedActions.map((action) => (
     <EpisodeIconButton action={action} key={action.label} />
@@ -161,9 +164,9 @@ export const EpisodeRow = memo(function EpisodeRow({
                 : "h-[116px] grid-rows-[40px_44px]"
             )
           : isDesktop
-            ? "flex h-[70px] items-center gap-3 rounded px-3"
+            ? "flex h-[70px] items-center gap-3 rounded-[16px] px-3"
             : cn(
-                "relative grid h-[116px] grid-cols-[minmax(0,1fr)_auto] grid-rows-[40px_44px] gap-x-2 gap-y-2 overflow-hidden rounded-[16px] py-3 pr-3 md:flex md:h-[70px] md:items-center md:gap-3 md:rounded md:px-3 md:py-0",
+                "relative grid h-[116px] grid-cols-[minmax(0,1fr)_auto] grid-rows-[40px_44px] gap-x-2 gap-y-2 overflow-hidden rounded-[16px] py-3 pr-3 md:flex md:h-[70px] md:items-center md:gap-3 md:rounded-[16px] md:px-3 md:py-0",
                 showDragHandle ? "pl-8" : "pl-3"
               ),
         draggable && "cursor-grab",
@@ -243,47 +246,36 @@ export const EpisodeRow = memo(function EpisodeRow({
         {!isDesktop ? (
           <div
             className={cn(
-              "grid h-10 min-w-0 grid-cols-[auto_minmax(0,1fr)] grid-rows-2 gap-x-1 gap-y-1 self-center",
+              "flex h-10 min-w-0 flex-col justify-center gap-0.5 self-center text-xs leading-4 text-muted-foreground",
               !isMobile && "md:hidden"
             )}
           >
-            <div className="col-span-2 flex min-w-0 items-center gap-0.5 text-chart-5">
-              {mobileInfoLabel ? (
-                <p className="min-w-0 flex-1 truncate text-xs leading-4">
-                  {mobileInfoLabel}
-                </p>
-              ) : null}
-            </div>
-            {durationLabel ? (
-              <span className="self-start whitespace-nowrap text-xs leading-4 text-muted-foreground">
-                {durationLabel}
-              </span>
+            {mobileInfoLabel ? (
+              <p className="min-w-0 truncate">
+                {mobileInfoLabel}
+              </p>
+            ) : null}
+            {durationLabel || dateLabel ? (
+              <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+                {durationLabel ? <span>{durationLabel}</span> : null}
+                {dateLabel ? <span>{dateLabel}</span> : null}
+              </div>
             ) : null}
           </div>
         ) : null}
-        {!isMobile && resolvedSubtitle ? (
-          <p
+        {!isMobile && (resolvedSubtitle || durationLabel || dateLabel) ? (
+          <div
             className={cn(
-              "truncate text-xs leading-4 text-chart-5",
-              !isDesktop && "hidden md:block"
+              "flex min-w-0 items-center gap-2 truncate text-xs leading-4 text-muted-foreground",
+              !isDesktop && "hidden md:flex"
             )}
           >
-            {resolvedSubtitle}
-          </p>
+            {resolvedSubtitle ? <span>{resolvedSubtitle}</span> : null}
+            {durationLabel ? <span>{durationLabel}</span> : null}
+            {dateLabel ? <span>{dateLabel}</span> : null}
+          </div>
         ) : null}
       </div>
-      {!isMobile ? (
-        <div
-          className={cn(
-            "shrink-0 text-right text-xs leading-4 whitespace-nowrap text-muted-foreground",
-            isDesktop
-              ? "flex flex-row items-center gap-2"
-              : "hidden md:flex md:flex-row md:items-center md:gap-2"
-          )}
-        >
-          {durationLabel ? <span>{durationLabel}</span> : null}
-        </div>
-      ) : null}
       {!isDesktop ? (
         <div className={cn("shrink-0 items-center gap-2", isMobile ? "flex self-center" : "flex self-center md:hidden")}>
           {resolvedActions.map((action) => (

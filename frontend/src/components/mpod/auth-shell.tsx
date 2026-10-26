@@ -22,7 +22,7 @@ export function AuthShell({
         className
       )}
     >
-      <div className="flex w-full max-w-[1200px] flex-col items-start justify-center gap-5 md:items-center md:gap-16 lg:flex-row">
+      <div className="flex w-full max-w-[1200px] flex-col items-start justify-center gap-5 md:items-center md:gap-16 lg:flex-row lg:items-center lg:justify-between">
         <section className="flex min-w-0 flex-1 flex-col items-start gap-[22px]">
           <Logo />
           <h1 className="max-w-[620px] text-4xl leading-10 font-bold tracking-normal text-foreground md:text-5xl md:leading-12">

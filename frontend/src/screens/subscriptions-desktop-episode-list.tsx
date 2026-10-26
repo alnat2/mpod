@@ -16,7 +16,7 @@ import type {
   CachedSubscriptionPodcast,
 } from "@/lib/subscriptions-cache";
 
-import { formatEpisodeDuration } from "./screen-utils";
+import { formatEpisodeDate, formatEpisodeDuration } from "./screen-utils";
 import { useAudioMetadataDurations } from "./use-audio-metadata-durations";
 
 const EPISODE_ROW_HEIGHT = 70;
@@ -176,9 +176,9 @@ export function SubscriptionsDesktopEpisodeList({
             <EpisodeRow
               layout="desktop"
               title={episode.title}
-              podcastTitle={podcast.title}
               subtitle={subtitle}
               inPlaylist={episode.inPlaylist}
+              dateLabel={formatEpisodeDate(episode.publishedAt) || undefined}
               durationLabel={duration || undefined}
               thumbnailUrl={
                 podcast.imageUrl
