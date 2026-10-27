@@ -311,7 +311,6 @@ export function SubscriptionsScreen() {
         pageSubtitle={pageSubtitle}
         pageActions={[]}
         pageHeaderVisible={false}
-        className="px-0 md:px-6 xl:px-20"
       >
         <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5">
           <SubscriptionsPageHeader

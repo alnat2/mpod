@@ -40,7 +40,7 @@ export function TopNav({
 
   return (
     <header className={cn("flex h-[64px] w-full shrink-0 items-center justify-center bg-background", className)}>
-      <div className="flex h-full w-full max-w-[1200px] items-center gap-7 overflow-hidden px-6 xl:px-0">
+      <div className="flex h-full w-full max-w-[1280px] items-center gap-7 overflow-hidden px-6 xl:px-0">
         <Logo />
         <nav className="flex h-[33px] shrink-0 items-start gap-1" aria-label="Primary navigation">
           {navItems.map((item) => {

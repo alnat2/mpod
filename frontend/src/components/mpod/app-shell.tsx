@@ -90,7 +90,7 @@ export function AppShell({
       />
       <main
         className={cn(
-          "flex min-h-0 w-full max-w-[1200px] min-w-0 flex-1 flex-col overflow-hidden pb-[calc(65px+env(safe-area-inset-bottom))] text-foreground md:pb-0",
+          "flex min-h-0 w-full max-w-[1280px] min-w-0 flex-1 flex-col overflow-hidden pb-[calc(65px+env(safe-area-inset-bottom))] text-foreground md:pb-0",
           mainClassName
         )}
       >
