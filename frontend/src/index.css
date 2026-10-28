@@ -15,10 +15,10 @@
   --foreground: light-dark(#09090b, #f7fbff);
   --card: light-dark(#ffffff, #25292c);
   --card-foreground: light-dark(#09090b, #f2fdff);
-  --popover: light-dark(#ffffff, #202020);
+  --popover: light-dark(#ffffff, #25292c);
   --popover-foreground: light-dark(#09090b, #f7fbff);
-  --primary: light-dark(#5ea500, #cf4518);
-  --primary-foreground: light-dark(#f7fee7, #c0cdd3);
+  --primary: light-dark(#5ea500, #1e529a);
+  --primary-foreground: light-dark(#f7fee7, #dde9ee);
   --secondary: light-dark(#f4f4f5, #353a3f);
   --secondary-foreground: light-dark(#18181b, #f7fbff);
   --muted: light-dark(#f4f4f5, #2d3237);
@@ -28,22 +28,22 @@
   --destructive: light-dark(oklch(0.577 0.245 27.325), #f83d41);
   --border: light-dark(#e4e4e7, rgba(250, 250, 250, 0.1));
   --input: light-dark(#e4e4e7, rgba(250, 250, 250, 0.15));
-  --ring: light-dark(#9ae600, #a26316);
-  --chart-1: light-dark(oklch(0.87 0 0), #ebc28f);
-  --chart-2: light-dark(oklch(0.556 0 0), #e9aa53);
-  --chart-3: light-dark(oklch(0.439 0 0), #b5771f);
-  --chart-4: light-dark(oklch(0.371 0 0), #c7a265);
-  --chart-5: light-dark(oklch(0.43 0.13 145), #76633f);
+  --ring: light-dark(#9ae600, #1e529a);
+  --chart-1: light-dark(oklch(0.87 0 0), #1e529a);
+  --chart-2: light-dark(oklch(0.556 0 0), #353a3f);
+  --chart-3: light-dark(oklch(0.439 0 0), #2d3237);
+  --chart-4: light-dark(oklch(0.371 0 0), #a3a09a);
+  --chart-5: light-dark(oklch(0.43 0.13 145), #dde9ee);
   --radius:
     0.625rem;
-  --sidebar: light-dark(oklch(0.985 0 0), #111721);
-  --sidebar-foreground: light-dark(oklch(0.145 0 0), #fcfdff);
-  --sidebar-primary: light-dark(oklch(0.205 0 0), #e0b27a);
-  --sidebar-primary-foreground: light-dark(oklch(0.985 0 0), #ecf7ff);
-  --sidebar-accent: light-dark(oklch(0.97 0 0), #2e2a24);
+  --sidebar: light-dark(oklch(0.985 0 0), #1c1f24);
+  --sidebar-foreground: light-dark(oklch(0.145 0 0), #f7fbff);
+  --sidebar-primary: light-dark(oklch(0.205 0 0), #1e529a);
+  --sidebar-primary-foreground: light-dark(oklch(0.985 0 0), #dde9ee);
+  --sidebar-accent: light-dark(oklch(0.97 0 0), #2d3237);
   --sidebar-accent-foreground: light-dark(oklch(0.205 0 0), #f7fbff);
   --sidebar-border: light-dark(oklch(0.922 0 0), rgba(250, 250, 250, 0.1));
-  --sidebar-ring: light-dark(oklch(0.708 0 0), #e0b27a);
+  --sidebar-ring: light-dark(oklch(0.708 0 0), #1e529a);
 }
 
 @media (prefers-color-scheme: dark) {
