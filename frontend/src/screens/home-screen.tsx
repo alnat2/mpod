@@ -55,7 +55,16 @@ function queueSummary(
     (total, episode) => total + (durationForEpisode(episode) ?? episode.duration ?? 0),
     0
   );
-  return `${episodes.length} ${episodes.length === 1 ? "item" : "items"} · ${formatDuration(totalSeconds)}`;
+  const count = episodes.length;
+  const isAllEpisodes = episodes.every((e) => !isAudiobookQueueItem(e));
+  const noun = isAllEpisodes
+    ? count === 1 ? "episode" : "episodes"
+    : count === 1 ? "item" : "items";
+  const formattedDuration = formatDuration(totalSeconds);
+
+  return formattedDuration
+    ? `${count} ${noun} · ${formattedDuration}`
+    : `${count} ${noun}`;
 }
 
 type HomeScreenPlayerProps = {
@@ -278,7 +287,6 @@ const HomeScreenQueueItem = memo(function HomeScreenQueueItem({
       compactMobile={isMobile && isAudiobook}
       showDragHandle
       current={isCurrentEpisode}
-      showPodcastTitle={isAudiobook}
       title={episode.title}
       podcastTitle={isAudiobook ? (episode.author || "Audiobook") : episode.podcastTitle}
       subtitle={subtitle}

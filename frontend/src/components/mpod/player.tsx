@@ -317,7 +317,7 @@ export function Player({
   return (
     <section
       className={cn(
-        "flex w-full max-w-80 flex-col items-center justify-center gap-3 rounded-[16px] bg-card px-6 pt-6 pb-4 text-center text-card-foreground shadow-xs ring-1 ring-border ring-inset md:max-w-[480px] md:gap-4 md:px-12 md:py-5",
+        "flex w-full max-w-80 flex-col items-center justify-center gap-3 rounded-[16px] bg-card px-6 pt-6 pb-4 text-center text-card-foreground shadow-xs border border-border md:max-w-[480px] md:gap-4 md:px-12 md:py-5",
         className
       )}
     >

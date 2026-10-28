@@ -164,9 +164,9 @@ export const EpisodeRow = memo(function EpisodeRow({
                 : "h-[116px] grid-rows-[40px_44px]"
             )
           : isDesktop
-            ? "flex h-[70px] items-center gap-3 rounded-[16px] px-3"
+            ? "flex h-[70px] items-center gap-3 rounded-[4px] px-3"
             : cn(
-                "relative grid h-[116px] grid-cols-[minmax(0,1fr)_auto] grid-rows-[40px_44px] gap-x-2 gap-y-2 overflow-hidden rounded-[16px] py-3 pr-3 md:flex md:h-[70px] md:items-center md:gap-3 md:rounded-[16px] md:px-3 md:py-0",
+                "relative grid h-[116px] grid-cols-[minmax(0,1fr)_auto] grid-rows-[40px_44px] gap-x-2 gap-y-2 overflow-hidden rounded-[16px] py-3 pr-3 md:flex md:h-[70px] md:items-center md:gap-3 md:rounded-[4px] md:px-3 md:py-0",
                 showDragHandle ? "pl-8" : "pl-3"
               ),
         draggable && "cursor-grab",
@@ -192,7 +192,7 @@ export const EpisodeRow = memo(function EpisodeRow({
       {showDragHandle ? (
         <div
           className={cn(
-            "flex shrink-0 items-center justify-center",
+            "flex shrink-0 items-center justify-center text-muted-foreground",
             isMobile
               ? "absolute top-1/2 left-0 size-8 -translate-y-1/2"
               : isDesktop
