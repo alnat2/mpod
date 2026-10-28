@@ -155,19 +155,16 @@ export function SubscriptionsScreen() {
   const noVisibleUnlistenedPodcasts =
     hasSubscriptions && visiblePodcasts.length === 0;
   const pageTitle = !hasLoaded
-    ? "Subscriptions"
+    ? "Podcasts"
     : hasSubscriptions
       ? noVisibleUnlistenedPodcasts
         ? "No unlistened podcasts"
-        : "Subscriptions"
+        : "Podcasts"
       : "No podcasts";
   const pageSubtitle = !hasLoaded
     ? "Loading your podcast library."
     : hasSubscriptions
-      ? subscriptionSummaryLabel(
-          podcastsWithPending.length,
-          podcastsWithUnlistenedCount
-        )
+      ? podcastCountLabel(podcastsWithPending.length)
       : "Start with one RSS feed or import subscriptions from another app.";
   const pageActions: SubscriptionsPageAction[] = hasSubscriptions
     ? [
@@ -312,7 +309,7 @@ export function SubscriptionsScreen() {
         pageActions={[]}
         pageHeaderVisible={false}
       >
-        <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5">
+        <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5 md:pb-8">
           <SubscriptionsPageHeader
             isMobile={isMobile}
             title={pageTitle}

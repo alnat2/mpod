@@ -82,7 +82,7 @@ function EpisodeIconButton({
         <Button
           aria-label={action.label}
           className={cn(
-            "size-11 rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary [&_svg]:size-6"
+            "size-9 rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary [&_svg]:size-5"
           )}
           disabled={action.disabled}
           variant="outline"
@@ -93,7 +93,7 @@ function EpisodeIconButton({
         >
           <HugeiconsIcon
             icon={action.icon}
-            className={cn("size-6", action.iconClassName)}
+            className={cn("size-5", action.iconClassName)}
             aria-hidden="true"
           />
         </Button>

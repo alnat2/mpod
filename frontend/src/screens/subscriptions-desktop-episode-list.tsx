@@ -16,7 +16,10 @@ import type {
   CachedSubscriptionPodcast,
 } from "@/lib/subscriptions-cache";
 
-import { formatEpisodeDate, formatEpisodeDuration } from "./screen-utils";
+import {
+  formatDuration,
+  formatEpisodeDateLong,
+} from "./screen-utils";
 import { useAudioMetadataDurations } from "./use-audio-metadata-durations";
 
 const EPISODE_ROW_HEIGHT = 70;
@@ -142,7 +145,7 @@ export function SubscriptionsDesktopEpisodeList({
         />
       ) : null}
       {virtualEpisodeWindow.items.map((episode) => {
-        const duration = formatEpisodeDuration(durationForEpisode(episode));
+        const duration = formatDuration(durationForEpisode(episode));
         const subtitle = episode.inPlaylist ? "In playlist" : undefined;
         const playlistAction = {
           label: episode.inPlaylist
@@ -178,7 +181,7 @@ export function SubscriptionsDesktopEpisodeList({
               title={episode.title}
               subtitle={subtitle}
               inPlaylist={episode.inPlaylist}
-              dateLabel={formatEpisodeDate(episode.publishedAt) || undefined}
+              dateLabel={formatEpisodeDateLong(episode.publishedAt) || undefined}
               durationLabel={duration || undefined}
               thumbnailUrl={
                 podcast.imageUrl

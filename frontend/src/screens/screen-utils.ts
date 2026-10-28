@@ -101,6 +101,21 @@ export function formatEpisodeDate(value: string | null | undefined) {
     .replaceAll("/", ".");
 }
 
+export function formatEpisodeDateLong(value: string | null | undefined) {
+  if (!value) {
+    return "";
+  }
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(d);
+}
+
 export function formatDateTime(value?: string | null) {
   if (!value) {
     return "Never";

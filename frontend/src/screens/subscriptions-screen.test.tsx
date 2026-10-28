@@ -261,7 +261,7 @@ describe("SubscriptionsScreen", () => {
 
     renderSubscriptionsScreen();
 
-    expect(screen.getByText("Subscriptions")).toBeInTheDocument();
+    expect(screen.getByText("Podcasts")).toBeInTheDocument();
     expect(screen.getByText("Loading your podcast library.")).toBeInTheDocument();
     expect(screen.getByLabelText("Loading subscriptions")).toBeInTheDocument();
     expect(screen.queryByText("No podcasts")).not.toBeInTheDocument();
@@ -274,7 +274,7 @@ describe("SubscriptionsScreen", () => {
     });
 
     expect(
-      await screen.findByText("1 podcast · 1 unlistened")
+      await screen.findByText("1 podcast")
     ).toBeInTheDocument();
   });
 
@@ -372,7 +372,7 @@ describe("SubscriptionsScreen", () => {
     expect(row).not.toHaveTextContent("Build Your SaaS");
     expect(row).not.toHaveTextContent(podcast.title);
     expect(
-      screen.getByText("1 podcast · 1 unlistened")
+      screen.getByText("1 podcast")
     ).toBeInTheDocument();
     expect(screen.getByText("1 / 1 episodes")).toBeInTheDocument();
     expect(perPodcastEpisodesSpy).not.toHaveBeenCalled();
@@ -405,7 +405,7 @@ describe("SubscriptionsScreen", () => {
     renderSubscriptionsScreen();
 
     expect(
-      await screen.findByText("2 podcasts · 1 unlistened")
+      await screen.findByText("2 podcasts")
     ).toBeInTheDocument();
     expect(screen.getByText("2 / 1 episodes")).toBeInTheDocument();
     expect(screen.queryByText("Build Your SaaS episodes")).not.toBeInTheDocument();
@@ -801,7 +801,7 @@ describe("SubscriptionsScreen", () => {
 
     await waitFor(() => {
       expect(screen.getByText("All caught up")).toBeInTheDocument();
-      expect(screen.getByText("1 podcast · 0 unlistened")).toBeInTheDocument();
+      expect(screen.getByText("1 podcast")).toBeInTheDocument();
     });
     expect(
       screen.queryByRole("button", { name: "Mark all listened" })
@@ -950,7 +950,7 @@ describe("SubscriptionsScreen", () => {
 
     expect(await screen.findByText("No unlistened podcasts")).toBeInTheDocument();
     expect(
-      screen.getByText("1 podcast · 0 unlistened")
+      screen.getByText("1 podcast")
     ).toBeInTheDocument();
     expect(screen.getByText("All caught up")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add RSS feed" })).toBeInTheDocument();
