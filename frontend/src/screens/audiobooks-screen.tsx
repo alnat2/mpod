@@ -3,6 +3,8 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { RefreshDotIcon } from "@hugeicons/core-free-icons";
 
 import { AppShell, FileManagerItem } from "@/components/mpod";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -280,32 +282,49 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
   };
 
   return (
-    <AppShell
-      activeNavItem="Abooks"
-      onAddPodcast={() => setAddModalMode("rss")}
-      pageTitle="Audiobooks"
-      pageSubtitle={`Local collection · ${totalItemsCount} items`}
-      pageActions={[
-        {
-          label: "Rescan library",
-          disabled: rescanning || loading,
-          icon: (
-            <HugeiconsIcon
-              icon={RefreshDotIcon}
-              className={rescanning ? "animate-spin" : ""}
-              data-icon-name="hugeicons/refresh-dot"
-            />
-          ),
-          onClick: () => void handleRescan(),
-        },
-      ]}
-    >
-      <ScreenBannerStack>
-        {error && <ErrorBanner>{error}</ErrorBanner>}
-      </ScreenBannerStack>
+    <>
+      <AppShell
+        activeNavItem="Abooks"
+        onAddPodcast={() => setAddModalMode("rss")}
+        pageTitle="Audiobooks"
+        pageSubtitle={`Local collection · ${totalItemsCount} items`}
+        pageActions={[]}
+        pageHeaderVisible={false}
+      >
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5">
+          <div className="flex w-full items-center justify-between gap-6 pt-4 md:pt-0">
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
+              <h1 className="truncate text-3xl leading-9 font-semibold text-foreground">
+                Audiobooks
+              </h1>
+              <p className="truncate text-base leading-6 font-medium text-muted-foreground">
+                Local collection · {totalItemsCount} items
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                variant="secondary"
+                disabled={rescanning || loading}
+                onClick={() => void handleRescan()}
+                className="flex items-center gap-1.5"
+                aria-label="Rescan library"
+              >
+                <HugeiconsIcon
+                  icon={RefreshDotIcon}
+                  className={cn("size-4", rescanning && "animate-spin")}
+                  data-icon-name="hugeicons/refresh-dot"
+                />
+                <span>Rescan library</span>
+              </Button>
+            </div>
+          </div>
 
-      <div className="mpod-scroll flex h-full min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-20 md:pb-6">
-        {/* Breadcrumb Navigation */}
+          <ScreenBannerStack>
+            {error && <ErrorBanner>{error}</ErrorBanner>}
+          </ScreenBannerStack>
+
+          <div className="mpod-scroll flex h-full min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pt-2 pb-5 md:pb-6">
+            {/* Breadcrumb Navigation */}
         <Breadcrumb className="flex h-[50px] shrink-0 items-center py-0">
           <BreadcrumbList>
             <BreadcrumbItem>
@@ -399,7 +418,9 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
             ))}
           </div>
         )}
+        </div>
       </div>
+      </AppShell>
 
       {/* Chapters Modal */}
       {selectedBookForModal && (
@@ -417,6 +438,6 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
         onClose={() => setAddModalMode(null)}
         onModeChange={setAddModalMode}
       />
-    </AppShell>
+    </>
   );
 }

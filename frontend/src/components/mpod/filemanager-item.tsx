@@ -89,13 +89,14 @@ export function FileManagerItem({
     <div
       data-slot="fm-item"
       className={cn(
-        "flex h-[70px] w-full items-center gap-3 rounded-sm bg-card px-1 text-foreground shadow-xs transition-colors hover:bg-accent/40",
+        "flex h-[70px] w-full items-center gap-3 bg-card text-foreground shadow-xs transition-colors hover:bg-accent/40",
+        isMobile ? "rounded-sm px-1" : "rounded-sm px-1 md:rounded-[4px] md:px-3",
         onOpen && "cursor-pointer",
         className
       )}
       onClick={handleRowClick}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-1">
+      <div className="flex min-w-0 flex-1 items-center gap-1 md:gap-3">
         {getIcon()}
         <span
           className={cn(
@@ -108,11 +109,11 @@ export function FileManagerItem({
       </div>
 
       <div
-        className="flex shrink-0 items-center gap-2"
+        className="flex shrink-0 items-center gap-2 md:gap-3"
         onClick={(event) => event.stopPropagation()}
       >
         {formattedDuration && (
-          <span className="w-20 whitespace-nowrap text-right text-sm leading-5 text-foreground">
+          <span className="w-20 whitespace-nowrap text-right text-sm leading-5 text-foreground md:text-muted-foreground">
             {formattedDuration}
           </span>
         )}
@@ -121,11 +122,13 @@ export function FileManagerItem({
           <Button
             type="button"
             variant="outline"
-            size="icon"
             disabled={isPending}
             aria-busy={isPending ? true : undefined}
             data-pending={isPending ? "true" : undefined}
-            className="size-11 rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary disabled:opacity-50"
+            className={cn(
+              "rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary disabled:opacity-50",
+              isMobile ? "size-11 [&_svg]:size-6" : "size-11 md:size-9 [&_svg]:size-5"
+            )}
             aria-label={
               isPending
                 ? "Adding to playlist..."
@@ -146,9 +149,8 @@ export function FileManagerItem({
                   ? PlayListRemoveIcon
                   : PlayListAddIcon
               }
-              size={24}
+              className={cn(isPending ? "animate-spin" : isMobile ? "size-6" : "size-5")}
               strokeWidth={1.5}
-              className={isPending ? "animate-spin" : undefined}
               data-icon-name={
                 isPending
                   ? "hugeicons/loading-02"
