@@ -24,11 +24,11 @@ export function SettingItem({
   return (
     <Card
       className={cn(
-        "w-full flex-col items-start justify-center gap-5 rounded-md p-4 shadow-xs",
+        "w-full flex-col items-start justify-center gap-5 rounded-2xl border border-border bg-card p-4 shadow-xs",
         className
       )}
     >
-      <div className="flex w-full items-center gap-2">
+      <div className="flex w-full items-center justify-between gap-2">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <h3 className="text-base leading-6 font-semibold text-card-foreground">
             {title}
