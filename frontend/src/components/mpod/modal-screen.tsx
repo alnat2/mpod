@@ -141,7 +141,7 @@ export function ModalScreen({
     >
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
-          className="fixed inset-0 z-50 bg-foreground/30 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]"
         />
         <DialogPrimitive.Content
           aria-describedby={undefined}

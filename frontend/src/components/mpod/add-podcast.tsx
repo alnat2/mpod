@@ -95,8 +95,8 @@ export function AddPodcast({
           </CardTitle>
           <Button
             aria-label="Close"
-            className="size-6 md:size-10"
-            size="icon-sm"
+            className="size-8 rounded-lg text-muted-foreground hover:text-foreground [&_svg]:size-6"
+            size="icon"
             variant="ghost"
             type="button"
             disabled={disabled}
@@ -104,7 +104,6 @@ export function AddPodcast({
           >
             <HugeiconsIcon
               icon={MultiplicationSignIcon}
-              className="size-6 md:size-4"
               aria-hidden="true"
             />
           </Button>

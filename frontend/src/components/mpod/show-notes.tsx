@@ -115,10 +115,10 @@ function NotesAction({
       <TooltipTrigger asChild>
         <Button
           aria-label={label}
-          size="icon-lg"
           variant="outline"
           type="button"
           onClick={onClick}
+          className="size-11 rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background/80 hover:text-primary [&_svg]:size-6"
         >
           <HugeiconsIcon icon={icon} />
         </Button>
@@ -157,7 +157,7 @@ export function ShowNotes({
           />
         </div>
       </header>
-      <div className="max-h-[360px] w-full overflow-y-auto whitespace-pre-wrap pr-1 text-base leading-6 text-card-foreground break-words [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 md:max-h-[408px] md:pr-4">
+      <div className="max-h-[360px] w-full overflow-y-auto whitespace-pre-wrap pr-1 text-base leading-6 text-card-foreground break-words [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 md:h-[408px] md:max-h-[408px] md:pr-4">
         {linkifyShowNotes(children)}
       </div>
     </Card>

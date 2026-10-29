@@ -288,6 +288,26 @@ export function ComponentPreview() {
     );
   }
 
+  if (modalParam === "addpodcast-rss") {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <ModalScreen title="Add podcast" onClose={() => undefined}>
+          <AddPodcast mode="rss" />
+        </ModalScreen>
+      </div>
+    );
+  }
+
+  if (modalParam === "addpodcast-opml") {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <ModalScreen title="Add podcast" onClose={() => undefined}>
+          <AddPodcast mode="opml" />
+        </ModalScreen>
+      </div>
+    );
+  }
+
   if (modalParam === "abookchapter") {
     return (
       <div className="min-h-screen bg-background text-foreground">
