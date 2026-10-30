@@ -311,31 +311,53 @@ export function ComponentPreview() {
       previewSubscriptionPodcasts[0]!;
 
     return (
-      <div className="flex min-h-screen w-full items-center justify-center bg-background p-4 text-foreground">
-        <div className="flex h-[720px] w-[390px] max-w-full flex-col overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-2xl">
-          <div className="mb-2 shrink-0">
-            <SubscriptionsMobilePodcastCarousel
-              podcasts={previewSubscriptionPodcasts}
-              selectedPodcastId={selectedMobilePodcastId}
-              onSelectPodcast={setSelectedMobilePodcastId}
-              onRefreshPodcast={() => undefined}
-              onUnsubscribePodcast={() => undefined}
-              refreshingPodcastIds={new Set()}
-              exitingPodcastIds={new Set()}
+      <div className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden pb-[65px]">
+          <div className="px-5 pt-4">
+            <PageHeader
+              layout="mobile"
+              title="Podcasts"
+              subtitle={`${previewSubscriptionPodcasts.length} subscriptions`}
+              actions={[
+                {
+                  icon: <HugeiconsIcon icon={Refresh01Icon} className="size-6" />,
+                  label: "Refresh all",
+                  onClick: () => undefined,
+                  variant: "secondary",
+                },
+                {
+                  icon: <HugeiconsIcon icon={ViewIcon} className="size-6" />,
+                  label: "Show unlistened only",
+                  onClick: () => undefined,
+                  variant: "secondary",
+                },
+              ]}
             />
           </div>
-          <div className="min-h-0 flex-1">
-            <SubscriptionsMobileEpisodeList
-              podcast={selectedPodcast}
-              visibleEpisodes={previewSubscriptionEpisodes}
-              onAddToPlaylist={() => undefined}
-              onMarkAllListened={() => undefined}
-              onMarkListened={() => undefined}
-              onRemoveFromPlaylist={() => undefined}
-              onShowNotes={() => undefined}
-            />
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-4">
+            <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col gap-4">
+              <SubscriptionsMobilePodcastCarousel
+                podcasts={previewSubscriptionPodcasts}
+                selectedPodcastId={selectedMobilePodcastId}
+                onSelectPodcast={setSelectedMobilePodcastId}
+                onRefreshPodcast={() => undefined}
+                onUnsubscribePodcast={() => undefined}
+                refreshingPodcastIds={new Set()}
+                exitingPodcastIds={new Set()}
+              />
+              <SubscriptionsMobileEpisodeList
+                podcast={selectedPodcast}
+                visibleEpisodes={previewSubscriptionEpisodes}
+                onAddToPlaylist={() => undefined}
+                onMarkAllListened={() => undefined}
+                onMarkListened={() => undefined}
+                onRemoveFromPlaylist={() => undefined}
+                onShowNotes={() => undefined}
+              />
+            </div>
           </div>
         </div>
+        <BottomNav activeItem="Podcasts" className="fixed inset-x-0 bottom-0 z-40 mx-auto" />
       </div>
     );
   }

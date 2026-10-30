@@ -355,4 +355,30 @@ describe("EpisodeRow", () => {
     const desktopDragHandle = container.querySelector('[data-episode-drag-handle="true"]');
     expect(desktopDragHandle).toHaveClass("size-6");
   });
+
+  it("renders 44px action buttons on mobile layout and 36px on desktop layout", () => {
+    const { rerender } = render(
+      <TooltipProvider>
+        <EpisodeRow
+          layout="mobile"
+          title="Action Button Test"
+        />
+      </TooltipProvider>
+    );
+
+    const playBtnMobile = screen.getByRole("button", { name: "Play" });
+    expect(playBtnMobile).toHaveClass("size-11", "[&_svg]:size-6");
+
+    rerender(
+      <TooltipProvider>
+        <EpisodeRow
+          layout="desktop"
+          title="Action Button Test"
+        />
+      </TooltipProvider>
+    );
+
+    const playBtnDesktop = screen.getByRole("button", { name: "Play" });
+    expect(playBtnDesktop).toHaveClass("size-9", "[&_svg]:size-5");
+  });
 });
