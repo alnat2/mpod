@@ -290,6 +290,7 @@ const HomeScreenQueueItem = memo(function HomeScreenQueueItem({
       title={episode.title}
       podcastTitle={isAudiobook ? (episode.author || "Audiobook") : episode.podcastTitle}
       subtitle={subtitle}
+      showPodcastTitle={!isMobile || isAudiobook}
       durationLabel={durationLabel}
       thumbnailUrl={artwork}
       thumbnailAlt={`${episode.title} artwork`}

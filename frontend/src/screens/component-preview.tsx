@@ -362,6 +362,85 @@ export function ComponentPreview() {
     );
   }
 
+  if (viewParam === "mobile-player") {
+    return (
+      <div className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden px-5 pb-[65px]">
+          <div className="pt-4">
+            <PageHeader
+              layout="mobile"
+              title="Now playing"
+            />
+          </div>
+          <div className="mpod-scroll flex min-h-0 flex-1 flex-col items-center gap-4 overflow-y-auto pt-4 pb-5">
+            <Player
+              className="shrink-0"
+              mode="episode"
+              title="Why store loyalty cards became a UX minefield"
+              podcastTitle="Decoder Ring"
+              elapsedLabel="23:14"
+              durationLabel="54:03"
+              playing={false}
+              progressValue={43}
+              speedLabel="Speed 1.5x"
+              onBack={() => undefined}
+              onForward={() => undefined}
+              onPlay={() => undefined}
+              onProgressSeek={() => undefined}
+              onNotes={() => undefined}
+            />
+            <PlaylistQueue
+              summary="3 episodes · 2h 13m"
+              className="min-h-0 w-full flex-1"
+              bodyClassName="mpod-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain"
+            >
+              <EpisodeRow
+                layout="mobile"
+                showDragHandle
+                current
+                title="Why store loyalty cards became a UX minefield"
+                showPodcastTitle={false}
+                durationLabel="12h 54m"
+                actions={[
+                  {
+                    label: "Remove from playlist",
+                    icon: PlayListRemoveIcon,
+                    onClick: () => undefined,
+                  },
+                  {
+                    label: "Pause",
+                    icon: PauseIcon,
+                    onClick: () => undefined,
+                  },
+                ]}
+              />
+              <EpisodeRow
+                layout="mobile"
+                showDragHandle
+                title="Why store loyalty cards became a UX minefield"
+                showPodcastTitle={false}
+                durationLabel="12h 54m"
+                actions={[
+                  {
+                    label: "Remove from playlist",
+                    icon: PlayListRemoveIcon,
+                    onClick: () => undefined,
+                  },
+                  {
+                    label: "Play",
+                    icon: PlayIcon,
+                    onClick: () => undefined,
+                  },
+                ]}
+              />
+            </PlaylistQueue>
+          </div>
+        </div>
+        <BottomNav activeItem="Player" className="fixed inset-x-0 bottom-0 z-40 mx-auto" />
+      </div>
+    );
+  }
+
   if (modalParam === "shownotes") {
     return (
       <div className="min-h-screen bg-background text-foreground">

@@ -211,6 +211,7 @@ vi.mock("@/components/mpod", () => ({
   EpisodeRow: ({
     title,
     subtitle,
+    showPodcastTitle,
     current,
     currentStatusLabel,
     durationLabel,
@@ -223,6 +224,7 @@ vi.mock("@/components/mpod", () => ({
   }: {
     title: string;
     subtitle?: string;
+    showPodcastTitle?: boolean;
     current?: boolean;
     currentStatusLabel?: string;
     durationLabel?: string;
@@ -238,6 +240,7 @@ vi.mock("@/components/mpod", () => ({
       <div
         data-testid={`episode-row-${title}`}
         data-subtitle={subtitle}
+        data-show-podcast-title={showPodcastTitle !== false ? "yes" : "no"}
         data-current={current ? "yes" : "no"}
         data-current-status-label={currentStatusLabel}
         data-duration={durationLabel}
@@ -586,5 +589,13 @@ describe("HomeScreen", () => {
       dataTransfer: mockDataTransfer,
     });
     expect(mockDataTransfer.setData).toHaveBeenCalledWith("text/plain", "episode:1");
+  });
+
+  it("passes showPodcastTitle prop aligned with viewport and item type", async () => {
+    render(<HomeScreen />);
+
+    const row = await screen.findByTestId("episode-row-First queued episode");
+    // In desktop test environment, showPodcastTitle should be enabled
+    expect(row).toHaveAttribute("data-show-podcast-title", "yes");
   });
 });
