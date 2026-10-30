@@ -25,6 +25,11 @@ import { SubscriptionsMobileEpisodeList } from "@/screens/subscriptions-mobile-e
 import { SubscriptionsPodcastCarousel } from "@/screens/subscriptions-podcast-carousel";
 import { SubscriptionsDesktopEpisodeList } from "@/screens/subscriptions-desktop-episode-list";
 import { SubscriptionsEmptyState } from "@/screens/subscriptions-empty-state";
+import { SubscriptionsPageHeader } from "@/screens/subscriptions-page-header";
+import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import type {
   CachedSubscriptionEpisode,
   CachedSubscriptionPodcast,
@@ -235,6 +240,7 @@ const previewSubscriptionPodcasts: CachedSubscriptionPodcast[] = [
 ];
 
 export function ComponentPreview() {
+  const isMobile = useIsMobileViewport();
   const [searchParams] = useSearchParams();
   const { resolvedTheme, setTheme } = useTheme();
   const [selectedMobilePodcastId, setSelectedMobilePodcastId] = useState<number>(1);
@@ -282,16 +288,12 @@ export function ComponentPreview() {
           pageHeaderVisible={false}
         >
           <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5 md:pb-8">
-            <div className="flex items-center justify-between pb-4">
-              <div>
-                <h1 className="text-3xl font-semibold leading-9 text-foreground">
-                  No podcasts
-                </h1>
-                <p className="text-base font-medium leading-6 text-muted-foreground">
-                  Start with one RSS feed or import subscriptions from another app.
-                </p>
-              </div>
-            </div>
+            <SubscriptionsPageHeader
+              isMobile={isMobile}
+              title="No podcasts"
+              subtitle="Start with one RSS feed or import subscriptions from another app."
+              actions={[]}
+            />
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-4 md:py-6">
               <div className="flex h-full flex-col px-5 md:px-0">
                 <SubscriptionsEmptyState
@@ -559,6 +561,133 @@ export function ComponentPreview() {
           </div>
         </div>
         <BottomNav activeItem="Abooks" className="fixed inset-x-0 bottom-0 z-40 mx-auto" />
+      </div>
+    );
+  }
+
+  if (viewParam === "mobile-settings") {
+    return (
+      <div className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden px-5 pb-[65px]">
+          <div className="pt-4">
+            <PageHeader
+              layout="mobile"
+              title="Settings"
+              subtitle={
+                <div className="flex flex-col">
+                  <span>Last refresh today at 03:04</span>
+                  <span>Current IP: 43.32.112.45 • Geo: UK</span>
+                </div>
+              }
+              actions={[]}
+            />
+          </div>
+          <div className="mpod-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden pt-4 pb-4">
+            <div className="flex w-full flex-col gap-4">
+              <Card className="w-full gap-0 rounded-2xl border border-border bg-card p-4 shadow-xs">
+                <div className="flex w-full items-start gap-4">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-base leading-6 font-semibold text-card-foreground">
+                      Feed daily refresh
+                    </h2>
+                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                      Feeds are refreshed once per day at a single global time.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-5 flex w-full items-center gap-2">
+                  <Input
+                    type="text"
+                    defaultValue="03:00"
+                    className="h-9 flex-1 rounded-md border border-border bg-background px-3 text-left text-base text-foreground shadow-xs"
+                  />
+                  <Button
+                    type="button"
+                    className="h-9 shrink-0 rounded-[10px] px-4 font-medium shadow-xs"
+                  >
+                    Save time
+                  </Button>
+                </div>
+              </Card>
+
+              <Card className="w-full gap-0 rounded-2xl border border-border bg-card p-4 shadow-xs">
+                <div className="flex w-full items-start gap-4">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-base leading-6 font-semibold text-card-foreground">
+                      Use SOCKS5 proxy
+                    </h2>
+                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                      Turn on if direct connection update fails.
+                    </p>
+                  </div>
+                  <div className="flex w-[116px] shrink-0 items-center justify-end self-center">
+                    <Switch defaultChecked size="lg" />
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="w-full gap-0 rounded-2xl border border-border bg-card p-4 shadow-xs">
+                <div className="flex w-full items-start gap-4">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-base leading-6 font-semibold text-card-foreground">
+                      Use dark theme
+                    </h2>
+                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                      Use this option if it feels more comfortable for you.
+                    </p>
+                  </div>
+                  <div className="flex w-[116px] shrink-0 items-center justify-end self-center">
+                    <Switch size="lg" />
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="w-full gap-0 rounded-2xl border border-border bg-card p-4 shadow-xs">
+                <div className="flex w-full items-start gap-4">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-base leading-6 font-semibold text-card-foreground">
+                      Export OPML
+                    </h2>
+                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                      Download the current subscription list as an OPML file.
+                    </p>
+                  </div>
+                  <div className="flex w-[116px] shrink-0 items-center justify-end self-center">
+                    <Button
+                      type="button"
+                      className="h-9 w-[115px] rounded-md px-3 font-medium shadow-xs"
+                    >
+                      Export OPML
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="w-full gap-0 rounded-2xl border border-border bg-card p-4 shadow-xs">
+                <div className="flex w-full items-start gap-4">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-base leading-6 font-semibold text-card-foreground">
+                      Session
+                    </h2>
+                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                      End the current browser session
+                    </p>
+                  </div>
+                  <div className="flex w-[116px] shrink-0 items-center justify-end self-center">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-8 w-[113px] rounded-md px-3 font-medium shadow-xs"
+                    >
+                      Log out
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </div>
+        </div>
+        <BottomNav activeItem="Settings" className="fixed inset-x-0 bottom-0 z-40 mx-auto" />
       </div>
     );
   }

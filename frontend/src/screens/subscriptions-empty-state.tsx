@@ -17,7 +17,7 @@ export function SubscriptionsEmptyState({
   title,
 }: SubscriptionsEmptyStateProps) {
   return (
-    <section className="flex min-h-[256px] flex-1 w-full items-center justify-center overflow-hidden rounded-lg bg-card p-12">
+    <section className="flex min-h-[256px] flex-1 w-full items-center justify-center overflow-hidden rounded-lg bg-transparent p-4 md:bg-card md:p-12">
       <div className="flex w-full max-w-96 flex-col items-center gap-6 text-center">
         <div className="flex w-full flex-col items-center gap-2">
           <div className="flex size-10 items-center justify-center rounded-[10px] bg-muted text-muted-foreground [&_svg]:size-6">
@@ -30,11 +30,11 @@ export function SubscriptionsEmptyState({
             {description}
           </p>
         </div>
-        <div className="flex flex-wrap items-center justify-center gap-3">
-          <Button className="h-8 px-4 rounded-md font-medium text-sm drop-shadow-[0px_1px_1px_rgba(0,0,0,0.1)]" type="button" onClick={onAddRss}>
+        <div className="flex w-full flex-wrap items-center justify-center gap-4 sm:w-auto">
+          <Button className="h-8 flex-1 sm:flex-none px-4 rounded-md font-medium text-sm drop-shadow-[0px_1px_1px_rgba(0,0,0,0.1)]" type="button" onClick={onAddRss}>
             Add RSS feed
           </Button>
-          <Button className="h-8 px-4 rounded-md font-medium text-sm drop-shadow-[0px_1px_1px_rgba(0,0,0,0.1)]" variant="outline" type="button" onClick={onImportOpml}>
+          <Button className="h-8 flex-1 sm:flex-none px-4 rounded-md font-medium text-sm drop-shadow-[0px_1px_1px_rgba(0,0,0,0.1)]" variant="outline" type="button" onClick={onImportOpml}>
             Import OPML
           </Button>
         </div>
