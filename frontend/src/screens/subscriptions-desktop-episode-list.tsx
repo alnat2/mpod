@@ -17,8 +17,8 @@ import type {
 } from "@/lib/subscriptions-cache";
 
 import {
-  formatDuration,
   formatEpisodeDateLong,
+  formatEpisodeDuration,
 } from "./screen-utils";
 import { useAudioMetadataDurations } from "./use-audio-metadata-durations";
 
@@ -145,7 +145,7 @@ export function SubscriptionsDesktopEpisodeList({
         />
       ) : null}
       {virtualEpisodeWindow.items.map((episode) => {
-        const duration = formatDuration(durationForEpisode(episode));
+        const duration = formatEpisodeDuration(durationForEpisode(episode));
         const subtitle = episode.inPlaylist ? "In playlist" : undefined;
         const playlistAction = {
           label: episode.inPlaylist

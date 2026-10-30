@@ -11,7 +11,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { formatDuration } from "@/screens/screen-utils";
+import { formatEpisodeDuration } from "@/screens/screen-utils";
 
 export type FileManagerItemType = "folder" | "audiobook" | "track";
 
@@ -40,7 +40,7 @@ export function FileManagerItem({
   className,
 }: FileManagerItemProps) {
   const formattedDuration =
-    typeof duration === "string" ? duration : formatDuration(duration);
+    typeof duration === "string" ? duration : formatEpisodeDuration(duration);
 
   const getIcon = () => {
     switch (type) {

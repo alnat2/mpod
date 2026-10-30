@@ -400,7 +400,7 @@ export function ComponentPreview() {
                 current
                 title="Why store loyalty cards became a UX minefield"
                 showPodcastTitle={false}
-                durationLabel="12h 54m"
+                durationLabel="54:00"
                 actions={[
                   {
                     label: "Remove from playlist",
@@ -419,7 +419,7 @@ export function ComponentPreview() {
                 showDragHandle
                 title="Why store loyalty cards became a UX minefield"
                 showPodcastTitle={false}
-                durationLabel="12h 54m"
+                durationLabel="54:00"
                 actions={[
                   {
                     label: "Remove from playlist",
@@ -590,7 +590,7 @@ export function ComponentPreview() {
               current
               title="Why store loyalty cards became a UX minefield"
               podcastTitle="Decoder Ring"
-              durationLabel="54m"
+              durationLabel="54:00"
               thumbnailUrl={episodeArtwork}
               actions={[
                 { label: "Pause", icon: PauseIcon },
@@ -601,7 +601,7 @@ export function ComponentPreview() {
               showDragHandle
               title="How public transit maps teach invisible habits"
               podcastTitle="Decoder Ring"
-              durationLabel="36m"
+              durationLabel="36:00"
               thumbnailUrl={episodeArtwork}
               actions={[
                 { label: "Play", icon: PlayIcon },
@@ -612,7 +612,7 @@ export function ComponentPreview() {
               showDragHandle
               title="The app menu nobody understands but everyone uses"
               podcastTitle="Decoder Ring"
-              durationLabel="43m"
+              durationLabel="43:00"
               thumbnailUrl={episodeArtwork}
               actions={[
                 { label: "Play", icon: PlayIcon },
