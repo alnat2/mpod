@@ -21,6 +21,8 @@ import {
 } from "@/components/mpod";
 import { SubscriptionsMobilePodcastCarousel } from "@/screens/subscriptions-mobile-podcast-carousel";
 import { SubscriptionsMobileEpisodeList } from "@/screens/subscriptions-mobile-episode-list";
+import { SubscriptionsPodcastCarousel } from "@/screens/subscriptions-podcast-carousel";
+import { SubscriptionsDesktopEpisodeList } from "@/screens/subscriptions-desktop-episode-list";
 import { SubscriptionsEmptyState } from "@/screens/subscriptions-empty-state";
 import type {
   CachedSubscriptionEpisode,
@@ -296,6 +298,66 @@ export function ComponentPreview() {
                   description="Add one RSS feed or bring subscriptions from another podcast app with OPML."
                   onAddRss={() => undefined}
                   onImportOpml={() => undefined}
+                />
+              </div>
+            </div>
+          </div>
+        </AppShell>
+      </div>
+    );
+  }
+
+  if (viewParam === "desktop-subscriptions") {
+    const selectedPodcast =
+      previewSubscriptionPodcasts.find((p) => p.id === selectedMobilePodcastId) ??
+      previewSubscriptionPodcasts[0]!;
+
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <AppShell
+          activeNavItem="Podcasts"
+          pageTitle="Podcasts"
+          pageSubtitle={`${previewSubscriptionPodcasts.length} subscriptions · 2 unlistened`}
+          pageActions={[
+            {
+              icon: <HugeiconsIcon icon={Refresh01Icon} className="size-4" />,
+              label: "Refresh all",
+              onClick: () => undefined,
+              variant: "default",
+            },
+            {
+              icon: <HugeiconsIcon icon={ViewIcon} className="size-4" />,
+              label: "Show all",
+              onClick: () => undefined,
+              variant: "secondary",
+            },
+          ]}
+        >
+          <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5 md:pb-8">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-4 md:py-6">
+              <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col gap-6">
+                <SubscriptionsPodcastCarousel
+                  podcasts={previewSubscriptionPodcasts}
+                  renderPodcastCard={(podcast) => (
+                    <PodcastCard
+                      layout="horizontal"
+                      selected={podcast.id === selectedPodcast.id}
+                      title={podcast.title}
+                      description={podcast.description ?? podcast.rssUrl}
+                      artworkUrl={episodeArtwork}
+                      artworkAlt={`${podcast.title} artwork`}
+                      onSelect={() => setSelectedMobilePodcastId(podcast.id)}
+                    />
+                  )}
+                />
+                <SubscriptionsDesktopEpisodeList
+                  podcast={selectedPodcast}
+                  visibleEpisodes={previewSubscriptionEpisodes}
+                  onAddToPlaylist={() => undefined}
+                  onMarkAllListened={() => undefined}
+                  onMarkListened={() => undefined}
+                  onRemoveFromPlaylist={() => undefined}
+                  onShowNotes={() => undefined}
                 />
               </div>
             </div>
