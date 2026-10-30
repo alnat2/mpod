@@ -7,6 +7,7 @@ import {
   AuthCard,
   AuthShell,
   BottomNav,
+  BottomSheet,
   EpisodeRow,
   FileDropzone,
   FileManagerItem,
@@ -499,6 +500,85 @@ export function ComponentPreview() {
           </div>
         </div>
         <BottomNav activeItem="Player" className="fixed inset-x-0 bottom-0 z-40 mx-auto" />
+      </div>
+    );
+  }
+
+  if (viewParam === "mobile-audiobooks") {
+    return (
+      <div className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden px-5 pb-[65px]">
+          <PageHeader
+            layout="mobile"
+            className="pt-4"
+            title="Audiobooks"
+            subtitle="Local collection · 3 items"
+            actions={[
+              {
+                label: "Rescan library",
+                icon: <HugeiconsIcon icon={Refresh01Icon} className="size-6" />,
+                onClick: () => undefined,
+                variant: "secondary",
+              },
+            ]}
+          />
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-2">
+            <Breadcrumb className="flex h-[50px] shrink-0 items-center py-0">
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Abooks</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+            <div data-slot="filemanager" className="flex flex-col gap-1">
+              <FileManagerItem
+                type="folder"
+                title="Folder with abooks"
+                isMobile={true}
+                onOpen={() => undefined}
+              />
+              <FileManagerItem
+                type="audiobook"
+                title="Folder with audiobook chapters"
+                duration="43:12:00"
+                inPlaylist={false}
+                isMobile={true}
+                onOpen={() => undefined}
+                onTogglePlaylist={() => undefined}
+              />
+              <FileManagerItem
+                type="track"
+                title="A story.mp3"
+                duration="1:24:00"
+                inPlaylist={true}
+                isMobile={true}
+                onOpen={() => undefined}
+                onTogglePlaylist={() => undefined}
+              />
+            </div>
+          </div>
+        </div>
+        <BottomNav activeItem="Abooks" className="fixed inset-x-0 bottom-0 z-40 mx-auto" />
+      </div>
+    );
+  }
+
+  if (modalParam === "bottomsheet" || viewParam === "mobile-bottomsheet") {
+    return (
+      <div className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
+        <BottomSheet
+          defaultOpen={true}
+          title="Why store loyalty cards became a UX minefield"
+          subtitle="Podlodka Podcast"
+          trigger={<Button className="m-4">Open BottomSheet</Button>}
+          actions={[
+            {
+              label: "Mark as listened",
+              icon: ViewIcon,
+              onClick: () => undefined,
+            },
+          ]}
+        />
       </div>
     );
   }

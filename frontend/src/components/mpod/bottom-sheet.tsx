@@ -40,21 +40,21 @@ export function BottomSheet({
   return (
     <Drawer defaultOpen={defaultOpen}>
       <DrawerTrigger asChild>{trigger}</DrawerTrigger>
-      <DrawerContent className="rounded-t-lg border border-border bg-background text-foreground">
-        <div className="flex flex-col px-6 py-4 text-left">
-          <DrawerTitle className="text-lg leading-7 font-semibold">
+      <DrawerContent className="rounded-t-2xl border border-border bg-card text-foreground">
+        <div className="flex flex-col px-6 pt-2 pb-3 text-left">
+          <DrawerTitle className="text-lg leading-7 font-semibold text-foreground">
             {title}
           </DrawerTitle>
           <DrawerDescription
             className={cn(
-              "text-sm leading-5 font-normal",
+              "text-sm leading-5 font-normal text-muted-foreground",
               !subtitle && "sr-only"
             )}
           >
             {subtitle ?? `${title} options`}
           </DrawerDescription>
         </div>
-        <div className="border-t border-border pb-4">
+        <div className="border-t border-border pt-2 pb-4">
           {actions.map((action) => (
             <DrawerClose asChild key={action.label}>
               <button

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { RefreshDotIcon } from "@hugeicons/core-free-icons";
 
-import { AppShell, FileManagerItem } from "@/components/mpod";
+import { AppShell, FileManagerItem, PageHeader } from "@/components/mpod";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -292,32 +292,27 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
         pageHeaderVisible={false}
       >
         <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5">
-          <div className="flex w-full items-center justify-between gap-6 pt-4 md:pt-0">
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5 overflow-hidden">
-              <h1 className="truncate text-3xl leading-9 font-semibold text-foreground">
-                Audiobooks
-              </h1>
-              <p className="truncate text-base leading-6 font-medium text-muted-foreground">
-                Local collection · {totalItemsCount} items
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <Button
-                variant="secondary"
-                disabled={rescanning || loading}
-                onClick={() => void handleRescan()}
-                className="flex items-center gap-1.5"
-                aria-label="Rescan library"
-              >
-                <HugeiconsIcon
-                  icon={RefreshDotIcon}
-                  className={cn("size-4", rescanning && "animate-spin")}
-                  data-icon-name="hugeicons/refresh-dot"
-                />
-                <span>Rescan library</span>
-              </Button>
-            </div>
-          </div>
+          <PageHeader
+            layout={isMobile ? "mobile" : "desktop"}
+            className="pt-4 md:pt-0"
+            title="Audiobooks"
+            subtitle={`Local collection · ${totalItemsCount} items`}
+            actions={[
+              {
+                label: "Rescan library",
+                icon: (
+                  <HugeiconsIcon
+                    icon={RefreshDotIcon}
+                    className={cn(isMobile ? "size-6" : "size-4", rescanning && "animate-spin")}
+                    data-icon-name="hugeicons/refresh-dot"
+                  />
+                ),
+                onClick: () => void handleRescan(),
+                disabled: rescanning || loading,
+                variant: "secondary",
+              },
+            ]}
+          />
 
           <ScreenBannerStack>
             {error && <ErrorBanner>{error}</ErrorBanner>}
