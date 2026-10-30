@@ -21,6 +21,7 @@ import {
 } from "@/components/mpod";
 import { SubscriptionsMobilePodcastCarousel } from "@/screens/subscriptions-mobile-podcast-carousel";
 import { SubscriptionsMobileEpisodeList } from "@/screens/subscriptions-mobile-episode-list";
+import { SubscriptionsEmptyState } from "@/screens/subscriptions-empty-state";
 import type {
   CachedSubscriptionEpisode,
   CachedSubscriptionPodcast,
@@ -236,6 +237,73 @@ export function ComponentPreview() {
   const [selectedMobilePodcastId, setSelectedMobilePodcastId] = useState<number>(1);
   const modalParam = searchParams.get("modal");
   const viewParam = searchParams.get("view");
+
+  if (viewParam === "setup") {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <AuthShell headline="Create the only account for your podcast library">
+          <AuthCard
+            title="Create your account"
+            usernamePlaceholder="Choose a username"
+            passwordPlaceholder="Create a password"
+            submitLabel="Create account"
+          />
+        </AuthShell>
+      </div>
+    );
+  }
+
+  if (viewParam === "login") {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <AuthShell headline={"Log in\nand keep listening"}>
+          <AuthCard
+            title="Log in"
+            usernamePlaceholder="Enter your username"
+            passwordPlaceholder="Enter your password"
+            submitLabel="Log in"
+          />
+        </AuthShell>
+      </div>
+    );
+  }
+
+  if (viewParam === "empty-subscriptions") {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <AppShell
+          activeNavItem="Subscriptions"
+          pageTitle="No podcasts"
+          pageSubtitle="Start with one RSS feed or import subscriptions from another app."
+          pageActions={[]}
+          pageHeaderVisible={false}
+        >
+          <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5 md:pb-8">
+            <div className="flex items-center justify-between pb-4">
+              <div>
+                <h1 className="text-3xl font-semibold leading-9 text-foreground">
+                  No podcasts
+                </h1>
+                <p className="text-base font-medium leading-6 text-muted-foreground">
+                  Start with one RSS feed or import subscriptions from another app.
+                </p>
+              </div>
+            </div>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-4 md:py-6">
+              <div className="flex h-full flex-col px-5 md:px-0">
+                <SubscriptionsEmptyState
+                  title="No podcasts yet"
+                  description="Add one RSS feed or bring subscriptions from another podcast app with OPML."
+                  onAddRss={() => undefined}
+                  onImportOpml={() => undefined}
+                />
+              </div>
+            </div>
+          </div>
+        </AppShell>
+      </div>
+    );
+  }
 
   if (viewParam === "mobile-subscriptions") {
     const selectedPodcast =

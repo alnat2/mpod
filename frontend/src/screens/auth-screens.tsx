@@ -88,7 +88,7 @@ export function LoginScreen({ onAuthenticated }: AuthScreenProps) {
   }
 
   return (
-    <AuthShell headline="Log in and keep listening">
+    <AuthShell headline={"Log in\nand keep listening"}>
       <AuthCard
         title="Log in"
         usernamePlaceholder="Enter your username"

@@ -17,24 +17,24 @@ export function SubscriptionsEmptyState({
   title,
 }: SubscriptionsEmptyStateProps) {
   return (
-    <section className="flex min-h-[256px] w-full items-center justify-center overflow-hidden rounded-lg bg-card p-12">
+    <section className="flex min-h-[256px] flex-1 w-full items-center justify-center overflow-hidden rounded-lg bg-card p-12">
       <div className="flex w-full max-w-96 flex-col items-center gap-6 text-center">
         <div className="flex w-full flex-col items-center gap-2">
-          <div className="flex size-10 items-center justify-center rounded-lg bg-muted">
+          <div className="flex size-10 items-center justify-center rounded-[10px] bg-muted text-muted-foreground [&_svg]:size-6">
             <HugeiconsIcon icon={PodcastIcon} aria-hidden="true" />
           </div>
           <h2 className="text-lg leading-7 font-medium text-card-foreground">
             {title}
           </h2>
-          <p className="text-sm leading-5 text-muted-foreground">
+          <p className="text-sm leading-5 text-muted-foreground max-w-[384px]">
             {description}
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-3">
-          <Button type="button" onClick={onAddRss}>
+          <Button className="h-8 px-4 rounded-md font-medium text-sm drop-shadow-[0px_1px_1px_rgba(0,0,0,0.1)]" type="button" onClick={onAddRss}>
             Add RSS feed
           </Button>
-          <Button variant="outline" type="button" onClick={onImportOpml}>
+          <Button className="h-8 px-4 rounded-md font-medium text-sm drop-shadow-[0px_1px_1px_rgba(0,0,0,0.1)]" variant="outline" type="button" onClick={onImportOpml}>
             Import OPML
           </Button>
         </div>

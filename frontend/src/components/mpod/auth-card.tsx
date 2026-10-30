@@ -44,7 +44,7 @@ export function AuthCard({
   return (
     <Card
       className={cn(
-        "w-full max-w-[320px] items-center justify-center gap-4 rounded-[10px] px-4 py-5 shadow-xs md:max-w-[430px] md:gap-5 md:rounded-lg md:px-6 md:py-7",
+        "w-full max-w-[320px] items-center justify-center gap-4 rounded-[10px] px-4 py-5 shadow-xs md:w-[430px] md:max-w-[430px] md:gap-5 md:rounded-[10px] md:px-6 md:py-7",
         className
       )}
     >
