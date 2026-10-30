@@ -39,7 +39,6 @@ import {
 } from "./screen-states";
 import {
   formatClock,
-  formatDuration,
   formatPlaybackProgressDuration,
   getErrorMessage,
   getEpisodeShowNotes,
@@ -60,7 +59,7 @@ function queueSummary(
   const noun = isAllEpisodes
     ? count === 1 ? "episode" : "episodes"
     : count === 1 ? "item" : "items";
-  const formattedDuration = formatDuration(totalSeconds);
+  const formattedDuration = totalSeconds > 0 ? formatClock(totalSeconds) : "";
 
   return formattedDuration
     ? `${count} ${noun} · ${formattedDuration}`

@@ -472,6 +472,13 @@ describe("HomeScreen", () => {
     expect(row).toHaveAttribute("data-duration", "30:00");
   });
 
+  it("formats queue summary duration using standard formatClock (hh:mm:ss)", async () => {
+    render(<HomeScreen />);
+
+    const queue = await screen.findByTestId("playlist-queue");
+    expect(queue).toHaveTextContent("2 episodes · 1:10:00");
+  });
+
   it("does not reload the queue when the playback provider has already loaded it", async () => {
     render(<HomeScreen />);
 

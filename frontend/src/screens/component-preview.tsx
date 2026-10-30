@@ -390,7 +390,7 @@ export function ComponentPreview() {
               onNotes={() => undefined}
             />
             <PlaylistQueue
-              summary="3 episodes · 2h 13m"
+              summary="3 episodes · 2:13:00"
               className="min-h-0 w-full flex-1"
               bodyClassName="mpod-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain"
             >
@@ -584,7 +584,7 @@ export function ComponentPreview() {
       {/* 6. PlaylistQueue & EpisodeRow */}
       <PreviewSection title="6. PlaylistQueue & EpisodeRow">
         <div id="audit-queue" className="w-[1040px] max-w-full">
-          <PlaylistQueue summary="3 episodes · 2h 13m">
+          <PlaylistQueue summary="3 episodes · 2:13:00">
             <EpisodeRow
               showDragHandle
               current
@@ -691,13 +691,13 @@ export function ComponentPreview() {
             <FileManagerItem
               type="audiobook"
               title="Folder with audiobook chapters"
-              duration="43h 12m"
+              duration="43:12:00"
               onTogglePlaylist={() => undefined}
             />
             <FileManagerItem
               type="track"
               title="A story.mp3"
-              duration="1h 24m"
+              duration="1:24:00"
               onTogglePlaylist={() => undefined}
             />
           </div>
