@@ -28,7 +28,7 @@ import {
 } from "@/lib/api";
 import { useLatestRequest } from "@/lib/use-latest-request";
 import { PlaybackProvider, usePlaybackDispatch } from "@/lib/playback-context";
-import { prefetchRoute } from "@/lib/route-prefetch";
+import { prefetchAllRoutes, prefetchRoute } from "@/lib/route-prefetch";
 import { clearCachedAudiobooks, clearCachedSettings } from "@/lib/screen-cache";
 import { SubscriptionsCacheProvider } from "@/lib/subscriptions-cache-provider";
 
@@ -121,19 +121,11 @@ function ProtectedRoute({
 
 function RouteTransition({
   children,
-  routeKey,
 }: {
   children: ReactNode;
-  routeKey: string;
+  routeKey?: string;
 }) {
-  return (
-    <div
-      key={routeKey}
-      className="h-full min-h-0 animate-in fade-in-0 slide-in-from-bottom-1 duration-150 ease-out motion-reduce:animate-none motion-reduce:transition-none"
-    >
-      {children}
-    </div>
-  );
+  return <div className="h-full min-h-0">{children}</div>;
 }
 
 function ScreenLoadingFallback() {
@@ -276,6 +268,7 @@ function AppRoutes() {
         ? "/subscriptions"
         : window.location.pathname
     );
+    prefetchAllRoutes();
     void loadSession();
   }, [loadSession]);
 

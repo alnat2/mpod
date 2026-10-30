@@ -1,3 +1,10 @@
+export function prefetchAllRoutes(): void {
+  void import("@/screens/home-screen");
+  void import("@/screens/subscriptions-screen");
+  void import("@/screens/audiobooks-screen");
+  void import("@/screens/settings-screen");
+}
+
 export function prefetchRoute(href: string): void {
   switch (href) {
     case "/home":

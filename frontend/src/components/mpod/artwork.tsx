@@ -34,6 +34,8 @@ export function Artwork({
         className={cn("size-full object-cover", imageClassName)}
         src={FALLBACK_ARTWORK_SRC}
         alt={showRemoteImage ? "" : alt}
+        loading="lazy"
+        decoding="async"
       />
       {showRemoteImage ? (
         <img
@@ -44,6 +46,8 @@ export function Artwork({
           )}
           src={src ?? undefined}
           alt={alt}
+          loading="lazy"
+          decoding="async"
           onLoad={() => setLoadedSrc(src ?? null)}
           onError={() => setFailedSrc(src ?? null)}
         />

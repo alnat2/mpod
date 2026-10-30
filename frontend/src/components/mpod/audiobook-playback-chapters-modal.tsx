@@ -52,6 +52,8 @@ export function AudiobookPlaybackChaptersModal({
               src={coverSrc}
               alt=""
               className="size-16 shrink-0 rounded-md border border-border bg-muted object-cover"
+              loading="lazy"
+              decoding="async"
               onError={(event) => {
                 event.currentTarget.src = "/audiobook-fallback.png";
               }}
