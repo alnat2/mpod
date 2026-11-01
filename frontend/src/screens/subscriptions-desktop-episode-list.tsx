@@ -65,19 +65,19 @@ export function SubscriptionsDesktopEpisodeList({
       return;
     }
 
-    const syncMetrics = () => {
+    const syncHeight = () => {
       setEpisodeViewportHeight(
         container.clientHeight || DEFAULT_EPISODE_VIEWPORT_HEIGHT
       );
-      setEpisodeScrollTop(container.scrollTop);
     };
 
-    syncMetrics();
+    syncHeight();
+    setEpisodeScrollTop(container.scrollTop);
     if (typeof ResizeObserver === "undefined") {
       return;
     }
 
-    const observer = new ResizeObserver(syncMetrics);
+    const observer = new ResizeObserver(syncHeight);
     observer.observe(container);
     return () => observer.disconnect();
   }, [visibleEpisodes.length]);
