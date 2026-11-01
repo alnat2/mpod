@@ -45,6 +45,7 @@ import {
 } from "./screen-utils";
 import { useAudioMetadataDurations } from "./use-audio-metadata-durations";
 import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
+import { useVirtualScroll } from "@/lib/use-virtual-scroll";
 
 function queueSummary(
   episodes: QueueEpisode[],
@@ -338,6 +339,20 @@ export function HomeScreen() {
   }, [reloadKey, reloadQueue]);
 
   const visibleQueue = queue;
+  const queueItemHeight = isMobile ? 116 : 70;
+  const {
+    containerRef: queueScrollRef,
+    onScroll: onQueueScroll,
+    virtualItems: virtualQueue,
+    topSpacerHeight,
+    bottomSpacerHeight,
+  } = useVirtualScroll({
+    items: visibleQueue,
+    itemHeight: queueItemHeight,
+    itemGap: 4,
+    overscan: 4,
+    defaultViewportHeight: 600,
+  });
   const durationForQueueEpisode = useAudioMetadataDurations(visibleQueue);
   const queueSummaryText = useMemo(
     () => queueSummary(visibleQueue, durationForQueueEpisode),
@@ -599,8 +614,13 @@ export function HomeScreen() {
                 summary={queueSummaryText}
                 className="min-h-0 w-full flex-1 md:max-w-[1040px]"
                 bodyClassName="mpod-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain"
+                bodyRef={queueScrollRef}
+                bodyOnScroll={onQueueScroll}
               >
-                {visibleQueue.map((episode) => {
+                {topSpacerHeight > 0 ? (
+                  <div aria-hidden="true" style={{ height: topSpacerHeight }} />
+                ) : null}
+                {virtualQueue.map((episode) => {
                   const itemKey = queueItemKey(episode);
                   const canReorder = !reordering;
                   const isCurrentEpisode = Boolean(
@@ -627,6 +647,9 @@ export function HomeScreen() {
                     />
                   );
                 })}
+                {bottomSpacerHeight > 0 ? (
+                  <div aria-hidden="true" style={{ height: bottomSpacerHeight }} />
+                ) : null}
               </PlaylistQueue>
             </div>
           ) : (
