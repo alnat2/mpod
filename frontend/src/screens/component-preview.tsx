@@ -54,8 +54,9 @@ import {
   Refresh01Icon,
   ViewIcon,
 } from "@hugeicons/core-free-icons";
-import episodeArtwork from "@/assets/episode-artwork.png";
 import type { Audiobook } from "@/lib/api";
+
+const episodeArtwork = "/episode-artwork.png";
 
 const showNotesText = `This modal version keeps the main player context visible behind a muted backdrop while giving long show notes enough dedicated space. It is useful when notes need more reading focus than a side panel can comfortably provide.
 
