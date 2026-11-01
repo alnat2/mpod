@@ -15,8 +15,8 @@ export default defineConfig({
       manifestFilename: "manifest.webmanifest",
       manifest: {
         id: "/",
-        name: "mpod",
-        short_name: "mpod",
+        name: "Mpod",
+        short_name: "Mpod",
         description: "Personal podcast and audiobook manager",
         start_url: "/",
         scope: "/",
