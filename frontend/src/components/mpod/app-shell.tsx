@@ -41,7 +41,7 @@ export function AppShell({
 
   useEffect(() => {
     onAddPodcastRef.current = onAddPodcast;
-  });
+  }, [onAddPodcast]);
 
   useEffect(() => {
     if (isInside) {
