@@ -29,6 +29,8 @@ describe("usePlaybackMediaSession", () => {
     podcastId: 5,
     podcastTitle: "Great History Podcast",
     podcastImageUrl: "https://example.com/cover.png",
+    audioUrl: "https://example.com/ep1.mp3",
+    downloaded: false,
     duration: 3600,
     isListened: false,
     publishedAt: "2026-01-01T00:00:00Z",
@@ -62,7 +64,9 @@ describe("usePlaybackMediaSession", () => {
     expect(fakeSession.metadata?.artist).toBe("Great History Podcast");
     expect(fakeSession.metadata?.album).toBe("Great History Podcast");
     expect(fakeSession.metadata?.artwork.length).toBeGreaterThanOrEqual(1);
-    expect(fakeSession.metadata?.artwork[0].src).toBe("https://example.com/cover.png");
+    expect(fakeSession.metadata?.artwork?.[0]?.src).toBe(
+      "https://example.com/cover.png"
+    );
   });
 
   it("sets metadata with audiobook cover for an audiobook track", () => {
@@ -101,7 +105,9 @@ describe("usePlaybackMediaSession", () => {
     expect(fakeSession.metadata?.title).toBe("Chapter 1");
     expect(fakeSession.metadata?.artist).toBe("Famous Author");
     expect(fakeSession.metadata?.album).toBe("My Favorite Book");
-    expect(fakeSession.metadata?.artwork[0].src).toContain("/api/audiobooks/42/cover");
+    expect(fakeSession.metadata?.artwork?.[0]?.src).toContain(
+      "/api/audiobooks/42/cover"
+    );
   });
 
   it("clears metadata when currentEpisode is null", () => {
