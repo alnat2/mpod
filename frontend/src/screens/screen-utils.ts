@@ -87,18 +87,37 @@ export function formatPlaybackProgressDuration(
   return total;
 }
 
+const episodeDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "2-digit",
+});
+
+const episodeDateLongFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
+const dateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+  hourCycle: "h23",
+});
+
 export function formatEpisodeDate(value: string | null | undefined) {
   if (!value) {
     return "";
   }
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    return "";
+  }
 
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "2-digit",
-  })
-    .format(new Date(value))
-    .replaceAll("/", ".");
+  return episodeDateFormatter.format(d).replaceAll("/", ".");
 }
 
 export function formatEpisodeDateLong(value: string | null | undefined) {
@@ -109,26 +128,19 @@ export function formatEpisodeDateLong(value: string | null | undefined) {
   if (Number.isNaN(d.getTime())) {
     return "";
   }
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(d);
+  return episodeDateLongFormatter.format(d);
 }
 
 export function formatDateTime(value?: string | null) {
   if (!value) {
     return "Never";
   }
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    return "Never";
+  }
 
-  return new Intl.DateTimeFormat("en-GB", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    hourCycle: "h23",
-  }).format(new Date(value));
+  return dateTimeFormatter.format(d);
 }
 
 export function getEpisodeShowNotes(

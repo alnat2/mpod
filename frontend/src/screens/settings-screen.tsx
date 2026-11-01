@@ -38,6 +38,18 @@ type SettingsScreenProps = {
   onSessionChange?: () => void | Promise<void>;
 };
 
+const schedulerTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+  hourCycle: "h23",
+});
+
+const schedulerDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  month: "short",
+  day: "numeric",
+});
+
 function formatSchedulerRefresh(status: SchedulerStatus | null) {
   const lastRefreshAt =
     status?.lastRunAt ?? status?.lastSuccessAt ?? status?.lastFailureAt ?? null;
@@ -53,21 +65,13 @@ function formatSchedulerRefresh(status: SchedulerStatus | null) {
     refreshDate.getMonth() === now.getMonth() &&
     refreshDate.getDate() === now.getDate();
 
-  const timeLabel = new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    hourCycle: "h23",
-  }).format(refreshDate);
+  const timeLabel = schedulerTimeFormatter.format(refreshDate);
 
   if (isSameDay) {
     return `Last refresh today at ${timeLabel}`;
   }
 
-  const dateLabel = new Intl.DateTimeFormat("en-GB", {
-    month: "short",
-    day: "numeric",
-  }).format(refreshDate);
+  const dateLabel = schedulerDateFormatter.format(refreshDate);
 
   return `Last refresh ${dateLabel} at ${timeLabel}`;
 }
