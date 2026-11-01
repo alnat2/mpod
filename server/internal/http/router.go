@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"net"
 	nethttp "net/http"
 	"os"
@@ -124,6 +125,10 @@ func (w *trackedResponseWriter) Push(target string, opts *nethttp.PushOptions) e
 
 func (w *trackedResponseWriter) Unwrap() nethttp.ResponseWriter {
 	return w.ResponseWriter
+}
+
+func init() {
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
 }
 
 func NewRouterServicesForRuntime(cfg config.Config, db *sql.DB) (*RouterServices, error) {
@@ -257,12 +262,20 @@ func NewRouterWithServices(logger *log.Logger, cfg config.Config, db *sql.DB, sc
 	mux.HandleFunc("POST /api/audiobooks/{id}/tracks/{trackId}/playlist", r.handleAudiobookTrackPlaylistAdd)
 	mux.HandleFunc("DELETE /api/audiobooks/{id}/tracks/{trackId}/playlist", r.handleAudiobookTrackPlaylistRemove)
 
-	staticDir := pathutil.FirstExistingDir("frontend/dist", "../frontend/dist")
+	staticDir := pathutil.FirstExistingDir("frontend/dist", "../frontend/dist", "../../frontend/dist", "../../../frontend/dist")
 	fs := nethttp.FileServer(nethttp.Dir(staticDir))
 	mux.Handle("/", nethttp.HandlerFunc(func(w nethttp.ResponseWriter, req *nethttp.Request) {
 		cleanPath := filepath.Clean(strings.TrimPrefix(req.URL.Path, "/"))
 		if cleanPath != "." {
 			if _, err := os.Stat(filepath.Join(staticDir, cleanPath)); err == nil {
+				if cleanPath == "sw.js" {
+					w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+					w.Header().Set("Service-Worker-Allowed", "/")
+					w.Header().Set("Content-Type", "application/javascript")
+				} else if cleanPath == "manifest.webmanifest" {
+					w.Header().Set("Cache-Control", "no-cache")
+					w.Header().Set("Content-Type", "application/manifest+json")
+				}
 				fs.ServeHTTP(w, req)
 				return
 			}

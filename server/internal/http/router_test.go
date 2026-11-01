@@ -4715,3 +4715,34 @@ func routerTextResponse(body string) *nethttp.Response {
 	resp.Header.Set("Content-Type", "text/plain")
 	return resp
 }
+
+func TestStaticPWAHeaders(t *testing.T) {
+	handler, _ := newTestRouter(t)
+
+	// Test manifest.webmanifest
+	req := httptest.NewRequest(nethttp.MethodGet, "/manifest.webmanifest", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "application/manifest+json") {
+		t.Fatalf("expected Content-Type containing application/manifest+json, got %q", ct)
+	}
+
+	// Test sw.js
+	swReq := httptest.NewRequest(nethttp.MethodGet, "/sw.js", nil)
+	swRec := httptest.NewRecorder()
+	handler.ServeHTTP(swRec, swReq)
+
+	if swRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 for sw.js, got %d", swRec.Code)
+	}
+	if swAllowed := swRec.Header().Get("Service-Worker-Allowed"); swAllowed != "/" {
+		t.Fatalf("expected Service-Worker-Allowed: /, got %q", swAllowed)
+	}
+	if cacheCtrl := swRec.Header().Get("Cache-Control"); !strings.Contains(cacheCtrl, "no-cache") {
+		t.Fatalf("expected Cache-Control containing no-cache, got %q", cacheCtrl)
+	}
+}
