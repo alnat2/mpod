@@ -6,11 +6,13 @@ import App from "./App";
 import { ErrorBoundary } from "./components/error-boundary";
 import "./index.css";
 
-registerSW({
+const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    // New version available. Do NOT force reload so active audio playback is not interrupted.
-    // The updated service worker will cleanly activate on next launch or user refresh.
+    void updateSW(false);
+  },
+  onNeedReload() {
+    // Keep playback uninterrupted: do not trigger window.location.reload()
   },
 });
 
