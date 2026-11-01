@@ -26,11 +26,20 @@ type UseSubscriptionActionsOptions = {
   showAll: boolean;
 };
 
+let cachedReducedMotionQuery: MediaQueryList | null = null;
+let cachedMatchMediaFn: typeof window.matchMedia | null = null;
+
 function shouldReduceMotion() {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return false;
+  }
+  if (cachedMatchMediaFn !== window.matchMedia) {
+    cachedMatchMediaFn = window.matchMedia;
+    cachedReducedMotionQuery = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    );
+  }
+  return cachedReducedMotionQuery?.matches ?? false;
 }
 
 function isRefreshAllTimedOut(startTime: number | null): boolean {
