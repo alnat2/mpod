@@ -153,6 +153,44 @@ describe("usePlaybackMediaSession", () => {
     );
   });
 
+  it("resolves cover via episode.id when episode.type is audiobook and audiobookId is absent", () => {
+    const folderAudiobook: QueueEpisode = {
+      ...baseEpisode,
+      id: 99,
+      type: "audiobook",
+      audiobookId: undefined,
+      hasCover: true,
+      title: "Audiobook Title",
+      author: "Great Writer",
+      podcastTitle: "Audiobook Title",
+      podcastImageUrl: null,
+    };
+
+    const audioRef = { current: document.createElement("audio") };
+    const currentEpisodeRef = { current: folderAudiobook };
+    const playingRef = { current: false };
+    const userInitiatedPlayRef = { current: false };
+
+    renderHook(() =>
+      usePlaybackMediaSession({
+        audioRef,
+        currentEpisodeRef,
+        currentEpisode: folderAudiobook,
+        playing: true,
+        playingRef,
+        userInitiatedPlayRef,
+        commitCurrentPlayback: vi.fn(),
+        setPlaying: vi.fn(),
+        playToggle: vi.fn(),
+        cancelAutoAdvance: vi.fn(),
+      })
+    );
+
+    expect(fakeSession.metadata?.artwork?.[0]?.src).toContain(
+      "/api/audiobooks/99/cover"
+    );
+  });
+
   it("clears metadata when currentEpisode is null", () => {
     const audioRef = { current: document.createElement("audio") };
     const currentEpisodeRef = { current: null };

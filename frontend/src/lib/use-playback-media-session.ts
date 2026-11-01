@@ -16,9 +16,13 @@ type UsePlaybackMediaSessionOptions = {
 };
 
 function getEpisodeArtworkUrl(episode: QueueEpisode): string {
-  if (episode.audiobookId) {
+  const isAudiobook =
+    episode.type === "audiobook" || Boolean(episode.audiobookId);
+  const bookId = episode.audiobookId ?? episode.id;
+
+  if (isAudiobook && bookId) {
     if (episode.hasCover) {
-      return `/api/audiobooks/${episode.audiobookId}/cover`;
+      return `/api/audiobooks/${bookId}/cover`;
     }
     return "/audiobook-fallback.png";
   }
