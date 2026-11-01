@@ -21,6 +21,7 @@ import {
   formatEpisodeDuration,
 } from "./screen-utils";
 import { useAudioMetadataDurations } from "./use-audio-metadata-durations";
+import { useVirtualScroll } from "@/lib/use-virtual-scroll";
 
 const EPISODE_ROW_HEIGHT = 70;
 const EPISODE_ROW_GAP = 4;
@@ -53,71 +54,32 @@ export function SubscriptionsDesktopEpisodeList({
   podcast,
   visibleEpisodes,
 }: SubscriptionsDesktopEpisodeListProps) {
-  const [episodeScrollTop, setEpisodeScrollTop] = useState(0);
-  const [episodeViewportHeight, setEpisodeViewportHeight] = useState(
-    DEFAULT_EPISODE_VIEWPORT_HEIGHT
-  );
-  const episodeListRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const container = episodeListRef.current;
-    if (!container) {
-      return;
-    }
-
-    const syncHeight = () => {
-      setEpisodeViewportHeight(
-        container.clientHeight || DEFAULT_EPISODE_VIEWPORT_HEIGHT
-      );
-    };
-
-    syncHeight();
-    setEpisodeScrollTop(container.scrollTop);
-    if (typeof ResizeObserver === "undefined") {
-      return;
-    }
-
-    const observer = new ResizeObserver(syncHeight);
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [visibleEpisodes.length]);
-
-  const episodeRowPitch = EPISODE_ROW_HEIGHT + EPISODE_ROW_GAP;
-  const virtualEpisodeWindow = useMemo(() => {
-    const startIndex = Math.max(
-      0,
-      Math.floor(episodeScrollTop / episodeRowPitch) - EPISODE_OVERSCAN_ROWS
-    );
-    const visibleRowCount =
-      Math.ceil(episodeViewportHeight / episodeRowPitch) +
-      EPISODE_OVERSCAN_ROWS * 2;
-    const endIndex = Math.min(
-      visibleEpisodes.length,
-      startIndex + visibleRowCount
-    );
-
-    return {
-      startIndex,
-      endIndex,
-      items: visibleEpisodes.slice(startIndex, endIndex),
-      topSpacerHeight: startIndex * episodeRowPitch,
-      bottomSpacerHeight:
-        (visibleEpisodes.length - endIndex) * episodeRowPitch,
-    };
-  }, [episodeRowPitch, episodeScrollTop, episodeViewportHeight, visibleEpisodes]);
-  const durationForEpisode = useAudioMetadataDurations(virtualEpisodeWindow.items);
+  const {
+    containerRef: episodeListRef,
+    onScroll: onEpisodeScroll,
+    virtualItems: virtualEpisodes,
+    topSpacerHeight,
+    bottomSpacerHeight,
+  } = useVirtualScroll({
+    items: visibleEpisodes,
+    itemHeight: EPISODE_ROW_HEIGHT,
+    itemGap: EPISODE_ROW_GAP,
+    overscan: EPISODE_OVERSCAN_ROWS,
+    defaultViewportHeight: DEFAULT_EPISODE_VIEWPORT_HEIGHT,
+  });
+  const durationForEpisode = useAudioMetadataDurations(virtualEpisodes);
   const unlistenedEpisodeCount = podcast.episodes.filter(
     (episode) => !episode.isListened
   ).length;
+
+  const episodeRowPitch = EPISODE_ROW_HEIGHT + EPISODE_ROW_GAP;
 
   return (
     <PlaylistQueue
       className="min-h-0 w-full flex-1"
       bodyClassName="mpod-scroll block min-h-0 flex-1 overflow-y-auto pb-20 md:max-h-none md:pb-0"
       bodyRef={episodeListRef}
-      bodyOnScroll={(event) =>
-        setEpisodeScrollTop(event.currentTarget.scrollTop)
-      }
+      bodyOnScroll={onEpisodeScroll}
       summary={episodeSummaryLabel(
         podcast.episodes.length,
         unlistenedEpisodeCount
@@ -137,14 +99,14 @@ export function SubscriptionsDesktopEpisodeList({
         </>
       }
     >
-      {virtualEpisodeWindow.topSpacerHeight > 0 ? (
+      {topSpacerHeight > 0 ? (
         <div
           aria-hidden="true"
           className="shrink-0"
-          style={{ height: virtualEpisodeWindow.topSpacerHeight }}
+          style={{ height: topSpacerHeight }}
         />
       ) : null}
-      {virtualEpisodeWindow.items.map((episode) => {
+      {virtualEpisodes.map((episode) => {
         const duration = formatEpisodeDuration(durationForEpisode(episode));
         const subtitle = episode.inPlaylist ? "In playlist" : undefined;
         const playlistAction = {
@@ -198,11 +160,11 @@ export function SubscriptionsDesktopEpisodeList({
           </div>
         );
       })}
-      {virtualEpisodeWindow.bottomSpacerHeight > 0 ? (
+      {bottomSpacerHeight > 0 ? (
         <div
           aria-hidden="true"
           className="shrink-0"
-          style={{ height: virtualEpisodeWindow.bottomSpacerHeight }}
+          style={{ height: bottomSpacerHeight }}
         />
       ) : null}
     </PlaylistQueue>
