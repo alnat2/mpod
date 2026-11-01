@@ -4745,4 +4745,16 @@ func TestStaticPWAHeaders(t *testing.T) {
 	if cacheCtrl := swRec.Header().Get("Cache-Control"); !strings.Contains(cacheCtrl, "no-cache") {
 		t.Fatalf("expected Cache-Control containing no-cache, got %q", cacheCtrl)
 	}
+
+	// Test index.html and root fallback
+	indexReq := httptest.NewRequest(nethttp.MethodGet, "/", nil)
+	indexRec := httptest.NewRecorder()
+	handler.ServeHTTP(indexRec, indexReq)
+
+	if indexRec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200 for /, got %d", indexRec.Code)
+	}
+	if indexCacheCtrl := indexRec.Header().Get("Cache-Control"); !strings.Contains(indexCacheCtrl, "no-cache") {
+		t.Fatalf("expected Cache-Control containing no-cache for index.html, got %q", indexCacheCtrl)
+	}
 }

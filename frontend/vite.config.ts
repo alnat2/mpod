@@ -11,18 +11,8 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: "autoUpdate",
+      registerType: "prompt",
       manifestFilename: "manifest.webmanifest",
-      includeAssets: [
-        "favicon.ico",
-        "favicon.svg",
-        "apple-touch-icon.png",
-        "icon-192.png",
-        "icon-512.png",
-        "icon-maskable-512.png",
-        "podcast_fallback.png",
-        "audiobook-fallback.png",
-      ],
       manifest: {
         id: "/",
         name: "mpod",

@@ -17,7 +17,10 @@ type UsePlaybackMediaSessionOptions = {
 
 function getEpisodeArtworkUrl(episode: QueueEpisode): string {
   if (episode.audiobookId) {
-    return `/api/audiobooks/${episode.audiobookId}/cover`;
+    if (episode.hasCover) {
+      return `/api/audiobooks/${episode.audiobookId}/cover`;
+    }
+    return "/audiobook-fallback.png";
   }
   if (episode.podcastImageUrl) {
     return episode.podcastImageUrl;
@@ -37,17 +40,13 @@ function createArtworkList(artworkUrl: string): MediaImage[] {
       ? window.location.origin
       : "";
   const absoluteUrl = origin ? new URL(artworkUrl, origin).href : artworkUrl;
-  const fallbackIcon = origin
-    ? new URL("/icon-512.png", origin).href
-    : "/icon-512.png";
 
   return [
-    { src: absoluteUrl, sizes: "512x512", type: "image/png" },
-    { src: absoluteUrl, sizes: "256x256", type: "image/png" },
-    { src: absoluteUrl, sizes: "192x192", type: "image/png" },
-    { src: absoluteUrl, sizes: "128x128", type: "image/png" },
-    { src: absoluteUrl, sizes: "96x96", type: "image/png" },
-    { src: fallbackIcon, sizes: "512x512", type: "image/png" },
+    { src: absoluteUrl, sizes: "512x512" },
+    { src: absoluteUrl, sizes: "256x256" },
+    { src: absoluteUrl, sizes: "192x192" },
+    { src: absoluteUrl, sizes: "128x128" },
+    { src: absoluteUrl, sizes: "96x96" },
   ];
 }
 

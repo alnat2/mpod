@@ -275,11 +275,14 @@ func NewRouterWithServices(logger *log.Logger, cfg config.Config, db *sql.DB, sc
 				} else if cleanPath == "manifest.webmanifest" {
 					w.Header().Set("Cache-Control", "no-cache")
 					w.Header().Set("Content-Type", "application/manifest+json")
+				} else if cleanPath == "index.html" {
+					w.Header().Set("Cache-Control", "no-cache")
 				}
 				fs.ServeHTTP(w, req)
 				return
 			}
 		}
+		w.Header().Set("Cache-Control", "no-cache")
 		nethttp.ServeFile(w, req, filepath.Join(staticDir, "index.html"))
 	}))
 

@@ -67,14 +67,18 @@ describe("usePlaybackMediaSession", () => {
     expect(fakeSession.metadata?.artwork?.[0]?.src).toBe(
       "https://example.com/cover.png"
     );
+    expect(
+      fakeSession.metadata?.artwork.some((art) => art.src.includes("icon-512.png"))
+    ).toBe(false);
   });
 
-  it("sets metadata with audiobook cover for an audiobook track", () => {
+  it("sets metadata with audiobook cover for an audiobook track when hasCover is true", () => {
     const audiobookEpisode: QueueEpisode = {
       ...baseEpisode,
       id: 202,
       type: "audiobook",
       audiobookId: 42,
+      hasCover: true,
       title: "Chapter 1",
       author: "Famous Author",
       podcastTitle: "My Favorite Book",
@@ -107,6 +111,45 @@ describe("usePlaybackMediaSession", () => {
     expect(fakeSession.metadata?.album).toBe("My Favorite Book");
     expect(fakeSession.metadata?.artwork?.[0]?.src).toContain(
       "/api/audiobooks/42/cover"
+    );
+  });
+
+  it("uses fallback cover for an audiobook track when hasCover is false", () => {
+    const audiobookWithoutCover: QueueEpisode = {
+      ...baseEpisode,
+      id: 203,
+      type: "audiobook",
+      audiobookId: 43,
+      hasCover: false,
+      title: "Chapter 2",
+      author: "Famous Author",
+      podcastTitle: "My Favorite Book",
+      podcastImageUrl: null,
+    };
+
+    const audioRef = { current: document.createElement("audio") };
+    const currentEpisodeRef = { current: audiobookWithoutCover };
+    const playingRef = { current: false };
+    const userInitiatedPlayRef = { current: false };
+
+    renderHook(() =>
+      usePlaybackMediaSession({
+        audioRef,
+        currentEpisodeRef,
+        currentEpisode: audiobookWithoutCover,
+        playing: false,
+        playingRef,
+        userInitiatedPlayRef,
+        commitCurrentPlayback: vi.fn(),
+        setPlaying: vi.fn(),
+        playToggle: vi.fn(),
+        cancelAutoAdvance: vi.fn(),
+      })
+    );
+
+    expect(fakeSession.playbackState).toBe("paused");
+    expect(fakeSession.metadata?.artwork?.[0]?.src).toContain(
+      "/audiobook-fallback.png"
     );
   });
 
