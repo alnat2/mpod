@@ -65,6 +65,28 @@ if (!globalThis.localStorage || typeof globalThis.localStorage.getItem !== "func
   };
 }
 
+if (typeof globalThis.MediaMetadata === "undefined") {
+  class MediaMetadataMock {
+    title: string;
+    artist: string;
+    album: string;
+    artwork: Array<{ src: string; sizes?: string; type?: string }>;
+    constructor(init?: {
+      title?: string;
+      artist?: string;
+      album?: string;
+      artwork?: Array<{ src: string; sizes?: string; type?: string }>;
+    }) {
+      this.title = init?.title ?? "";
+      this.artist = init?.artist ?? "";
+      this.album = init?.album ?? "";
+      this.artwork = init?.artwork ?? [];
+    }
+  }
+  globalThis.MediaMetadata =
+    MediaMetadataMock as unknown as typeof MediaMetadata;
+}
+
 afterEach(() => {
   cleanup();
 });
