@@ -164,7 +164,10 @@ export function SubscriptionsScreen() {
   const pageSubtitle = !hasLoaded
     ? "Loading your podcast library."
     : hasSubscriptions
-      ? podcastCountLabel(podcastsWithPending.length)
+      ? subscriptionSummaryLabel(
+          podcastsWithPending.length,
+          podcastsWithUnlistenedCount
+        )
       : "Start with one RSS feed or import subscriptions from another app.";
   const pageActions: SubscriptionsPageAction[] = hasSubscriptions
     ? [
