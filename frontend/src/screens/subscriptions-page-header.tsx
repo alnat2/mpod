@@ -26,7 +26,7 @@ export function SubscriptionsPageHeader({
 }: SubscriptionsPageHeaderProps) {
   if (isMobile) {
     return (
-      <div className="px-5 pt-4">
+      <div className="pt-4">
         <PageHeader
           layout="mobile"
           title={title}

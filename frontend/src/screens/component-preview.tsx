@@ -296,7 +296,7 @@ export function ComponentPreview() {
               actions={[]}
             />
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-4 md:py-6">
-              <div className="flex h-full flex-col px-5 md:px-0">
+              <div className="flex h-full flex-col">
                 <SubscriptionsEmptyState
                   title="No podcasts yet"
                   description="Add one RSS feed or bring subscriptions from another podcast app with OPML."
@@ -378,8 +378,8 @@ export function ComponentPreview() {
 
     return (
       <div className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
-        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden pb-[65px]">
-          <div className="px-5 pt-4">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden px-5 pb-[65px]">
+          <div className="pt-4">
             <PageHeader
               layout="mobile"
               title="Podcasts"

@@ -319,7 +319,7 @@ export function SubscriptionsScreen() {
             subtitle={pageSubtitle}
             actions={pageActions}
           />
-          <div className="px-5 md:px-0">
+          <div className="w-full">
             <ScreenBannerStack>
               {error ? (
                 <ErrorBanner onClose={() => setError(null)}>{error}</ErrorBanner>
@@ -341,7 +341,7 @@ export function SubscriptionsScreen() {
           </div>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-4 md:py-6">
             {loading ? (
-              <div className="px-5 md:px-0">
+              <div className="w-full">
                 <ListLoadingState label="Loading subscriptions" />
               </div>
             ) : visiblePodcasts.length > 0 ? (
@@ -408,7 +408,7 @@ export function SubscriptionsScreen() {
                 ) : null}
               </div>
             ) : (
-              <div className="px-5 md:px-0 h-full flex flex-col">
+              <div className="h-full w-full flex flex-col">
                 <SubscriptionsEmptyState
                   title={hasSubscriptions ? "All caught up" : "No podcasts yet"}
                   description={

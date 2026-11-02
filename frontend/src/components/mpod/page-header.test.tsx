@@ -26,14 +26,14 @@ describe("PageHeader", () => {
     ).toBeInTheDocument();
   });
 
-  it("applies compact heading size on mobile layout to prevent clipping long titles", () => {
+  it("applies design token heading size on mobile and desktop layouts", () => {
     const { rerender } = render(
       <PageHeader title="Subscriptions" layout="mobile" />
     );
 
     const mobileHeading = screen.getByRole("heading", { name: "Subscriptions" });
-    expect(mobileHeading.className).toContain("text-2xl");
-    expect(mobileHeading.className).toContain("leading-8");
+    expect(mobileHeading.className).toContain("text-3xl");
+    expect(mobileHeading.className).toContain("leading-9");
 
     rerender(<PageHeader title="Subscriptions" layout="desktop" />);
     const desktopHeading = screen.getByRole("heading", { name: "Subscriptions" });

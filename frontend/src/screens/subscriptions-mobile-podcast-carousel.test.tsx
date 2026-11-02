@@ -144,7 +144,7 @@ describe("SubscriptionsMobilePodcastCarousel", () => {
     );
 
     const slides = screen.getAllByRole("group");
-    expect(slides[0]!.className).toContain("basis-[calc(100%-40px)]");
+    expect(slides[0]!.className).toContain("basis-full");
 
     // Refresh and Unsubscribe buttons should be inside a full-width bottom row
     const refreshButton = screen.getAllByRole("button", { name: "Refresh" })[0]!;

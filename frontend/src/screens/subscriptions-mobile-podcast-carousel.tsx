@@ -85,8 +85,8 @@ export function SubscriptionsMobilePodcastCarousel({
       aria-roledescription="carousel"
       aria-label="Podcast subscriptions"
       opts={{
-        align: "center",
-        containScroll: false,
+        align: "start",
+        containScroll: "trimSnaps",
         dragFree: false,
         loop: podcasts.length >= 3,
         skipSnaps: false,
@@ -101,7 +101,7 @@ export function SubscriptionsMobilePodcastCarousel({
           return (
             <CarouselItem
               key={podcast.id}
-              className="h-[160px] basis-[calc(100%-40px)] min-w-[280px] max-w-[360px] shrink-0 grow-0 pl-0"
+              className="h-[160px] basis-full min-w-0 shrink-0 grow-0 pl-0"
               role="group"
               aria-roledescription="slide"
               aria-label={`${podcast.title} (${index + 1} of ${podcasts.length})`}
