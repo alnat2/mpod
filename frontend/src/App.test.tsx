@@ -173,7 +173,7 @@ describe("App routing", () => {
       setupRequired: false,
     });
 
-    expect(await screen.findByText("Subscriptions screen")).toBeInTheDocument();
+    expect(await screen.findByText("Home screen")).toBeInTheDocument();
     expect(playbackProviderMock).toHaveBeenCalled();
   });
 
@@ -279,7 +279,7 @@ describe("App routing", () => {
     await waitFor(() => {
       expect(sessionSpy).toHaveBeenCalledTimes(2);
     });
-    expect(await screen.findByText("Subscriptions screen")).toBeInTheDocument();
+    expect(await screen.findByText("Home screen")).toBeInTheDocument();
   });
 
   it("does not let an older session response replace a newer one", async () => {
@@ -310,7 +310,7 @@ describe("App routing", () => {
         setupRequired: false,
       });
     });
-    expect(await screen.findByText("Subscriptions screen")).toBeInTheDocument();
+    expect(await screen.findByText("Home screen")).toBeInTheDocument();
 
     await act(async () => {
       olderRequest.resolve({
@@ -319,7 +319,7 @@ describe("App routing", () => {
         setupRequired: true,
       });
     });
-    expect(screen.getByText("Subscriptions screen")).toBeInTheDocument();
+    expect(screen.getByText("Home screen")).toBeInTheDocument();
     expect(screen.queryByText("Setup screen")).not.toBeInTheDocument();
   });
 
@@ -331,7 +331,7 @@ describe("App routing", () => {
     });
 
     render(<App />);
-    expect(await screen.findByText("Subscriptions screen")).toBeInTheDocument();
+    expect(await screen.findByText("Home screen")).toBeInTheDocument();
     expect(playbackProviderMountSpy).toHaveBeenCalledTimes(1);
     expect(playbackProviderUnmountSpy).not.toHaveBeenCalled();
 
@@ -352,7 +352,7 @@ describe("App routing", () => {
 
     expect(sessionSpy).toHaveBeenCalled();
     expect(screen.queryByText("Loading mpod")).not.toBeInTheDocument();
-    expect(screen.getByText("Subscriptions screen")).toBeInTheDocument();
+    expect(screen.getByText("Home screen")).toBeInTheDocument();
     expect(playbackProviderMountSpy).toHaveBeenCalledTimes(1);
     expect(playbackProviderUnmountSpy).not.toHaveBeenCalled();
   });

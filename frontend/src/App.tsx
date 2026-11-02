@@ -265,7 +265,7 @@ function AppRoutes() {
   useEffect(() => {
     prefetchRoute(
       window.location.pathname === "/"
-        ? "/subscriptions"
+        ? "/home"
         : window.location.pathname
     );
     prefetchAllRoutes();
@@ -347,7 +347,7 @@ function AppRoutes() {
 
   const authenticated = session.authenticated;
   const setupRequired = session.setupRequired;
-  const authenticatedHome = authenticated ? "/subscriptions" : "/login";
+  const authenticatedHome = authenticated ? "/home" : "/login";
 
   const routes = (
     <Routes>
@@ -377,7 +377,7 @@ function AppRoutes() {
             setupRequired ? (
               <Navigate to="/setup" replace />
             ) : authenticated ? (
-              <Navigate to="/subscriptions" replace />
+              <Navigate to="/home" replace />
             ) : (
               <LoginScreen onAuthenticated={loadSession} />
             )
