@@ -489,24 +489,32 @@ export function usePlaybackSync({
 
   useEffect(() => {
     const syncVisiblePlaybackState = (event: Event) => {
-      if (
-        event.type === "pageshow" &&
-        !(event as PageTransitionEvent).persisted
-      ) {
-        return;
+      try {
+        if (
+          event.type === "pageshow" &&
+          !(event as PageTransitionEvent).persisted
+        ) {
+          return;
+        }
+
+        if (document.visibilityState !== "visible") {
+          return;
+        }
+
+        void loadPlaybackSettings().catch((error) => {
+          console.error("Failed to load playback settings on sync:", error);
+        });
+
+        if (playingRef.current) {
+          return;
+        }
+
+        void loadQueue().catch((error) => {
+          console.error("Failed to load queue on sync:", error);
+        });
+      } catch (error) {
+        console.error("Error during syncVisiblePlaybackState:", error);
       }
-
-      if (document.visibilityState !== "visible") {
-        return;
-      }
-
-      void loadPlaybackSettings();
-
-      if (playingRef.current) {
-        return;
-      }
-
-      void loadQueue();
     };
 
     window.addEventListener("focus", syncVisiblePlaybackState);

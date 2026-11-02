@@ -1,5 +1,4 @@
 import {
-  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -31,38 +30,39 @@ import { PlaybackProvider, usePlaybackDispatch } from "@/lib/playback-context";
 import { prefetchAllRoutes, prefetchRoute } from "@/lib/route-prefetch";
 import { clearCachedAudiobooks, clearCachedSettings } from "@/lib/screen-cache";
 import { SubscriptionsCacheProvider } from "@/lib/subscriptions-cache-provider";
+import { lazyWithRetry } from "@/lib/lazy-retry";
 
-const SetupScreen = lazy(async () => {
+const SetupScreen = lazyWithRetry(async () => {
   const module = await import("@/screens/auth-screens");
   return { default: module.SetupScreen };
 });
 
-const LoginScreen = lazy(async () => {
+const LoginScreen = lazyWithRetry(async () => {
   const module = await import("@/screens/auth-screens");
   return { default: module.LoginScreen };
 });
 
-const ComponentPreview = lazy(async () => {
+const ComponentPreview = lazyWithRetry(async () => {
   const module = await import("@/screens/component-preview");
   return { default: module.ComponentPreview };
 });
 
-const HomeScreen = lazy(async () => {
+const HomeScreen = lazyWithRetry(async () => {
   const module = await import("@/screens/home-screen");
   return { default: module.HomeScreen };
 });
 
-const SettingsScreen = lazy(async () => {
+const SettingsScreen = lazyWithRetry(async () => {
   const module = await import("@/screens/settings-screen");
   return { default: module.SettingsScreen };
 });
 
-const SubscriptionsScreen = lazy(async () => {
+const SubscriptionsScreen = lazyWithRetry(async () => {
   const module = await import("@/screens/subscriptions-screen");
   return { default: module.SubscriptionsScreen };
 });
 
-const AudiobooksScreen = lazy(async () => {
+const AudiobooksScreen = lazyWithRetry(async () => {
   const module = await import("@/screens/audiobooks-screen");
   return { default: module.AudiobooksScreen };
 });
@@ -288,16 +288,28 @@ function AppRoutes() {
     }
 
     const refreshVisibleSession = () => {
-      refreshSessionOnce();
+      try {
+        refreshSessionOnce();
+      } catch (error) {
+        console.error("Failed to refresh session on focus", error);
+      }
     };
     const refreshRestoredSession = (event: PageTransitionEvent) => {
-      if (event.persisted) {
-        refreshSessionOnce();
+      try {
+        if (event.persisted) {
+          refreshSessionOnce();
+        }
+      } catch (error) {
+        console.error("Failed to refresh session on pageshow", error);
       }
     };
     const refreshForegroundSession = () => {
-      if (document.visibilityState === "visible") {
-        refreshSessionOnce();
+      try {
+        if (document.visibilityState === "visible") {
+          refreshSessionOnce();
+        }
+      } catch (error) {
+        console.error("Failed to refresh session on visibilitychange", error);
       }
     };
 
