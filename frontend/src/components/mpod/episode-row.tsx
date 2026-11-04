@@ -111,6 +111,7 @@ export const EpisodeRow = memo(function EpisodeRow({
   compactMobile = false,
   current,
   currentStatusLabel,
+  downloaded,
   layout = "auto",
   title,
   showPodcastTitle = true,
@@ -142,9 +143,29 @@ export const EpisodeRow = memo(function EpisodeRow({
   const isMobile = layout === "mobile";
   const isDesktop = layout === "desktop";
   const resolvedActions =
-    actions ??
+    actions?.map((action) => {
+      if (
+        downloaded &&
+        (action.label === "Play" || action.label === "Pause") &&
+        !action.iconClassName
+      ) {
+        return {
+          ...action,
+          iconClassName:
+            "[&_path]:transition-all [&_path]:duration-300 [&_path]:fill-current",
+        };
+      }
+      return action;
+    }) ??
     [
-      { label: current ? "Pause" : "Play", icon: current ? PauseIcon : PlayIcon },
+      {
+        label: current ? "Pause" : "Play",
+        icon: current ? PauseIcon : PlayIcon,
+        iconClassName: cn(
+          "[&_path]:transition-all [&_path]:duration-300",
+          downloaded && "[&_path]:fill-current"
+        ),
+      },
       { label: "Remove from playlist", icon: PlayListRemoveIcon },
       { label: "Show notes", icon: ViewIcon },
     ];
@@ -178,6 +199,7 @@ export const EpisodeRow = memo(function EpisodeRow({
         className
       )}
       data-episode-row-id={episodeRowId}
+      data-downloaded={downloaded ? "yes" : "no"}
       draggable={draggable}
       aria-grabbed={dragging || undefined}
       onDragStart={onDragStart}

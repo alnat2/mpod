@@ -83,6 +83,39 @@ describe("EpisodeRow", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("renders play action with filled icon style when downloaded is true", () => {
+    const { container } = render(
+      <TooltipProvider>
+        <EpisodeRow
+          downloaded
+          layout="mobile"
+          title="Downloaded track"
+        />
+      </TooltipProvider>
+    );
+
+    const playBtn = screen.getByRole("button", { name: "Play" });
+    const svg = playBtn.querySelector("svg");
+    expect(svg?.getAttribute("class")).toContain("[&_path]:fill-current");
+    expect(container.firstElementChild).toHaveAttribute("data-downloaded", "yes");
+  });
+
+  it("renders play action with outline icon style when downloaded is false or omitted", () => {
+    const { container } = render(
+      <TooltipProvider>
+        <EpisodeRow
+          layout="mobile"
+          title="Streaming track"
+        />
+      </TooltipProvider>
+    );
+
+    const playBtn = screen.getByRole("button", { name: "Play" });
+    const svg = playBtn.querySelector("svg");
+    expect(svg?.getAttribute("class") ?? "").not.toContain("[&_path]:fill-current");
+    expect(container.firstElementChild).toHaveAttribute("data-downloaded", "no");
+  });
+
   it("keeps status text on desktop rows", () => {
     render(
       <TooltipProvider>

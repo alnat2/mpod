@@ -860,6 +860,7 @@ export function ComponentPreview() {
             <EpisodeRow
               showDragHandle
               current
+              downloaded
               title="Why store loyalty cards became a UX minefield"
               podcastTitle="Decoder Ring"
               durationLabel="54:00"

@@ -316,9 +316,17 @@ describe("HomeScreen", () => {
       "data-current",
       "yes"
     );
+    expect(screen.getByTestId("episode-row-Actually playing")).toHaveAttribute(
+      "data-downloaded",
+      "no"
+    );
     expect(screen.getByTestId("episode-row-First queued episode")).toHaveAttribute(
       "data-current",
       "no"
+    );
+    expect(screen.getByTestId("episode-row-First queued episode")).toHaveAttribute(
+      "data-downloaded",
+      "yes"
     );
     expect(screen.getByTestId("drag-handle-First queued episode")).toBeInTheDocument();
     await expectNoA11yViolations(container);

@@ -174,6 +174,23 @@ select {
   color-scheme: dark;
 }
 
+@keyframes download-pop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-download-pop {
+  animation: download-pop 350ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transform-origin: center;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

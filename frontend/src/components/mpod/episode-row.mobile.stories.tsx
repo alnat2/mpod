@@ -56,6 +56,7 @@ export const Default: Story = {};
 export const Current: Story = {
   args: {
     current: true,
+    downloaded: true,
     dateLabel: undefined,
     showDragHandle: true,
     actions: [
@@ -91,6 +92,18 @@ export const DownloadedAndInPlaylist: Story = {
 
 export const PlayerQueued: Story = {
   args: {
+    dateLabel: undefined,
+    showDragHandle: true,
+    actions: [
+      { label: "Remove from playlist", icon: PlayListRemoveIcon },
+      { label: "Play", icon: PlayIcon },
+    ],
+  },
+};
+
+export const PlayerQueuedDownloaded: Story = {
+  args: {
+    downloaded: true,
     dateLabel: undefined,
     showDragHandle: true,
     actions: [

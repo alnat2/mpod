@@ -46,6 +46,7 @@ import {
 import { useAudioMetadataDurations } from "./use-audio-metadata-durations";
 import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
 import { useVirtualScroll } from "@/lib/use-virtual-scroll";
+import { cn } from "@/lib/utils";
 
 function queueSummary(
   episodes: QueueEpisode[],
@@ -208,6 +209,19 @@ const HomeScreenQueueItem = memo(function HomeScreenQueueItem({
   onRemoveFromPlaylist,
 }: HomeScreenQueueItemProps) {
   const isAudiobook = isAudiobookQueueItem(episode);
+  const isDownloaded = isAudiobook || Boolean(episode.downloaded);
+  const [animatePop, setAnimatePop] = useState(false);
+  const prevDownloadedRef = useRef(isDownloaded);
+
+  useEffect(() => {
+    if (!prevDownloadedRef.current && isDownloaded) {
+      setAnimatePop(true);
+      const timer = setTimeout(() => setAnimatePop(false), 400);
+      return () => clearTimeout(timer);
+    }
+    prevDownloadedRef.current = isDownloaded;
+  }, [isDownloaded]);
+
   const artwork = isAudiobook
     ? episode.hasCover
       ? `/api/audiobooks/${episode.audiobookId ?? episode.id}/cover`
@@ -268,6 +282,11 @@ const HomeScreenQueueItem = memo(function HomeScreenQueueItem({
     const playAction = {
       label: isCurrentEpisode && playing ? "Pause" : "Play",
       icon: isCurrentEpisode && playing ? PauseIcon : PlayIcon,
+      iconClassName: cn(
+        "[&_path]:transition-all [&_path]:duration-300",
+        isDownloaded && "[&_path]:fill-current",
+        animatePop && "animate-download-pop"
+      ),
       onClick: handlePlayClick,
     };
     const removeAction = {
@@ -279,7 +298,7 @@ const HomeScreenQueueItem = memo(function HomeScreenQueueItem({
     return isMobile
       ? [removeAction, playAction]
       : [playAction, removeAction];
-  }, [handlePlayClick, handleRemoveClick, isCurrentEpisode, isMobile, playing]);
+  }, [animatePop, handlePlayClick, handleRemoveClick, isCurrentEpisode, isDownloaded, isMobile, playing]);
 
   return (
     <EpisodeRow
@@ -287,6 +306,7 @@ const HomeScreenQueueItem = memo(function HomeScreenQueueItem({
       compactMobile={isMobile && isAudiobook}
       showDragHandle
       current={isCurrentEpisode}
+      downloaded={isDownloaded}
       title={episode.title}
       podcastTitle={isAudiobook ? (episode.author || "Audiobook") : episode.podcastTitle}
       subtitle={subtitle}

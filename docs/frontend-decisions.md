@@ -358,6 +358,10 @@ Rules:
 
 Decision:
 - Remove all downloaded status icons (`downloadedStatusIcon`) from episode rows across the entire UI.
+- In the playlist queue, downloaded status is indicated directly by the Play/Pause button's icon fill style rather than separate status icons or badges:
+  - Downloaded items (or local audiobooks): the Play/Pause icon is rendered with a solid fill (`fill-current` using primary color).
+  - Non-downloaded items (online streaming / pending download): the Play/Pause icon is rendered in outline style (stroke only).
+  - When an episode completes downloading, its Play/Pause icon smoothly transitions to solid fill accompanied by a subtle spring bounce animation (`animate-download-pop`, scale 1.18 -> 1.0, 350ms).
 - Remove publication date (`dateLabel`) from all episode rows.
 - Active episode row styling:
   - Background is `bg-accent`.
