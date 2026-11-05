@@ -68,7 +68,8 @@ export function SubscriptionsDesktopEpisodeList({
     defaultViewportHeight: DEFAULT_EPISODE_VIEWPORT_HEIGHT,
   });
   const durationForEpisode = useAudioMetadataDurations(virtualEpisodes);
-  const unlistenedEpisodeCount = podcast.episodes.filter(
+  const episodes = podcast.episodes ?? [];
+  const unlistenedEpisodeCount = episodes.filter(
     (episode) => !episode.isListened
   ).length;
 
@@ -81,7 +82,7 @@ export function SubscriptionsDesktopEpisodeList({
       bodyRef={episodeListRef}
       bodyOnScroll={onEpisodeScroll}
       summary={episodeSummaryLabel(
-        podcast.episodes.length,
+        episodes.length,
         unlistenedEpisodeCount
       )}
       headerAction={

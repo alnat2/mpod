@@ -248,7 +248,7 @@ export function SubscriptionsScreen() {
             podcast.id === fullEpisode.podcastId
               ? {
                   ...podcast,
-                  episodes: podcast.episodes.map((ep) =>
+                  episodes: (podcast.episodes ?? []).map((ep) =>
                     ep.id === fullEpisode.id
                       ? {
                           ...ep,

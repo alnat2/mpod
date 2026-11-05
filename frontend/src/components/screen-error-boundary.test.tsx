@@ -43,7 +43,7 @@ describe("ScreenErrorBoundary", () => {
       ...originalLocation,
       origin: "http://192.168.0.222:5050",
       pathname: "/subscriptions",
-      href: "http://192.168.0.222:5050/subscriptions",
+      href: "http://192.168.0.222:5050/subscriptions?initial=true",
     } as any;
   });
 
@@ -93,6 +93,9 @@ describe("ScreenErrorBoundary", () => {
       </MemoryRouter>
     );
 
+    expect(window.location.href).toBe(
+      "http://192.168.0.222:5050/subscriptions?initial=true"
+    );
     const reloadBtn = screen.getByRole("button", { name: "Reload application" });
     await user.click(reloadBtn);
 

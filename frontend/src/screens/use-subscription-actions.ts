@@ -377,10 +377,10 @@ export function useSubscriptionActions({
       isListened && !showAll
         ? podcasts
             .filter((podcast) =>
-              podcast.episodes.some((episode) => episodeIds.has(episode.id))
+              (podcast.episodes ?? []).some((episode) => episodeIds.has(episode.id))
             )
             .filter((podcast) =>
-              podcast.episodes.every(
+              (podcast.episodes ?? []).every(
                 (episode) => episode.isListened || episodeIds.has(episode.id)
               )
             )
@@ -392,7 +392,7 @@ export function useSubscriptionActions({
     setPodcasts((current) =>
       current.map((podcast) => ({
         ...podcast,
-        episodes: podcast.episodes.map((episode) =>
+        episodes: (podcast.episodes ?? []).map((episode) =>
           episodeIds.has(episode.id)
             ? {
                 ...episode,
@@ -442,7 +442,7 @@ export function useSubscriptionActions({
         podcast.id === podcastId
           ? {
               ...podcast,
-              episodes: podcast.episodes.map((episode) => ({
+              episodes: (podcast.episodes ?? []).map((episode) => ({
                 ...episode,
                 isListened: true,
                 inPlaylist: false,
@@ -472,7 +472,7 @@ export function useSubscriptionActions({
     setPodcasts((current) =>
       current.map((podcast) => ({
         ...podcast,
-        episodes: podcast.episodes.map((item) =>
+        episodes: (podcast.episodes ?? []).map((item) =>
           item.id === episode.id ? { ...item, inPlaylist: false } : item
         ),
       }))

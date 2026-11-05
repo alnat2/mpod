@@ -65,8 +65,9 @@ export function SubscriptionsMobileEpisodeList({
   });
   const durationForEpisode = useAudioMetadataDurations(virtualEpisodes);
 
-  const podcastTotalEpisodeCount = podcast.episodes.length;
-  const podcastUnlistenedEpisodeCount = podcast.episodes.filter(
+  const episodes = podcast.episodes ?? [];
+  const podcastTotalEpisodeCount = episodes.length;
+  const podcastUnlistenedEpisodeCount = episodes.filter(
     (episode) => !episode.isListened
   ).length;
 
