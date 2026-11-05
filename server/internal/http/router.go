@@ -159,7 +159,7 @@ func NewRouterServicesForRuntime(cfg config.Config, db *sql.DB) (*RouterServices
 	})
 
 	playlistService := playlist.NewService(db)
-	downloadsService := downloads.NewService(db, client, cfg.DownloadsDir)
+	downloadsService := downloads.NewServiceWithDirectClient(db, client, directAudioClient, cfg.DownloadsDir)
 	episodeActions := episodes.NewActions(db, downloadsService)
 	audiobooksService := audiobooks.NewService(db, cfg.AudiobooksDir)
 

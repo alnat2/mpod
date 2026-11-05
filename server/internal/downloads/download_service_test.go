@@ -56,6 +56,85 @@ func TestDownloadFetchesAndPersistsFile(t *testing.T) {
 	}
 }
 
+func TestDownloadSendsUserAgentAndAcceptHeaders(t *testing.T) {
+	db := newDownloadTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	mustExecDownload(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecDownload(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', ?)`, "https://example.com/ep1.mp3")
+
+	var gotUA, gotAccept string
+	service := NewService(db.SQL, newDownloadTestClient(func(r *http.Request) (*http.Response, error) {
+		gotUA = r.Header.Get("User-Agent")
+		gotAccept = r.Header.Get("Accept")
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader("audio-data")),
+			Header:     make(http.Header),
+		}, nil
+	}), downloadDir)
+
+	_, err := service.Download(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("Download failed: %v", err)
+	}
+
+	if gotUA != downloadUserAgent {
+		t.Fatalf("expected User-Agent %q, got %q", downloadUserAgent, gotUA)
+	}
+	if gotAccept != downloadAccept {
+		t.Fatalf("expected Accept %q, got %q", downloadAccept, gotAccept)
+	}
+}
+
+func TestDownloadRetriesDirectWhenProxyClientFails(t *testing.T) {
+	db := newDownloadTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	mustExecDownload(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecDownload(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', ?)`, "https://example.com/ep1.mp3")
+
+	proxyClient := newDownloadTestClient(func(r *http.Request) (*http.Response, error) {
+		return nil, errors.New("proxy TLS handshake timeout")
+	})
+
+	directClient := newDownloadTestClient(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader("direct-audio-data")),
+			Header:     make(http.Header),
+		}, nil
+	})
+
+	service := NewServiceWithDirectClient(db.SQL, proxyClient, directClient, downloadDir)
+	result, err := service.Download(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("Download failed with direct retry: %v", err)
+	}
+	if !result.Downloaded {
+		t.Fatalf("expected downloaded=true, got %+v", result)
+	}
+
+	var downloadedPath sql.NullString
+	if err := db.SQL.QueryRow(`SELECT downloaded_path FROM episodes WHERE id = 1`).Scan(&downloadedPath); err != nil {
+		t.Fatalf("query downloaded_path: %v", err)
+	}
+	if !downloadedPath.Valid {
+		t.Fatalf("expected downloaded_path to be stored")
+	}
+	data, err := os.ReadFile(downloadedPath.String)
+	if err != nil {
+		t.Fatalf("ReadFile failed: %v", err)
+	}
+	if string(data) != "direct-audio-data" {
+		t.Fatalf("expected contents %q, got %q", "direct-audio-data", string(data))
+	}
+}
+
 func TestDownloadClearsStalePathAndRedownloads(t *testing.T) {
 	db := newDownloadTestDB(t)
 	defer db.Close()

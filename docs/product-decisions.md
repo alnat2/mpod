@@ -399,7 +399,7 @@ Rules:
 - The endpoint requires authentication
 - The endpoint is for playback only; it does not mark the episode as downloaded
 - Range requests for remote audio should be forwarded so browser media controls can seek
-- Direct retry is a resilience fallback for podcast/CDN compatibility; it must not change RSS fetching, OPML import, refresh, download, artwork, or proxy-status network behavior
+- Direct retry is a resilience fallback for podcast/CDN compatibility; it must not change RSS fetching, OPML import, refresh, artwork, or proxy-status network behavior
 - Missing episodes return `404 Not Found`
 
 #### `DELETE /api/episodes/:id/download`
@@ -1294,7 +1294,7 @@ Deployment note:
   - podcast artwork proxying
   - proxy runtime identity lookup
 - When proxy usage is enabled, all backend outbound HTTP network operations must use the configured proxy path.
-- Exception: authenticated playback streaming may make one direct retry only after the configured proxy path returns a failed or non-playable audio response. This avoids user-visible playback failure when a podcast CDN blocks a specific proxy exit. The retry applies only to `GET /api/episodes/:id/audio`; it does not apply to RSS fetching, OPML import, refresh, downloads, artwork proxying, or proxy identity lookup.
+- Exception: authenticated playback streaming and background episode downloads may make one direct retry only after the configured proxy path returns a failed or non-playable audio response. This avoids playback and download failure when a podcast CDN blocks or fails over a specific proxy exit. The retry applies only to audio streaming (`GET /api/episodes/:id/audio`) and background episode downloads; it does not apply to RSS fetching, OPML import, refresh, artwork proxying, or proxy identity lookup.
 - If proxy variables are not provided, or if proxy usage is disabled in Settings, all backend outbound HTTP network operations use direct connection.
 - The Settings screen must provide a proxy on/off switch when proxy configuration is available.
 - The proxy switch controls whether configured proxy settings are used; it does not edit proxy host, port, username, or password.

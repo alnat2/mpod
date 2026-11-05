@@ -211,6 +211,9 @@ function Harness() {
       <div data-testid="duration">{durationSeconds}</div>
       <div data-testid="speed">{speedLabel}</div>
       <div data-testid="playback-error">{playbackError ?? "none"}</div>
+      <div data-testid="second-downloaded">
+        {queue.find((candidate) => candidate.id === 2)?.downloaded ? "yes" : "no"}
+      </div>
       <button
         type="button"
         onClick={() => {
@@ -860,6 +863,33 @@ describe("PlaybackProvider", () => {
     });
     expect(audio.currentTime).toBe(237);
     expect(screen.getByTestId("position")).toHaveTextContent("237");
+  });
+
+  it("polls queue for pending downloads and updates downloaded status", async () => {
+    vi.useFakeTimers();
+    try {
+      renderPlaybackProvider();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+      expect(screen.getByTestId("second-downloaded")).toHaveTextContent("no");
+
+      episodes.set(2, {
+        ...episodes.get(2)!,
+        downloaded: true,
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+
+      expect(screen.getByTestId("second-downloaded")).toHaveTextContent("yes");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps system media controls and player state in sync after pausing", async () => {

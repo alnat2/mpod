@@ -161,6 +161,69 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     setActiveItemKey(`episode:${pendingEpisodeId}`);
   }, [queue]);
 
+  useEffect(() => {
+    const hasPendingDownloads = queue.some(
+      (item) => !isAudiobookQueueItem(item) && !item.downloaded
+    );
+
+    if (!hasPendingDownloads) {
+      return;
+    }
+
+    let cancelled = false;
+    let polling = false;
+
+    const pollQueueDownloads = async () => {
+      if (cancelled || polling) {
+        return;
+      }
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+
+      polling = true;
+      try {
+        const response = await api.playback.queue();
+        if (cancelled || !response?.queue) {
+          return;
+        }
+
+        setQueue((currentQueue) => {
+          let hasChange = false;
+          const nextQueue = currentQueue.map((item) => {
+            if (isAudiobookQueueItem(item)) {
+              return item;
+            }
+            const matchingRemote = response.queue.find(
+              (remote) => !isAudiobookQueueItem(remote) && remote.id === item.id
+            );
+            if (
+              matchingRemote &&
+              Boolean(matchingRemote.downloaded) !== Boolean(item.downloaded)
+            ) {
+              hasChange = true;
+              return { ...item, downloaded: matchingRemote.downloaded };
+            }
+            return item;
+          });
+
+          return hasChange ? nextQueue : currentQueue;
+        });
+      } catch {
+        // Background polling for download completion is best-effort.
+      } finally {
+        polling = false;
+      }
+    };
+
+    const intervalId = window.setInterval(pollQueueDownloads, 5000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [queue, setQueue]);
+
 	const {
 	  cancelAutoAdvance,
 	  playToggle,

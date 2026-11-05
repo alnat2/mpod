@@ -26,6 +26,7 @@ var (
 type Service struct {
 	db           *sql.DB
 	client       *http.Client
+	directClient *http.Client
 	downloadsDir string
 	mu           sync.Mutex
 	inFlight     map[int64]*downloadCall
@@ -43,12 +44,21 @@ type EpisodeDownload struct {
 	Downloaded bool  `json:"downloaded"`
 }
 
-const downloadTimeout = 10 * time.Minute
+const (
+	downloadTimeout   = 10 * time.Minute
+	downloadUserAgent = "mpod/1.0 (+self-hosted podcast client)"
+	downloadAccept    = "audio/*, application/octet-stream;q=0.9, */*;q=0.1"
+)
 
 func NewService(db *sql.DB, client *http.Client, downloadsDir string) *Service {
+	return NewServiceWithDirectClient(db, client, nil, downloadsDir)
+}
+
+func NewServiceWithDirectClient(db *sql.DB, client *http.Client, directClient *http.Client, downloadsDir string) *Service {
 	return &Service{
 		db:           db,
 		client:       client,
+		directClient: directClient,
 		downloadsDir: downloadsDir,
 		inFlight:     make(map[int64]*downloadCall),
 	}
@@ -96,37 +106,19 @@ func (s *Service) download(ctx context.Context, episodeID int64) (EpisodeDownloa
 		}
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, meta.AudioURL, nil)
-	if err != nil {
-		return EpisodeDownload{}, fmt.Errorf("build download request: %w", err)
+	resp, prefix, err := s.fetchAudioResponse(ctx, s.client, meta.AudioURL)
+	if err != nil && s.directClient != nil && s.directClient != s.client {
+		directResp, directPrefix, directErr := s.fetchAudioResponse(ctx, s.directClient, meta.AudioURL)
+		if directErr == nil {
+			resp = directResp
+			prefix = directPrefix
+			err = nil
+		}
 	}
-
-	baseClient := s.client
-	if baseClient == nil {
-		baseClient = http.DefaultClient
-	}
-	client := *baseClient
-	client.Timeout = downloadTimeout
-
-	resp, err := client.Do(req)
 	if err != nil {
-		return EpisodeDownload{}, fmt.Errorf("download audio: %w", err)
+		return EpisodeDownload{}, err
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return EpisodeDownload{}, fmt.Errorf("download audio status: %s", resp.Status)
-	}
-	if !media.IsPlayableContentType(resp.Header.Get("Content-Type")) {
-		return EpisodeDownload{}, fmt.Errorf("download audio content type: %s", resp.Header.Get("Content-Type"))
-	}
-	prefix, err := media.ReadBodyPrefix(resp.Body)
-	if err != nil {
-		return EpisodeDownload{}, fmt.Errorf("read audio prefix: %w", err)
-	}
-	if media.LooksLikeNonPlayableBody(prefix) {
-		return EpisodeDownload{}, fmt.Errorf("download audio body is not playable")
-	}
 
 	targetDir := filepath.Join(s.downloadsDir, fmt.Sprintf("%d", meta.PodcastID))
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
@@ -172,6 +164,47 @@ func (s *Service) download(ctx context.Context, episodeID int64) (EpisodeDownloa
 	}
 
 	return EpisodeDownload{ID: episodeID, Downloaded: true}, nil
+}
+
+func (s *Service) fetchAudioResponse(ctx context.Context, client *http.Client, audioURL string) (*http.Response, []byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, audioURL, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("build download request: %w", err)
+	}
+	req.Header.Set("User-Agent", downloadUserAgent)
+	req.Header.Set("Accept", downloadAccept)
+
+	baseClient := client
+	if baseClient == nil {
+		baseClient = http.DefaultClient
+	}
+	httpClient := *baseClient
+	httpClient.Timeout = downloadTimeout
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("download audio: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, nil, fmt.Errorf("download audio status: %s", resp.Status)
+	}
+	if !media.IsPlayableContentType(resp.Header.Get("Content-Type")) {
+		resp.Body.Close()
+		return nil, nil, fmt.Errorf("download audio content type: %s", resp.Header.Get("Content-Type"))
+	}
+	prefix, err := media.ReadBodyPrefix(resp.Body)
+	if err != nil {
+		resp.Body.Close()
+		return nil, nil, fmt.Errorf("read audio prefix: %w", err)
+	}
+	if media.LooksLikeNonPlayableBody(prefix) {
+		resp.Body.Close()
+		return nil, nil, fmt.Errorf("download audio body is not playable")
+	}
+
+	return resp, prefix, nil
 }
 
 func (s *Service) Delete(ctx context.Context, episodeID int64) (EpisodeDownload, error) {
