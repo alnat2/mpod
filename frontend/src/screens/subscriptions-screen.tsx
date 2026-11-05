@@ -125,7 +125,7 @@ export function SubscriptionsScreen() {
         (podcast) =>
           exitingPodcastIds.has(podcast.id) ||
           showAll ||
-          podcast.episodes.some(isVisibleByDefault)
+          podcast.episodes?.some(isVisibleByDefault)
       ),
     [exitingPodcastIds, podcastsWithPending, showAll]
   );
@@ -135,22 +135,22 @@ export function SubscriptionsScreen() {
     visiblePodcasts[0];
   const showNotesPodcast =
     podcastsWithPending.find((podcast) =>
-      podcast.episodes.some((episode) => episode.id === showNotesEpisodeId)
+      podcast.episodes?.some((episode) => episode.id === showNotesEpisodeId)
     ) ?? null;
   const showNotesEpisode =
-    showNotesPodcast?.episodes.find(
+    showNotesPodcast?.episodes?.find(
       (episode) => episode.id === showNotesEpisodeId
     ) ?? null;
   const visibleEpisodes = useMemo(
     () =>
-      selectedPodcast?.episodes.filter(
+      selectedPodcast?.episodes?.filter(
         (episode) => showAll || isVisibleByDefault(episode)
       ) ?? [],
     [selectedPodcast?.episodes, showAll]
   );
   const hasSubscriptions = podcastsWithPending.length > 0;
   const podcastsWithUnlistenedCount = podcastsWithPending.filter((podcast) =>
-    podcast.episodes.some((episode) => !episode.isListened)
+    podcast.episodes?.some((episode) => !episode.isListened)
   ).length;
   const noVisibleUnlistenedPodcasts =
     hasSubscriptions && visiblePodcasts.length === 0;
@@ -202,7 +202,7 @@ export function SubscriptionsScreen() {
     setShowNotesEpisodeId(episodeId);
     setShowNotesError(false);
     const existingEpisode = podcastsWithPending
-      .flatMap((podcast) => podcast.episodes)
+      .flatMap((podcast) => podcast.episodes ?? [])
       .find((episode) => episode.id === episodeId);
     const hasNotes =
       existingEpisode &&

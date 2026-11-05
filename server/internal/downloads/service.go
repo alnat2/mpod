@@ -43,7 +43,11 @@ type EpisodeDownload struct {
 	Downloaded bool  `json:"downloaded"`
 }
 
-const downloadTimeout = 10 * time.Minute
+const (
+	downloadTimeout   = 10 * time.Minute
+	downloadUserAgent = "mpod/1.0 (+self-hosted podcast client)"
+	downloadAccept    = "audio/*, application/octet-stream;q=0.9, */*;q=0.1"
+)
 
 func NewService(db *sql.DB, client *http.Client, downloadsDir string) *Service {
 	return &Service{
@@ -100,6 +104,8 @@ func (s *Service) download(ctx context.Context, episodeID int64) (EpisodeDownloa
 	if err != nil {
 		return EpisodeDownload{}, fmt.Errorf("build download request: %w", err)
 	}
+	req.Header.Set("User-Agent", downloadUserAgent)
+	req.Header.Set("Accept", downloadAccept)
 
 	baseClient := s.client
 	if baseClient == nil {

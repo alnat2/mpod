@@ -56,6 +56,39 @@ func TestDownloadFetchesAndPersistsFile(t *testing.T) {
 	}
 }
 
+func TestDownloadSendsUserAgentAndAcceptHeaders(t *testing.T) {
+	db := newDownloadTestDB(t)
+	defer db.Close()
+
+	downloadDir := t.TempDir()
+	mustExecDownload(t, db, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+	mustExecDownload(t, db, `INSERT INTO episodes (id, podcast_id, external_episode_key, title, audio_url) VALUES (1, 1, 'ep-1', 'Episode 1', ?)`, "https://example.com/ep1.mp3")
+
+	var gotUA, gotAccept string
+	service := NewService(db.SQL, newDownloadTestClient(func(r *http.Request) (*http.Response, error) {
+		gotUA = r.Header.Get("User-Agent")
+		gotAccept = r.Header.Get("Accept")
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader("audio-data")),
+			Header:     make(http.Header),
+		}, nil
+	}), downloadDir)
+
+	_, err := service.Download(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("Download failed: %v", err)
+	}
+
+	if gotUA != downloadUserAgent {
+		t.Fatalf("expected User-Agent %q, got %q", downloadUserAgent, gotUA)
+	}
+	if gotAccept != downloadAccept {
+		t.Fatalf("expected Accept %q, got %q", downloadAccept, gotAccept)
+	}
+}
+
 func TestDownloadClearsStalePathAndRedownloads(t *testing.T) {
 	db := newDownloadTestDB(t)
 	defer db.Close()
