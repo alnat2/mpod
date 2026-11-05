@@ -101,4 +101,32 @@ describe("SubscriptionsMobileEpisodeList", () => {
     await user.click(removeButtons[0]!);
     expect(onRemoveFromPlaylist).toHaveBeenCalledWith(mockEpisodes[1]);
   });
+
+  it("renders safely when podcast has no episodes array (regression for showAll)", () => {
+    const podcastWithoutEpisodes: CachedSubscriptionPodcast = {
+      id: 2,
+      title: "Podcast Without Episodes",
+      description: "Test description",
+      rssUrl: "https://example.com/test.xml",
+      lastChecked: null,
+      updateTime: null,
+      episodes: undefined as unknown as CachedSubscriptionEpisode[],
+    };
+
+    render(
+      <TooltipProvider>
+        <SubscriptionsMobileEpisodeList
+          podcast={podcastWithoutEpisodes}
+          visibleEpisodes={[]}
+          onAddToPlaylist={vi.fn()}
+          onMarkAllListened={vi.fn()}
+          onMarkListened={vi.fn()}
+          onRemoveFromPlaylist={vi.fn()}
+          onShowNotes={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    expect(screen.getByText("0 / 0 episodes")).toBeInTheDocument();
+  });
 });

@@ -1,9 +1,16 @@
-import { useState, type ReactNode, type Ref, type UIEventHandler } from "react";
+import { useEffect, useState, type ReactNode, type Ref, type UIEventHandler } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ScreenErrorBoundary } from "@/components/screen-error-boundary";
 import { api, ApiError, type Episode, type Podcast } from "@/lib/api";
+import {
+  type CachedSubscriptionEpisode,
+  type CachedSubscriptionPodcast,
+  SubscriptionsCacheContext,
+  useSubscriptionsCache,
+} from "@/lib/subscriptions-cache";
 import { SubscriptionsCacheProvider } from "@/lib/subscriptions-cache-provider";
 
 import { SubscriptionsScreen } from "./subscriptions-screen";
@@ -1186,5 +1193,65 @@ describe("SubscriptionsScreen", () => {
     unmount();
 
     expect(removeSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("renders safely without crashing when a cached podcast has no episodes array and Show all is active (regression test)", async () => {
+    const user = userEvent.setup();
+    // Keep background reload pending so it doesn't overwrite cache
+    vi.spyOn(api.podcasts, "list").mockReturnValue(new Promise(() => {}));
+
+    const podcastWithoutEpisodes: CachedSubscriptionPodcast = {
+      id: 999,
+      title: "Podcast With No Episodes",
+      description: "No episodes description",
+      rssUrl: "https://example.com/no-episodes.xml",
+      imageUrl: null,
+      lastChecked: null,
+      updateTime: null,
+      episodes: undefined as unknown as CachedSubscriptionEpisode[],
+    };
+
+    function CacheWrapper({ children }: { children: ReactNode }) {
+      const [showAll, setShowAll] = useState(false);
+      const [podcasts, setPodcasts] = useState<CachedSubscriptionPodcast[]>([podcastWithoutEpisodes]);
+      const [selectedPodcastId, setSelectedPodcastId] = useState<number | null>(999);
+
+      return (
+        <SubscriptionsCacheContext.Provider
+          value={{
+            hasLoaded: true,
+            markLoaded: () => {},
+            podcasts,
+            selectedPodcastId,
+            setPodcasts,
+            setSelectedPodcastId,
+            setShowAll,
+            showAll,
+          }}
+        >
+          {children}
+        </SubscriptionsCacheContext.Provider>
+      );
+    }
+
+    render(
+      <CacheWrapper>
+        <ScreenErrorBoundary resetKey="/subscriptions" screenName="Subscriptions">
+          <SubscriptionsScreen />
+        </ScreenErrorBoundary>
+      </CacheWrapper>
+    );
+
+    // Initial state before Show all is toggled (no unlistened episodes, shows all caught up)
+    expect(await screen.findByText("All caught up")).toBeInTheDocument();
+
+    // Toggle "Show all" - prior to defensive fix, this caused TypeError accessing episodes.length/filter
+    const showAllButton = screen.getByRole("button", { name: "Show all" });
+    await user.click(showAllButton);
+
+    // Screen must not crash into ScreenErrorBoundary
+    expect(screen.queryByText("Couldn't load Subscriptions")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Podcast With No Episodes" })).toBeInTheDocument();
+    expect(screen.getByText("0 / 0 episodes")).toBeInTheDocument();
   });
 });
