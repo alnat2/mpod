@@ -14,7 +14,7 @@
   --foreground: light-dark(#09090b, #f7fbff);
   --card: light-dark(#ffffff, #25292c);
   --card-foreground: light-dark(#09090b, #f2fdff);
-  --popover: light-dark(#ffffff, #25292c);
+  --popover: light-dark(#ffffff, #202020);
   --popover-foreground: light-dark(#09090b, #f7fbff);
   --primary: light-dark(#5ea500, #1e529a);
   --primary-foreground: light-dark(#f7fee7, #dde9ee);
@@ -168,6 +168,12 @@ select {
     calc(var(--radius) * 2.6);
   --shadow-xs:
     0 1px 2px 0 rgb(0 0 0 / 0.1);
+  --shadow-sm:
+    0 1px 3px 0 rgb(0 0 0 / 0.1);
+  --shadow-md:
+    0 2px 4px -2px rgb(0 0 0 / 0.1), 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-dialog:
+    0 8px 9px 0 rgb(0 0 0 / 0.1);
 }
 
 .dark {

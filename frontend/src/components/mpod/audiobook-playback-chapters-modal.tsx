@@ -71,7 +71,7 @@ export function AudiobookPlaybackChaptersModal({
             type="button"
             variant="outline"
             size="icon"
-            className="size-11 shrink-0 rounded-[10px] border-border bg-background text-foreground shadow-xs hover:bg-background"
+            className="size-11 shrink-0 rounded-[10px] border-border bg-background text-foreground shadow-sm hover:bg-background"
             aria-label="Close chapters modal"
             onClick={onClose}
           >
@@ -113,7 +113,7 @@ export function AudiobookPlaybackChaptersModal({
                 <div
                   key={track.id}
                   className={cn(
-                    "flex h-[70px] w-full min-w-0 shrink-0 items-center gap-3 overflow-hidden rounded-sm px-1 text-foreground shadow-xs",
+                    "flex h-[70px] w-full min-w-0 shrink-0 items-center gap-3 overflow-hidden rounded-[2px] px-1 text-foreground shadow-xs",
                     current ? "bg-accent" : "bg-card"
                   )}
                   data-current={current ? "true" : undefined}
@@ -144,7 +144,7 @@ export function AudiobookPlaybackChaptersModal({
                     type="button"
                     variant="outline"
                     size="icon"
-                    className="size-11 shrink-0 rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary"
+                    className="size-11 shrink-0 rounded-[10px] border-border bg-background text-primary shadow-sm hover:bg-background hover:text-primary"
                     aria-label={actionLabel}
                     onClick={() => void onPlayTrack(track)}
                   >

@@ -118,7 +118,7 @@ function NotesAction({
           variant="outline"
           type="button"
           onClick={onClick}
-          className="size-11 rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background/80 hover:text-primary [&_svg]:size-6"
+          className="size-11 rounded-[10px] border-border bg-background text-primary shadow-sm hover:bg-background/80 hover:text-primary [&_svg]:size-6"
         >
           <HugeiconsIcon icon={icon} />
         </Button>

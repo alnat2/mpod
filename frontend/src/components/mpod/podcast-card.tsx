@@ -47,7 +47,7 @@ export function PodcastCard({
           }
         }}
         className={cn(
-          "relative flex h-[160px] w-full flex-col justify-between rounded-2xl border border-border bg-card p-3 text-card-foreground shadow-sm",
+          "relative flex h-[160px] w-full flex-col justify-between rounded-2xl border border-border bg-card p-3 text-card-foreground",
           onSelect && "cursor-pointer outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
           selected && "border-ring bg-accent",
           className

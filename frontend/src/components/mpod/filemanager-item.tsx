@@ -90,7 +90,7 @@ export function FileManagerItem({
       data-slot="fm-item"
       className={cn(
         "flex h-[70px] w-full items-center gap-3 bg-card text-foreground shadow-xs transition-colors hover:bg-accent/40",
-        isMobile ? "rounded-sm px-1" : "rounded-sm px-1 md:rounded-[4px] md:px-3",
+        isMobile ? "rounded-[2px] px-1" : "rounded-[2px] px-1 md:rounded-[2px] md:px-3",
         onOpen && "cursor-pointer",
         className
       )}
@@ -126,7 +126,7 @@ export function FileManagerItem({
             aria-busy={isPending ? true : undefined}
             data-pending={isPending ? "true" : undefined}
             className={cn(
-              "rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary disabled:opacity-50",
+              "rounded-[10px] border-border bg-background text-primary shadow-sm hover:bg-background hover:text-primary disabled:opacity-50",
               isMobile ? "size-11 [&_svg]:size-6" : "size-11 md:size-9 [&_svg]:size-5"
             )}
             aria-label={

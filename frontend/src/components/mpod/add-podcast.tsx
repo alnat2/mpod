@@ -84,7 +84,7 @@ export function AddPodcast({
   return (
     <Card
       className={cn(
-        "w-full max-w-[320px] items-start gap-0 rounded-2xl px-4 py-3 !pb-3 shadow-sm md:max-w-[720px] md:rounded-lg md:px-0 md:py-0 md:!pb-0",
+        "w-full max-w-[320px] items-start gap-0 rounded-2xl px-4 py-3 !pb-3 shadow-dialog md:max-w-[720px] md:rounded-lg md:px-0 md:py-0 md:!pb-0",
         className
       )}
     >
@@ -95,7 +95,7 @@ export function AddPodcast({
           </CardTitle>
           <Button
             aria-label="Close"
-            className="size-11 rounded-[10px] border border-border bg-background text-primary shadow-xs hover:bg-background/80 hover:text-primary [&_svg]:size-6 md:size-8 md:rounded-lg md:border-0 md:bg-transparent md:text-muted-foreground md:shadow-none md:hover:bg-accent md:hover:text-foreground"
+            className="size-11 rounded-[10px] border border-border bg-background text-primary shadow-sm hover:bg-background/80 hover:text-primary [&_svg]:size-6 md:size-8 md:rounded-lg md:border-0 md:bg-transparent md:text-muted-foreground md:shadow-none md:hover:bg-accent md:hover:text-foreground"
             size="icon"
             variant="ghost"
             type="button"
@@ -115,14 +115,14 @@ export function AddPodcast({
           >
             <TabsList className="h-9 gap-2 p-1">
               <TabsTrigger
-                className="h-7 px-2 py-1 data-active:border-border data-active:shadow-xs"
+                className="h-7 px-2 py-1 data-active:border-border data-active:shadow-sm"
                 value="rss"
                 disabled={disabled}
               >
                 RSS Feed URL
               </TabsTrigger>
               <TabsTrigger
-                className="h-7 px-2 py-1 data-active:border-border data-active:shadow-xs"
+                className="h-7 px-2 py-1 data-active:border-border data-active:shadow-sm"
                 value="opml"
                 disabled={disabled}
               >

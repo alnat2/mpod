@@ -84,8 +84,8 @@ function EpisodeIconButton({
           aria-label={action.label}
           className={cn(
             mobile
-              ? "size-11 rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary [&_svg]:size-6"
-              : "size-9 rounded-[10px] border-border bg-background text-primary shadow-xs hover:bg-background hover:text-primary [&_svg]:size-5"
+              ? "size-11 rounded-[10px] border-border bg-background text-primary shadow-sm hover:bg-background hover:text-primary [&_svg]:size-6"
+              : "size-9 rounded-[10px] border-border bg-background text-primary shadow-sm hover:bg-background hover:text-primary [&_svg]:size-5"
           )}
           disabled={action.disabled}
           variant="outline"
@@ -195,7 +195,7 @@ export const EpisodeRow = memo(function EpisodeRow({
               ),
         draggable && "cursor-grab",
         dragging && "opacity-60",
-        current && "bg-accent border-border",
+        current && "bg-accent border-border shadow-sm",
         className
       )}
       data-episode-row-id={episodeRowId}

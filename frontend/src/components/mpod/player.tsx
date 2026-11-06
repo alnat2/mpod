@@ -87,7 +87,7 @@ function TransportButton({
           className={cn(
             "inline-flex shrink-0 items-center justify-center rounded-full text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
             primary
-              ? "size-14 bg-primary text-primary-foreground shadow-2xs md:size-12"
+              ? "size-14 bg-primary text-primary-foreground shadow-md md:size-12"
               : "size-11 hover:bg-muted md:size-8",
             className
           )}
