@@ -83,12 +83,13 @@ function EpisodeIconButton({
         <Button
           aria-label={action.label}
           className={cn(
+            "border-0 border-transparent bg-background text-primary shadow-sm hover:bg-background hover:text-primary dark:border-transparent dark:bg-background",
             mobile
-              ? "size-11 rounded-[10px] border-border bg-background text-primary shadow-sm hover:bg-background hover:text-primary [&_svg]:size-6"
-              : "size-9 rounded-[10px] border-border bg-background text-primary shadow-sm hover:bg-background hover:text-primary [&_svg]:size-5"
+              ? "size-11 rounded-[10px] [&_svg]:size-6"
+              : "size-9 rounded-[10px] [&_svg]:size-5"
           )}
           disabled={action.disabled}
-          variant="outline"
+          variant="ghost"
           type="button"
           onMouseDown={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}

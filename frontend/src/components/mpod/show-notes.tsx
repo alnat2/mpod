@@ -115,10 +115,10 @@ function NotesAction({
       <TooltipTrigger asChild>
         <Button
           aria-label={label}
-          variant="outline"
+          variant="ghost"
           type="button"
           onClick={onClick}
-          className="size-11 rounded-[10px] border-border bg-background text-primary shadow-sm hover:bg-background/80 hover:text-primary [&_svg]:size-6"
+          className="size-11 rounded-[10px] border-0 border-transparent bg-background text-primary shadow-sm hover:bg-background/80 hover:text-primary dark:border-transparent dark:bg-background [&_svg]:size-6"
         >
           <HugeiconsIcon icon={icon} />
         </Button>

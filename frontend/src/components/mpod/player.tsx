@@ -340,7 +340,7 @@ export function Player({
           <div className="flex w-full flex-col gap-2 pb-2 md:pb-0">
             {onProgressSeek ? (
               <Slider
-                className="group order-last h-4 cursor-pointer md:order-first md:h-2 [&_[data-slot=slider-range]]:transition-none [&_[data-slot=slider-thumb]]:opacity-0 [&_[data-slot=slider-thumb]]:focus-visible:opacity-100 [&_[data-slot=slider-track]]:h-full [&_[data-slot=slider-track]]:shadow-lg md:[&_[data-slot=slider-track]]:shadow-none"
+                className="group order-last h-4 cursor-pointer md:order-first md:h-2 [&_[data-slot=slider-range]]:transition-none [&_[data-slot=slider-thumb]]:opacity-0 [&_[data-slot=slider-thumb]]:focus-visible:opacity-100 [&_[data-slot=slider-track]]:h-full [&_[data-slot=slider-track]]:shadow-sm md:[&_[data-slot=slider-track]]:shadow-none"
                 min={0}
                 max={100}
                 step={1}
@@ -359,7 +359,7 @@ export function Player({
             ) : (
               <Progress
                 aria-label="Playback position"
-                className="order-last h-4 bg-muted shadow-lg md:order-first md:h-2 md:bg-muted md:shadow-none"
+                className="order-last h-4 bg-muted shadow-sm md:order-first md:h-2 md:bg-muted md:shadow-none"
                 value={normalizedProgressValue}
               />
             )}
@@ -413,7 +413,7 @@ export function Player({
             <TransportButton
               label={playing ? "Pause" : "Play"}
               icon={playing ? PauseIcon : PlayIcon}
-              className="shadow-md md:shadow-2xs"
+              className="shadow-[0_4px_6px_rgba(0,0,0,0.2),0_2px_4px_rgba(0,0,0,0.15)] dark:shadow-[0_4px_6px_rgba(0,0,0,0.35),0_2px_4px_rgba(0,0,0,0.25)]"
               iconClassName="size-9 md:size-8"
               onClick={onPlay}
               primary
