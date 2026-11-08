@@ -38,6 +38,7 @@ describe("ScreenErrorBoundary", () => {
   const originalLocation = window.location;
 
   beforeEach(() => {
+    sessionStorage.clear();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     delete (window as any).location;
     window.location = {
