@@ -60,8 +60,47 @@ func requestOriginMatches(req *nethttp.Request) bool {
 		return false
 	}
 
-	return strings.EqualFold(origin.Scheme, requestScheme(req)) &&
-		strings.EqualFold(origin.Host, req.Host)
+	scheme := requestScheme(req)
+	if !strings.EqualFold(origin.Scheme, scheme) {
+		return false
+	}
+
+	return strings.EqualFold(
+		normalizeHost(origin.Host, origin.Scheme),
+		normalizeHost(requestHost(req), scheme),
+	)
+}
+
+func normalizeHost(host, scheme string) string {
+	host = strings.TrimSpace(host)
+	if scheme == "https" && strings.HasSuffix(host, ":443") {
+		return strings.TrimSuffix(host, ":443")
+	}
+	if scheme == "http" && strings.HasSuffix(host, ":80") {
+		return strings.TrimSuffix(host, ":80")
+	}
+	return host
+}
+
+func requestHost(req *nethttp.Request) string {
+	for _, part := range strings.Split(req.Header.Get("Forwarded"), ";") {
+		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if ok && strings.EqualFold(key, "host") {
+			val := strings.Trim(strings.TrimSpace(value), "\"")
+			if val != "" {
+				return val
+			}
+		}
+	}
+
+	if forwardedHost := strings.TrimSpace(req.Header.Get("X-Forwarded-Host")); forwardedHost != "" {
+		if firstHost, _, ok := strings.Cut(forwardedHost, ","); ok {
+			return strings.TrimSpace(firstHost)
+		}
+		return forwardedHost
+	}
+
+	return req.Host
 }
 
 func requestScheme(req *nethttp.Request) string {
@@ -70,6 +109,12 @@ func requestScheme(req *nethttp.Request) string {
 	}
 	if strings.EqualFold(strings.TrimSpace(req.Header.Get("X-Forwarded-Proto")), "https") {
 		return "https"
+	}
+	for _, part := range strings.Split(req.Header.Get("Forwarded"), ";") {
+		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if ok && strings.EqualFold(key, "proto") && strings.EqualFold(strings.Trim(strings.TrimSpace(value), "\""), "https") {
+			return "https"
+		}
 	}
 	return "http"
 }

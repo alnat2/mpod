@@ -85,3 +85,115 @@ func TestStateChangingAPIAllowsMatchingForwardedHTTPSOrigin(t *testing.T) {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestStateChangingAPIAllowsMatchingXForwardedHost(t *testing.T) {
+	handler, _ := newTestRouterWithConfig(t, config.Config{
+		Environment:  "production",
+		DownloadsDir: t.TempDir(),
+	})
+	req := httptest.NewRequest(
+		nethttp.MethodPost,
+		"http://127.0.0.1:8080/api/auth/register",
+		bytes.NewReader([]byte(`{"username":"admin","password":"secret"}`)),
+	)
+	req.Host = "127.0.0.1:8080"
+	req.Header.Set("Origin", "https://mpod.beloglazkin.work")
+	req.Header.Set("X-Forwarded-Host", "mpod.beloglazkin.work")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestStateChangingAPIAllowsMatchingXForwardedHostWithMultipleProxies(t *testing.T) {
+	handler, _ := newTestRouterWithConfig(t, config.Config{
+		Environment:  "production",
+		DownloadsDir: t.TempDir(),
+	})
+	req := httptest.NewRequest(
+		nethttp.MethodPost,
+		"http://127.0.0.1:8080/api/auth/register",
+		bytes.NewReader([]byte(`{"username":"admin","password":"secret"}`)),
+	)
+	req.Host = "127.0.0.1:8080"
+	req.Header.Set("Origin", "https://mpod.beloglazkin.work")
+	req.Header.Set("X-Forwarded-Host", "mpod.beloglazkin.work, 192.168.0.222")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestStateChangingAPIAllowsMatchingRFC7239ForwardedHeader(t *testing.T) {
+	handler, _ := newTestRouterWithConfig(t, config.Config{
+		Environment:  "production",
+		DownloadsDir: t.TempDir(),
+	})
+	req := httptest.NewRequest(
+		nethttp.MethodPost,
+		"http://127.0.0.1:8080/api/auth/register",
+		bytes.NewReader([]byte(`{"username":"admin","password":"secret"}`)),
+	)
+	req.Host = "127.0.0.1:8080"
+	req.Header.Set("Origin", "https://mpod.beloglazkin.work")
+	req.Header.Set("Forwarded", "proto=https;host=\"mpod.beloglazkin.work\"")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestStateChangingAPIAllowsMatchingForwardedDefaultPort(t *testing.T) {
+	handler, _ := newTestRouterWithConfig(t, config.Config{
+		Environment:  "production",
+		DownloadsDir: t.TempDir(),
+	})
+	req := httptest.NewRequest(
+		nethttp.MethodPost,
+		"http://127.0.0.1:8080/api/auth/register",
+		bytes.NewReader([]byte(`{"username":"admin","password":"secret"}`)),
+	)
+	req.Host = "127.0.0.1:8080"
+	req.Header.Set("Origin", "https://mpod.beloglazkin.work")
+	req.Header.Set("X-Forwarded-Host", "mpod.beloglazkin.work:443")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestStateChangingAPIRejectsMismatchedXForwardedHost(t *testing.T) {
+	handler, _ := newTestRouterWithConfig(t, config.Config{
+		Environment:  "production",
+		DownloadsDir: t.TempDir(),
+	})
+	req := httptest.NewRequest(
+		nethttp.MethodPost,
+		"http://127.0.0.1:8080/api/auth/register",
+		bytes.NewReader([]byte(`{"username":"admin","password":"secret"}`)),
+	)
+	req.Host = "127.0.0.1:8080"
+	req.Header.Set("Origin", "https://attacker.example")
+	req.Header.Set("X-Forwarded-Host", "mpod.beloglazkin.work")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusForbidden, "CROSS_ORIGIN_REQUEST")
+}
