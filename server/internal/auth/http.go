@@ -54,15 +54,18 @@ func SessionCookieSecure(r *http.Request) bool {
 		return true
 	}
 
-	if strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") {
-		return true
+	if fwd := r.Header.Get("Forwarded"); fwd != "" {
+		firstHop, _, _ := strings.Cut(fwd, ",")
+		for _, part := range strings.Split(firstHop, ";") {
+			key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
+			if ok && strings.EqualFold(key, "proto") {
+				return strings.EqualFold(strings.Trim(strings.TrimSpace(value), "\""), "https")
+			}
+		}
 	}
 
-	for _, part := range strings.Split(r.Header.Get("Forwarded"), ";") {
-		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
-		if ok && strings.EqualFold(key, "proto") && strings.EqualFold(strings.Trim(value, "\""), "https") {
-			return true
-		}
+	if strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") {
+		return true
 	}
 
 	return false

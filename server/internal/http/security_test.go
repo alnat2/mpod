@@ -197,3 +197,69 @@ func TestStateChangingAPIRejectsMismatchedXForwardedHost(t *testing.T) {
 
 	assertAPIError(t, rec, nethttp.StatusForbidden, "CROSS_ORIGIN_REQUEST")
 }
+
+func TestStateChangingAPIRejectsMismatchedRFC7239ForwardedHost(t *testing.T) {
+	handler, _ := newTestRouterWithConfig(t, config.Config{
+		Environment:  "production",
+		DownloadsDir: t.TempDir(),
+	})
+	req := httptest.NewRequest(
+		nethttp.MethodPost,
+		"http://127.0.0.1:8080/api/auth/register",
+		bytes.NewReader([]byte(`{"username":"admin","password":"secret"}`)),
+	)
+	req.Host = "127.0.0.1:8080"
+	req.Header.Set("Origin", "https://attacker.example")
+	req.Header.Set("Forwarded", "proto=https;host=\"mpod.beloglazkin.work\"")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	assertAPIError(t, rec, nethttp.StatusForbidden, "CROSS_ORIGIN_REQUEST")
+}
+
+func TestStateChangingAPIAllowsMatchingRFC7239ForwardedMultiHop(t *testing.T) {
+	handler, _ := newTestRouterWithConfig(t, config.Config{
+		Environment:  "production",
+		DownloadsDir: t.TempDir(),
+	})
+	req := httptest.NewRequest(
+		nethttp.MethodPost,
+		"http://127.0.0.1:8080/api/auth/register",
+		bytes.NewReader([]byte(`{"username":"admin","password":"secret"}`)),
+	)
+	req.Host = "127.0.0.1:8080"
+	req.Header.Set("Origin", "https://mpod.beloglazkin.work")
+	req.Header.Set("Forwarded", "proto=https;host=\"mpod.beloglazkin.work\", proto=http;host=\"internal-hop\"")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestStateChangingAPIPrioritizesRFC7239OverXForwardedHeaders(t *testing.T) {
+	handler, _ := newTestRouterWithConfig(t, config.Config{
+		Environment:  "production",
+		DownloadsDir: t.TempDir(),
+	})
+	req := httptest.NewRequest(
+		nethttp.MethodPost,
+		"http://127.0.0.1:8080/api/auth/register",
+		bytes.NewReader([]byte(`{"username":"admin","password":"secret"}`)),
+	)
+	req.Host = "127.0.0.1:8080"
+	req.Header.Set("Origin", "https://mpod.beloglazkin.work")
+	req.Header.Set("Forwarded", "proto=https;host=\"mpod.beloglazkin.work\"")
+	req.Header.Set("X-Forwarded-Host", "other.example")
+	req.Header.Set("X-Forwarded-Proto", "http")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}

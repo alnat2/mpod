@@ -82,15 +82,30 @@ func normalizeHost(host, scheme string) string {
 	return host
 }
 
-func requestHost(req *nethttp.Request) string {
-	for _, part := range strings.Split(req.Header.Get("Forwarded"), ";") {
+func parseRFC7239Forwarded(header string) (proto string, host string) {
+	if header == "" {
+		return "", ""
+	}
+
+	firstHop, _, _ := strings.Cut(header, ",")
+	for _, part := range strings.Split(firstHop, ";") {
 		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
-		if ok && strings.EqualFold(key, "host") {
-			val := strings.Trim(strings.TrimSpace(value), "\"")
-			if val != "" {
-				return val
-			}
+		if !ok {
+			continue
 		}
+		val := strings.Trim(strings.TrimSpace(value), "\"")
+		if strings.EqualFold(key, "proto") && proto == "" {
+			proto = val
+		} else if strings.EqualFold(key, "host") && host == "" {
+			host = val
+		}
+	}
+	return proto, host
+}
+
+func requestHost(req *nethttp.Request) string {
+	if _, host := parseRFC7239Forwarded(req.Header.Get("Forwarded")); host != "" {
+		return host
 	}
 
 	if forwardedHost := strings.TrimSpace(req.Header.Get("X-Forwarded-Host")); forwardedHost != "" {
@@ -107,14 +122,14 @@ func requestScheme(req *nethttp.Request) string {
 	if req.TLS != nil {
 		return "https"
 	}
-	if strings.EqualFold(strings.TrimSpace(req.Header.Get("X-Forwarded-Proto")), "https") {
-		return "https"
-	}
-	for _, part := range strings.Split(req.Header.Get("Forwarded"), ";") {
-		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
-		if ok && strings.EqualFold(key, "proto") && strings.EqualFold(strings.Trim(strings.TrimSpace(value), "\""), "https") {
+	if proto, _ := parseRFC7239Forwarded(req.Header.Get("Forwarded")); proto != "" {
+		if strings.EqualFold(proto, "https") {
 			return "https"
 		}
+		return "http"
+	}
+	if strings.EqualFold(strings.TrimSpace(req.Header.Get("X-Forwarded-Proto")), "https") {
+		return "https"
 	}
 	return "http"
 }
