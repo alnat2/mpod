@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/cross/mpod/server/internal/httputil"
 )
 
 func SetSessionCookie(w http.ResponseWriter, sessionID, secret string, secure bool) {
@@ -46,29 +48,7 @@ func SessionIDFromRequest(r *http.Request, secret string) string {
 }
 
 func SessionCookieSecure(r *http.Request) bool {
-	if r == nil {
-		return false
-	}
-
-	if r.TLS != nil {
-		return true
-	}
-
-	if fwd := r.Header.Get("Forwarded"); fwd != "" {
-		firstHop, _, _ := strings.Cut(fwd, ",")
-		for _, part := range strings.Split(firstHop, ";") {
-			key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
-			if ok && strings.EqualFold(key, "proto") {
-				return strings.EqualFold(strings.Trim(strings.TrimSpace(value), "\""), "https")
-			}
-		}
-	}
-
-	if strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") {
-		return true
-	}
-
-	return false
+	return r != nil && httputil.RequestScheme(r) == "https"
 }
 
 func signedSessionValue(sessionID, secret string) string {

@@ -4,6 +4,8 @@ import (
 	nethttp "net/http"
 	"net/url"
 	"strings"
+
+	"github.com/cross/mpod/server/internal/httputil"
 )
 
 const contentSecurityPolicy = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self' blob:; connect-src 'self'; form-action 'self'"
@@ -60,14 +62,14 @@ func requestOriginMatches(req *nethttp.Request) bool {
 		return false
 	}
 
-	scheme := requestScheme(req)
+	scheme := httputil.RequestScheme(req)
 	if !strings.EqualFold(origin.Scheme, scheme) {
 		return false
 	}
 
 	return strings.EqualFold(
 		normalizeHost(origin.Host, origin.Scheme),
-		normalizeHost(requestHost(req), scheme),
+		normalizeHost(httputil.RequestHost(req), scheme),
 	)
 }
 
@@ -80,56 +82,4 @@ func normalizeHost(host, scheme string) string {
 		return strings.TrimSuffix(host, ":80")
 	}
 	return host
-}
-
-func parseRFC7239Forwarded(header string) (proto string, host string) {
-	if header == "" {
-		return "", ""
-	}
-
-	firstHop, _, _ := strings.Cut(header, ",")
-	for _, part := range strings.Split(firstHop, ";") {
-		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
-		if !ok {
-			continue
-		}
-		val := strings.Trim(strings.TrimSpace(value), "\"")
-		if strings.EqualFold(key, "proto") && proto == "" {
-			proto = val
-		} else if strings.EqualFold(key, "host") && host == "" {
-			host = val
-		}
-	}
-	return proto, host
-}
-
-func requestHost(req *nethttp.Request) string {
-	if _, host := parseRFC7239Forwarded(req.Header.Get("Forwarded")); host != "" {
-		return host
-	}
-
-	if forwardedHost := strings.TrimSpace(req.Header.Get("X-Forwarded-Host")); forwardedHost != "" {
-		if firstHost, _, ok := strings.Cut(forwardedHost, ","); ok {
-			return strings.TrimSpace(firstHost)
-		}
-		return forwardedHost
-	}
-
-	return req.Host
-}
-
-func requestScheme(req *nethttp.Request) string {
-	if req.TLS != nil {
-		return "https"
-	}
-	if proto, _ := parseRFC7239Forwarded(req.Header.Get("Forwarded")); proto != "" {
-		if strings.EqualFold(proto, "https") {
-			return "https"
-		}
-		return "http"
-	}
-	if strings.EqualFold(strings.TrimSpace(req.Header.Get("X-Forwarded-Proto")), "https") {
-		return "https"
-	}
-	return "http"
 }
