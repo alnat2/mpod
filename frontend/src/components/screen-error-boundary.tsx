@@ -2,6 +2,7 @@ import { Component, Fragment, type ErrorInfo, type ReactNode } from "react";
 
 import { AppShell } from "@/components/mpod";
 import { Button } from "@/components/ui/button";
+import { CHUNK_RELOAD_STORAGE_KEY } from "@/lib/lazy-retry";
 import { clearCachedAudiobooks, clearCachedSettings } from "@/lib/screen-cache";
 
 type ScreenErrorBoundaryProps = {
@@ -40,6 +41,11 @@ export class ScreenErrorBoundary extends Component<
   }
 
   private retry = () => {
+    try {
+      sessionStorage.removeItem(CHUNK_RELOAD_STORAGE_KEY);
+    } catch {
+      // Ignore if sessionStorage is unavailable
+    }
     clearCachedAudiobooks();
     clearCachedSettings();
     this.setState((current) => ({

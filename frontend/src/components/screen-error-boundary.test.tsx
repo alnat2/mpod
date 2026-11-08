@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { CHUNK_RELOAD_STORAGE_KEY } from "@/lib/lazy-retry";
 import { ScreenErrorBoundary } from "./screen-error-boundary";
 
 function ThrowingScreen({ shouldThrow }: { shouldThrow: boolean }) {
@@ -100,5 +101,22 @@ describe("ScreenErrorBoundary", () => {
     await user.click(reloadBtn);
 
     expect(window.location.href).toBe("http://192.168.0.222:5050/subscriptions");
+  });
+
+  it("resets chunk reload cooldown when 'Retry screen' is clicked", async () => {
+    const user = userEvent.setup();
+    sessionStorage.setItem(CHUNK_RELOAD_STORAGE_KEY, "12345");
+
+    render(
+      <MemoryRouter>
+        <RetryHarness />
+      </MemoryRouter>
+    );
+
+    expect(sessionStorage.getItem(CHUNK_RELOAD_STORAGE_KEY)).toBe("12345");
+    const retryBtn = screen.getByRole("button", { name: "Retry screen" });
+    await user.click(retryBtn);
+
+    expect(sessionStorage.getItem(CHUNK_RELOAD_STORAGE_KEY)).toBeNull();
   });
 });
