@@ -676,7 +676,7 @@ export function HomeScreen() {
             <EmptyState
               className="mt-4"
               title="Playlist is empty"
-              description="Add episodes from Subscriptions or audiobooks from Abooks to start listening."
+              description="Add episodes from Podcasts or audiobooks from Abooks to start listening."
             />
           )}
         </div>

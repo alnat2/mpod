@@ -613,4 +613,17 @@ describe("HomeScreen", () => {
     // In desktop test environment, showPodcastTitle should be enabled
     expect(row).toHaveAttribute("data-show-podcast-title", "yes");
   });
+
+  it("renders empty state with reference to Podcasts instead of Subscriptions when playlist is empty", async () => {
+    queue = [];
+    currentEpisode = null as any;
+    render(<HomeScreen />);
+
+    expect(await screen.findByRole("heading", { name: "Playlist is empty" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Add episodes from Podcasts or audiobooks from Abooks to start listening."
+      )
+    ).toBeInTheDocument();
+  });
 });
