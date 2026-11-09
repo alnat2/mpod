@@ -71,6 +71,11 @@ export function applyAppUpdate() {
   updateWaiting = false;
   if (registeredUpdateSW) {
     void registeredUpdateSW(true);
+    if (typeof window !== "undefined") {
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    }
   } else if (typeof window !== "undefined") {
     window.location.reload();
   }
@@ -85,6 +90,11 @@ export function handleManualReload() {
     return;
   }
   applyAppUpdate();
+  if (typeof window !== "undefined") {
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  }
 }
 
 export function _resetPwaUpdateStateForTesting() {

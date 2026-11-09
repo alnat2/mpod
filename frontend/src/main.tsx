@@ -12,9 +12,6 @@ const updateSW = registerSW({
   onNeedRefresh() {
     handleNeedRefresh(updateSW);
   },
-  onNeedReload() {
-    // No action needed: page already controlled by new SW
-  },
 });
 
 initPwaUpdate(updateSW);
