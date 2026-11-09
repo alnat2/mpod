@@ -78,6 +78,15 @@ html,
   touch-action: pan-y;
 }
 
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 button,
 input,
 textarea,

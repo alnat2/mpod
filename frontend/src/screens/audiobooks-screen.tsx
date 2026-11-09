@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { RefreshDotIcon } from "@hugeicons/core-free-icons";
 
 import { AppShell, FileManagerItem, PageHeader } from "@/components/mpod";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   Breadcrumb,
@@ -65,6 +64,13 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
   const [reloadKey, setReloadKey] = useState(0);
   const pendingAddBookIdsRef = useRef<Set<number>>(new Set());
   const [pendingAddBookIds, setPendingAddBookIds] = useState<Set<number>>(() => new Set());
+  const breadcrumbRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (breadcrumbRef.current) {
+      breadcrumbRef.current.scrollLeft = breadcrumbRef.current.scrollWidth;
+    }
+  }, [currentPath]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -320,13 +326,19 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
 
           <div className="mpod-scroll flex h-full min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pt-2 pb-5 md:pb-6">
             {/* Breadcrumb Navigation */}
-        <Breadcrumb className="flex h-[50px] shrink-0 items-center py-0">
-          <BreadcrumbList>
-            <BreadcrumbItem>
+        <Breadcrumb
+          ref={breadcrumbRef}
+          className="no-scrollbar flex h-[50px] w-full shrink-0 items-center overflow-x-auto py-0"
+        >
+          <BreadcrumbList className="flex w-max flex-nowrap items-center gap-1.5 sm:gap-2">
+            <BreadcrumbItem className="shrink-0">
               {currentPath.length === 0 ? (
-                <BreadcrumbPage>Abooks</BreadcrumbPage>
+                <BreadcrumbPage className="whitespace-nowrap">Abooks</BreadcrumbPage>
               ) : (
-                <BreadcrumbLink onClick={() => setCurrentPath([])}>
+                <BreadcrumbLink
+                  onClick={() => setCurrentPath([])}
+                  className="whitespace-nowrap"
+                >
                   Abooks
                 </BreadcrumbLink>
               )}
@@ -337,18 +349,21 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
               const pathToHere = currentPath.slice(0, index + 1);
 
               return (
-                <span key={pathToHere.join("/")} className="inline-flex items-center gap-1.5 sm:gap-2">
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem>
+                <Fragment key={pathToHere.join("/")}>
+                  <BreadcrumbSeparator className="shrink-0" />
+                  <BreadcrumbItem className="shrink-0">
                     {isLast ? (
-                      <BreadcrumbPage>{segment}</BreadcrumbPage>
+                      <BreadcrumbPage className="whitespace-nowrap">{segment}</BreadcrumbPage>
                     ) : (
-                      <BreadcrumbLink onClick={() => setCurrentPath(pathToHere)}>
+                      <BreadcrumbLink
+                        onClick={() => setCurrentPath(pathToHere)}
+                        className="whitespace-nowrap"
+                      >
                         {segment}
                       </BreadcrumbLink>
                     )}
                   </BreadcrumbItem>
-                </span>
+                </Fragment>
               );
             })}
           </BreadcrumbList>

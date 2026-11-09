@@ -940,22 +940,22 @@ export function ComponentPreview() {
       {/* 10. Filemanager Item */}
       <PreviewSection title="10. Filemanager Item">
         <div id="audit-filemanager" className="flex w-[1040px] max-w-full flex-col gap-2">
-          <Breadcrumb className="flex h-[50px] shrink-0 items-center py-0">
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <BreadcrumbLink>Abooks</BreadcrumbLink>
+          <Breadcrumb className="no-scrollbar flex h-[50px] w-full shrink-0 items-center overflow-x-auto py-0">
+            <BreadcrumbList className="flex w-max flex-nowrap items-center gap-1.5 sm:gap-2">
+              <BreadcrumbItem className="shrink-0">
+                <BreadcrumbLink className="whitespace-nowrap">Abooks</BreadcrumbLink>
               </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
+              <BreadcrumbSeparator className="shrink-0" />
+              <BreadcrumbItem className="shrink-0">
                 <BreadcrumbEllipsis />
               </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbLink>Some abooks</BreadcrumbLink>
+              <BreadcrumbSeparator className="shrink-0" />
+              <BreadcrumbItem className="shrink-0">
+                <BreadcrumbLink className="whitespace-nowrap">Spilleyn_Mikki_-_Vozvraschenie_gangstera_(Zaborovskiy_Y)</BreadcrumbLink>
               </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage>New abooks</BreadcrumbPage>
+              <BreadcrumbSeparator className="shrink-0" />
+              <BreadcrumbItem className="shrink-0">
+                <BreadcrumbPage className="whitespace-nowrap">Chapter 01 - The Return</BreadcrumbPage>
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>

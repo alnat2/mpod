@@ -108,6 +108,45 @@ describe("AudiobooksScreen", () => {
     });
   });
 
+  it("renders single-line horizontally scrollable breadcrumbs with no-scrollbar and auto-scrolls on navigation", async () => {
+    const longName = "Spilleyn_Mikki_-_Vozvraschenie_gangstera_(Zaborovskiy_Y)";
+    const nestedAudiobooks: Audiobook[] = [
+      {
+        ...mockAudiobooks[0]!,
+        id: 10,
+        title: "Chapter 01",
+        relPath: `${longName}/Chapter 01.mp3`,
+      },
+    ];
+    vi.spyOn(api.audiobooks, "list").mockResolvedValue({ audiobooks: nestedAudiobooks });
+
+    render(
+      <MemoryRouter>
+        <AudiobooksScreen />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(longName)).toBeInTheDocument();
+    });
+
+    const breadcrumbNav = screen.getByRole("navigation", { name: "breadcrumb" });
+    expect(breadcrumbNav).toHaveClass("no-scrollbar", "overflow-x-auto", "flex");
+
+    const breadcrumbList = breadcrumbNav.querySelector('[data-slot="breadcrumb-list"]');
+    expect(breadcrumbList).toHaveClass("flex-nowrap", "w-max");
+
+    fireEvent.click(screen.getByText(longName));
+
+    await waitFor(() => {
+      expect(screen.getByText("Chapter 01")).toBeInTheDocument();
+    });
+
+    const breadcrumbPage = breadcrumbNav.querySelector('[data-slot="breadcrumb-page"]');
+    expect(breadcrumbPage).toHaveTextContent(longName);
+    expect(breadcrumbPage).toHaveClass("whitespace-nowrap");
+  });
+
   it("triggers rescan when clicking refresh button", async () => {
     const rescanSpy = vi.spyOn(api.audiobooks, "rescan");
 
