@@ -133,11 +133,11 @@ function SettingsCard({
   return (
     <Card
       className={cn(
-        "w-full gap-0 rounded-2xl border border-border bg-card p-4 shadow-xs",
+        "flex h-full w-full flex-col justify-center gap-0 rounded-2xl border border-border bg-card p-4 shadow-xs",
         className
       )}
     >
-      <div className="flex w-full items-start gap-4">
+      <div className="flex h-full w-full items-center gap-4">
         <div className="min-w-0 flex-1">
           <h2 className="text-base leading-6 font-semibold text-card-foreground">
             {title}
@@ -147,7 +147,7 @@ function SettingsCard({
           </p>
         </div>
         {action ? (
-          <div className="flex w-[116px] shrink-0 items-center justify-end self-center">
+          <div className="flex w-[116px] shrink-0 items-center justify-end">
             {action}
           </div>
         ) : null}
