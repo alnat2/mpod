@@ -33,7 +33,7 @@ import {
   getCachedSettings,
   updateCachedSettings,
 } from "@/lib/screen-cache";
-import { applyAppUpdate } from "@/lib/pwa-update";
+import { handleManualReload } from "@/lib/pwa-update";
 
 type SettingsScreenProps = {
   onSessionChange?: () => void | Promise<void>;
@@ -504,7 +504,7 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                     variant="ghost"
                     size="sm"
                     className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                    onClick={() => applyAppUpdate()}
+                    onClick={() => handleManualReload()}
                   >
                     Reload app
                   </Button>

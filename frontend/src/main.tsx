@@ -13,7 +13,7 @@ const updateSW = registerSW({
     handleNeedRefresh(updateSW);
   },
   onNeedReload() {
-    // Reload is coordinated via pwa-update when audio is paused
+    // No action needed: page already controlled by new SW
   },
 });
 
