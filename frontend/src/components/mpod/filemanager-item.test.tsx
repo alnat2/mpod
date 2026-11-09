@@ -58,7 +58,7 @@ describe("FileManagerItem", () => {
       />
     );
     const item = document.querySelector('[data-slot="fm-item"]');
-    expect(item).toHaveClass("h-[70px]", "rounded-[2px]", "px-1");
+    expect(item).toHaveClass("h-[70px]", "rounded-[16px]", "px-3");
     expect(screen.getByText("Mobile Book")).toHaveClass("line-clamp-2");
     expect(screen.getByText("2h 30m")).toHaveClass("w-20");
     expect(screen.getByRole("button", { name: "Add to playlist" })).toHaveClass(
