@@ -68,7 +68,14 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
 
   useEffect(() => {
     if (breadcrumbRef.current) {
-      breadcrumbRef.current.scrollLeft = breadcrumbRef.current.scrollWidth;
+      if (typeof breadcrumbRef.current.scrollTo === "function") {
+        breadcrumbRef.current.scrollTo({
+          left: breadcrumbRef.current.scrollWidth,
+          behavior: "smooth",
+        });
+      } else {
+        breadcrumbRef.current.scrollLeft = breadcrumbRef.current.scrollWidth;
+      }
     }
   }, [currentPath]);
 
@@ -328,15 +335,23 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
             {/* Breadcrumb Navigation */}
         <Breadcrumb
           ref={breadcrumbRef}
-          className="no-scrollbar flex h-[50px] w-full shrink-0 items-center overflow-x-auto py-0"
+          className="no-scrollbar flex h-[50px] w-full shrink-0 items-center overflow-x-auto py-0 overscroll-x-contain touch-pan-x"
         >
-          <BreadcrumbList className="flex w-max flex-nowrap items-center gap-1.5 sm:gap-2">
+          <BreadcrumbList className="flex w-max flex-nowrap items-center gap-1.5 pr-4 sm:gap-2">
             <BreadcrumbItem className="shrink-0">
               {currentPath.length === 0 ? (
                 <BreadcrumbPage className="whitespace-nowrap">Abooks</BreadcrumbPage>
               ) : (
                 <BreadcrumbLink
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setCurrentPath([])}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setCurrentPath([]);
+                    }
+                  }}
                   className="whitespace-nowrap"
                 >
                   Abooks
@@ -353,11 +368,22 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
                   <BreadcrumbSeparator className="shrink-0" />
                   <BreadcrumbItem className="shrink-0">
                     {isLast ? (
-                      <BreadcrumbPage className="whitespace-nowrap">{segment}</BreadcrumbPage>
+                      <BreadcrumbPage className="whitespace-nowrap" title={segment}>
+                        {segment}
+                      </BreadcrumbPage>
                     ) : (
                       <BreadcrumbLink
+                        role="button"
+                        tabIndex={0}
                         onClick={() => setCurrentPath(pathToHere)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setCurrentPath(pathToHere);
+                          }
+                        }}
                         className="whitespace-nowrap"
+                        title={segment}
                       >
                         {segment}
                       </BreadcrumbLink>
