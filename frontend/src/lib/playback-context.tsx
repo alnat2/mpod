@@ -33,6 +33,7 @@ import type {
 import { usePlaybackAudio } from "./use-playback-audio";
 import { usePlaybackMediaSession } from "./use-playback-media-session";
 import { usePlaybackSync } from "./use-playback-sync";
+import { setAudioPlaybackActive } from "./pwa-update";
 
 export type { QueueEpisode } from "./playback-context-types";
 
@@ -102,6 +103,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     playingRef.current = playing;
+    setAudioPlaybackActive(playing);
   }, [playing]);
 
   useEffect(() => {

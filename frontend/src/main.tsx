@@ -5,16 +5,19 @@ import { registerSW } from "virtual:pwa-register";
 import App from "./App";
 import { ErrorBoundary } from "./components/error-boundary";
 import "./index.css";
+import { handleNeedRefresh, initPwaUpdate } from "./lib/pwa-update";
 
 const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    void updateSW(false);
+    handleNeedRefresh(updateSW);
   },
   onNeedReload() {
-    // Keep playback uninterrupted: do not trigger window.location.reload()
+    // Reload is coordinated via pwa-update when audio is paused
   },
 });
+
+initPwaUpdate(updateSW);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

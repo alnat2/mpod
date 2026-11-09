@@ -33,6 +33,7 @@ import {
   getCachedSettings,
   updateCachedSettings,
 } from "@/lib/screen-cache";
+import { applyAppUpdate } from "@/lib/pwa-update";
 
 type SettingsScreenProps = {
   onSessionChange?: () => void | Promise<void>;
@@ -496,8 +497,17 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                 </div>
               </div>
               {settings?.appBuild ? (
-                <div className="mt-4 text-sm font-medium text-secondary-foreground">
-                  Current app build: {settings.appBuild}
+                <div className="mt-4 flex items-center justify-between text-sm font-medium text-secondary-foreground">
+                  <span>Current app build: {settings.appBuild}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => applyAppUpdate()}
+                  >
+                    Reload app
+                  </Button>
                 </div>
               ) : null}
             </div>
