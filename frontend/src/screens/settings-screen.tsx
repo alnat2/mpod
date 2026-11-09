@@ -386,52 +386,54 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
           </ScreenBannerStack>
           <div className="mpod-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden pt-4 pb-20 md:py-6">
             <div className="flex w-full flex-col gap-4">
-              <div className="grid items-stretch gap-4 min-[1360px]:grid-cols-[1fr_680px] min-[1360px]:gap-6">
-                <div className="flex min-w-0 flex-col self-stretch">
-                  <SettingsCard
-                    title="Feed daily refresh"
-                    description="Feeds are refreshed once per day at a single global time."
-                    className="flex h-full flex-col justify-between"
-                  >
-                    <div className="flex w-full items-center gap-2 min-[1360px]:w-[220px]">
-                      <Input
-                        type="text"
-                        inputMode="numeric"
-                        placeholder="04:00"
-                        maxLength={5}
-                        aria-label="Daily refresh time"
-                        value={dailyRefreshTime}
-                        disabled={loading || saving}
-                        aria-invalid={!isValid24HourTime(dailyRefreshTime)}
-                        className="h-9 flex-1 rounded-md border border-border bg-background px-3 text-left text-base text-foreground shadow-xs"
-                        onChange={(event) =>
-                          setDailyRefreshTime(
-                            applyTimeMask(event.target.value, dailyRefreshTime)
-                          )
-                        }
-                        onBlur={() => {
-                          if (dailyRefreshTime && !isValid24HourTime(dailyRefreshTime)) {
-                            const digits = dailyRefreshTime.replace(/\D/g, "");
-                            if (digits.length > 0 && digits.length <= 2 && Number(digits) <= 23) {
-                              setDailyRefreshTime(`${digits.padStart(2, "0")}:00`);
-                            } else {
-                              setDailyRefreshTime(DEFAULT_DAILY_REFRESH_TIME);
-                            }
-                          } else if (!dailyRefreshTime) {
+              <div className="grid items-start gap-4 min-[1360px]:grid-cols-[1fr_680px] min-[1360px]:gap-6">
+                <div className="flex min-w-0 flex-col">
+                  <div>
+                    <h2 className="text-base leading-6 font-semibold text-card-foreground">
+                      Feed daily refresh
+                    </h2>
+                    <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                      Feeds are refreshed once per day at a single global time.
+                    </p>
+                  </div>
+                  <div className="mt-4 flex w-full items-center gap-2 min-[1360px]:w-[220px]">
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="04:00"
+                      maxLength={5}
+                      aria-label="Daily refresh time"
+                      value={dailyRefreshTime}
+                      disabled={loading || saving}
+                      aria-invalid={!isValid24HourTime(dailyRefreshTime)}
+                      className="h-9 flex-1 rounded-md border border-border bg-background px-3 text-left text-base text-foreground shadow-xs"
+                      onChange={(event) =>
+                        setDailyRefreshTime(
+                          applyTimeMask(event.target.value, dailyRefreshTime)
+                        )
+                      }
+                      onBlur={() => {
+                        if (dailyRefreshTime && !isValid24HourTime(dailyRefreshTime)) {
+                          const digits = dailyRefreshTime.replace(/\D/g, "");
+                          if (digits.length > 0 && digits.length <= 2 && Number(digits) <= 23) {
+                            setDailyRefreshTime(`${digits.padStart(2, "0")}:00`);
+                          } else {
                             setDailyRefreshTime(DEFAULT_DAILY_REFRESH_TIME);
                           }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        className="h-9 shrink-0 rounded-[10px] px-4 font-medium shadow-xs"
-                        disabled={saving || loading || !isValid24HourTime(dailyRefreshTime)}
-                        onClick={() => void handleSaveRefreshTime()}
-                      >
-                        Save time
-                      </Button>
-                    </div>
-                  </SettingsCard>
+                        } else if (!dailyRefreshTime) {
+                          setDailyRefreshTime(DEFAULT_DAILY_REFRESH_TIME);
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      className="h-9 shrink-0 rounded-md px-4 font-medium shadow-xs"
+                      disabled={saving || loading || !isValid24HourTime(dailyRefreshTime)}
+                      onClick={() => void handleSaveRefreshTime()}
+                    >
+                      Save time
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="grid gap-4 min-[1360px]:grid-cols-2">
@@ -487,7 +489,7 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                       <Button
                         type="button"
                         variant="secondary"
-                        className="h-8 w-[113px] rounded-md px-3 font-medium shadow-xs"
+                        className="h-9 w-[115px] rounded-md px-3 font-medium shadow-xs"
                         onClick={() => void handleLogout()}
                       >
                         Log out
