@@ -233,6 +233,7 @@ export function usePlaybackAudio({
   const positionSecondsRef = useRef(positionSeconds);
   const sourceGenerationRef = useRef(0);
   const playAttemptRef = useRef(0);
+  const pendingPlayAttemptRef = useRef<number | null>(null);
   const audiobookTracksCacheRef = useRef<Map<number, AudiobookTrack[]>>(
     new Map()
   );
@@ -394,6 +395,8 @@ export function usePlaybackAudio({
     sourcePrimeCleanupRef.current = null;
     sourceSwitchingRef.current = true;
     playingRef.current = false;
+    userInitiatedPlayRef.current = false;
+    pendingPlayAttemptRef.current = null;
     setPlaying(false);
     sourceGenerationRef.current += 1;
     resetActiveDuration();
@@ -408,7 +411,48 @@ export function usePlaybackAudio({
     selectionGenerationRef,
     resetActiveDuration,
     setPlaying,
+    userInitiatedPlayRef,
   ]);
+
+  const startAudioPlayAttempt = useCallback(
+    async (
+      attempt: number,
+      currentGen: number,
+      onFailure?: (error: unknown) => void
+    ) => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      pendingPlayAttemptRef.current = attempt;
+      try {
+        await attemptAudioPlay(
+          audio,
+          (error) => {
+            if (
+              sourceGenerationRef.current !== currentGen ||
+              playAttemptRef.current !== attempt
+            ) {
+              return;
+            }
+            if (onFailure) {
+              onFailure(error);
+            } else {
+              setPlaying(false);
+              userInitiatedPlayRef.current = false;
+              setPlaybackError(describeAudioError(error));
+            }
+          },
+          () =>
+            sourceGenerationRef.current === currentGen &&
+            playAttemptRef.current === attempt
+        );
+      } finally {
+        if (pendingPlayAttemptRef.current === attempt) {
+          pendingPlayAttemptRef.current = null;
+        }
+      }
+    },
+    [audioRef, setPlaybackError, setPlaying, userInitiatedPlayRef]
+  );
 
   useEffect(() => {
     positionSecondsRef.current = positionSeconds;
@@ -1096,11 +1140,13 @@ export function usePlaybackAudio({
 
     const onPause = () => {
       // Invalidate in-flight play attempts and process pause only if audio
-      // is actually staying paused. A delayed pause event after play() will see !audio.paused.
-      if (!audio.paused) {
+      // is actually staying paused and no new play intent is currently in flight.
+      const hasPendingPlay =
+        pendingPlayAttemptRef.current === playAttemptRef.current &&
+        (userInitiatedPlayRef.current || playingRef.current);
+      if (!audio.paused || hasPendingPlay) {
         return;
       }
-      playAttemptRef.current += 1;
       // A retired load can queue pause after the queue has selected a new, unready source.
       if (sourceSwitchingRef.current || !sourceReadyRef.current) {
         if (!playingRef.current) {
@@ -1108,6 +1154,7 @@ export function usePlaybackAudio({
         }
         return;
       }
+      playAttemptRef.current += 1;
       if (audio.ended) {
         completeCurrentPlayback();
         return;
@@ -1352,8 +1399,8 @@ export function usePlaybackAudio({
             sourceReadyRef.current = true;
             updateActiveDuration(currentGen);
             if (playingRef.current) {
-              void attemptAudioPlay(audio, (error) => {
-                if (sourceGenerationRef.current !== currentGen) return;
+              const attempt = ++playAttemptRef.current;
+              void startAudioPlayAttempt(attempt, currentGen, (error) => {
                 playingRef.current = false;
                 setPlaying(false);
                 setPlaybackError(describeAudioError(error));
@@ -1466,14 +1513,8 @@ export function usePlaybackAudio({
           sourcePrimeCleanupRef.current = null;
           sourceReadyRef.current = true;
           if (playingRef.current) {
-            void attemptAudioPlay(
-              audio,
-              (error) => {
-                setPlaying(false);
-                setPlaybackError(describeAudioError(error));
-              },
-              () => sourceGenerationRef.current === currentGen
-            );
+            const attempt = ++playAttemptRef.current;
+            void startAudioPlayAttempt(attempt, currentGen);
           }
         },
         () => {
@@ -1541,6 +1582,7 @@ export function usePlaybackAudio({
 
     if (playing) {
       userInitiatedPlayRef.current = false;
+      pendingPlayAttemptRef.current = null;
       autoAdvanceIntentRef.current = false;
       playingRef.current = false;
       playAttemptRef.current += 1;
@@ -1578,24 +1620,7 @@ export function usePlaybackAudio({
         applyPlaybackRate(audio, speedLabel);
         playingRef.current = true;
         setPlaying(true);
-        void attemptAudioPlay(
-          audio,
-          (error) => {
-            if (
-              sourceGenerationRef.current !== currentGen ||
-              playAttemptRef.current !== attempt
-            ) {
-              return;
-            }
-            playingRef.current = false;
-            userInitiatedPlayRef.current = false;
-            setPlaying(false);
-            setPlaybackError(describeAudioError(error));
-          },
-          () =>
-            sourceGenerationRef.current === currentGen &&
-            playAttemptRef.current === attempt
-        );
+        void startAudioPlayAttempt(attempt, currentGen);
 
         const resumePosition = audio.currentTime;
         void (async () => {
@@ -1663,22 +1688,7 @@ export function usePlaybackAudio({
             sourceReadyRef.current = true;
             updateActiveDuration(sourceGenerationRef.current);
             setPlaying(true);
-            void attemptAudioPlay(
-              audio,
-              (error) => {
-                if (
-                  sourceGenerationRef.current !== currentGen ||
-                  playAttemptRef.current !== attempt
-                ) {
-                  return;
-                }
-                setPlaying(false);
-                setPlaybackError(describeAudioError(error));
-              },
-              () =>
-                sourceGenerationRef.current === currentGen &&
-                playAttemptRef.current === attempt
-            );
+            void startAudioPlayAttempt(attempt, currentGen);
           },
           () => {
             sourcePrimeCleanupRef.current = null;
@@ -1716,6 +1726,7 @@ export function usePlaybackAudio({
     sourcePrimedRef,
     sourceReadyRef,
     speedLabel,
+    startAudioPlayAttempt,
     updateActiveDuration,
     userInitiatedPlayRef,
   ]);
@@ -1781,15 +1792,8 @@ export function usePlaybackAudio({
             sourceReadyRef.current = true;
             updateActiveDuration(currentGen);
             setPlaying(true);
-            void attemptAudioPlay(
-              audio,
-              (error) => {
-                if (sourceGenerationRef.current !== currentGen) return;
-                setPlaying(false);
-                setPlaybackError(describeAudioError(error));
-              },
-              () => sourceGenerationRef.current === currentGen
-            );
+            const attempt = ++playAttemptRef.current;
+            void startAudioPlayAttempt(attempt, currentGen);
           },
           () => {
             sourcePrimeCleanupRef.current = null;
@@ -1819,6 +1823,7 @@ export function usePlaybackAudio({
       sourcePrimedRef,
       sourceReadyRef,
       speedLabel,
+      startAudioPlayAttempt,
       updateActiveDuration,
       userInitiatedPlayRef,
     ]
@@ -1875,15 +1880,8 @@ export function usePlaybackAudio({
             sourceReadyRef.current = true;
             updateActiveDuration(currentGen);
             setPlaying(true);
-            void attemptAudioPlay(
-              audio,
-              (error) => {
-                if (sourceGenerationRef.current !== currentGen) return;
-                setPlaying(false);
-                setPlaybackError(describeAudioError(error));
-              },
-              () => sourceGenerationRef.current === currentGen
-            );
+            const attempt = ++playAttemptRef.current;
+            void startAudioPlayAttempt(attempt, currentGen);
           },
           () => {
             sourcePrimeCleanupRef.current = null;
@@ -1912,6 +1910,7 @@ export function usePlaybackAudio({
       sourcePrimedRef,
       sourceReadyRef,
       speedLabel,
+      startAudioPlayAttempt,
       updateActiveDuration,
       userInitiatedPlayRef,
     ]
@@ -1930,7 +1929,6 @@ export function usePlaybackAudio({
 
       allowPlaybackProgress({ ...queuedBook, trackId: track.id });
       const currentGen = prepareSourceSwitch();
-      const attempt = ++playAttemptRef.current;
       completionGenerationRef.current = null;
       completedAudioSourceRef.current = null;
       setPlaybackError(null);
@@ -2024,15 +2022,8 @@ export function usePlaybackAudio({
           sourceReadyRef.current = true;
           updateActiveDuration(currentGen);
           setPlaying(true);
-          void attemptAudioPlay(
-            audio,
-            (error) => {
-              if (sourceGenerationRef.current !== currentGen) return;
-              setPlaying(false);
-              setPlaybackError(describeAudioError(error));
-            },
-            () => sourceGenerationRef.current === currentGen
-          );
+          const attempt = ++playAttemptRef.current;
+          void startAudioPlayAttempt(attempt, currentGen);
         },
         () => {
           sourcePrimeCleanupRef.current = null;
@@ -2058,6 +2049,7 @@ export function usePlaybackAudio({
       sourcePrimedRef,
       sourceReadyRef,
       speedLabel,
+      startAudioPlayAttempt,
       updateActiveDuration,
       userInitiatedPlayRef,
     ]

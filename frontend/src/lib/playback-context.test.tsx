@@ -1015,17 +1015,82 @@ describe("PlaybackProvider", () => {
     mediaSession.invoke("play");
     mediaSession.invoke("pause");
 
-    audio.playImpl.mockImplementationOnce(async () => {
-      audio.paused = false;
-    });
+    const playTwoDeferred = deferred<void>();
+    audio.playImpl.mockImplementationOnce(() => playTwoDeferred.promise);
     mediaSession.invoke("play");
 
-    // Delayed pause event from earlier pause arrives on the event loop
+    // Play 2 is still pending in the event loop, audio.paused is still true
+    expect(audio.paused).toBe(true);
+
+    // Delayed pause event from earlier pause arrives on the event loop while Play 2 is still pending
     audio.emit("pause");
 
-    // Play 1 promise now rejects
+    // Play 2 promise now resolves and starts playback
     await act(async () => {
-      playOneDeferred.reject(new DOMException("The play() request was interrupted by a call to pause().", "AbortError"));
+      audio.paused = false;
+      playTwoDeferred.resolve();
+    });
+
+    // Play 1 promise now rejects with NotAllowedError (which invokes onFailure when attempt is active)
+    await act(async () => {
+      playOneDeferred.reject(
+        new DOMException(
+          "The play() request was blocked by the browser.",
+          "NotAllowedError"
+        )
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("playback-error")).toHaveTextContent("none");
+  });
+
+  it("ignores a late play rejection from an older attempt when re-playing after source preparation", async () => {
+    const user = userEvent.setup();
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    const audio = FakeAudio.first;
+    const playOneDeferred = deferred<void>();
+    audio.playImpl.mockImplementationOnce(() => playOneDeferred.promise);
+
+    // Initial play starts source priming
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+    await emitAudioReady(audio);
+
+    // Play 1 is now in flight. Rapidly pause before play 1 resolves.
+    mediaSession.invoke("pause");
+    audio.emit("pause");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("no");
+    });
+
+    // Start play 2 via fast path
+    const playTwoDeferred = deferred<void>();
+    audio.playImpl.mockImplementationOnce(() => playTwoDeferred.promise);
+    mediaSession.invoke("play");
+
+    // Play 2 resolves successfully
+    await act(async () => {
+      audio.paused = false;
+      playTwoDeferred.resolve();
+    });
+
+    // Play 1 now rejects with NotAllowedError
+    await act(async () => {
+      playOneDeferred.reject(
+        new DOMException(
+          "The play() request was blocked by the browser.",
+          "NotAllowedError"
+        )
+      );
     });
 
     await waitFor(() => {
