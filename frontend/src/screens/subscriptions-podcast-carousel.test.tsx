@@ -3,16 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import { SubscriptionsPodcastCarousel } from "./subscriptions-podcast-carousel";
 
-let lastCarouselProps: { opts?: Record<string, unknown> } | null = null;
-function getLastCarouselProps() {
-  return lastCarouselProps;
-}
+const onCarouselRender = vi.fn();
 vi.mock("@/components/ui/carousel", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/components/ui/carousel")>();
   return {
     ...actual,
-    Carousel: (props: { opts?: Record<string, unknown> }) => {
-      lastCarouselProps = props;
+    Carousel: (props: Record<string, unknown>) => {
+      onCarouselRender(props);
       return actual.Carousel(props as any);
     },
   };
@@ -46,7 +43,7 @@ describe("SubscriptionsPodcastCarousel", () => {
   });
 
   it("configures loop: true when podcasts count >= 2", () => {
-    lastCarouselProps = null;
+    onCarouselRender.mockClear();
 
     render(
       <SubscriptionsPodcastCarousel
@@ -55,15 +52,19 @@ describe("SubscriptionsPodcastCarousel", () => {
       />
     );
 
-    expect(getLastCarouselProps()?.opts).toMatchObject({
-      loop: true,
-      align: "start",
-      containScroll: "trimSnaps",
-    });
+    expect(onCarouselRender).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        opts: expect.objectContaining({
+          loop: true,
+          align: "start",
+          containScroll: "trimSnaps",
+        }),
+      })
+    );
   });
 
   it("configures loop: false when podcasts count < 2", () => {
-    lastCarouselProps = null;
+    onCarouselRender.mockClear();
 
     render(
       <SubscriptionsPodcastCarousel
@@ -72,10 +73,14 @@ describe("SubscriptionsPodcastCarousel", () => {
       />
     );
 
-    expect(getLastCarouselProps()?.opts).toMatchObject({
-      loop: false,
-      align: "start",
-      containScroll: "trimSnaps",
-    });
+    expect(onCarouselRender).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        opts: expect.objectContaining({
+          loop: false,
+          align: "start",
+          containScroll: "trimSnaps",
+        }),
+      })
+    );
   });
 });

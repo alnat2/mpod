@@ -86,11 +86,15 @@ function setupRoutes(page: any, podcastCount: number) {
   ]);
 }
 
-test.describe("Subscriptions Carousel Loop", () => {
+test.describe("Subscriptions Carousel Loop - Mobile", () => {
+  test.use({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+  });
+
   test("mobile carousel loops backward to the last podcast when swiping right on first podcast (2 podcasts)", async ({
     page,
-  }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+  }, testInfo) => {
     await setupRoutes(page, 2);
 
     await page.goto("/subscriptions");
@@ -129,14 +133,13 @@ test.describe("Subscriptions Carousel Loop", () => {
     });
 
     await page.screenshot({
-      path: "/Users/cross/.gemini/antigravity/brain/7075f6a9-9d38-4740-8d66-1adfa8f16739/carousel-mobile-loop.png",
+      path: testInfo.outputPath("carousel-mobile-loop.png"),
     });
   });
 
   test("mobile carousel loops forward to the first podcast when swiping left on last podcast (3 podcasts)", async ({
     page,
-  }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+  }, testInfo) => {
     await setupRoutes(page, 3);
 
     await page.goto("/subscriptions");
@@ -178,12 +181,21 @@ test.describe("Subscriptions Carousel Loop", () => {
     await expect(firstSlide.locator("[inert]")).toHaveCount(0, {
       timeout: 5000,
     });
+
+    await page.screenshot({
+      path: testInfo.outputPath("carousel-mobile-loop-forward.png"),
+    });
+  });
+});
+
+test.describe("Subscriptions Carousel Loop - Desktop", () => {
+  test.use({
+    viewport: { width: 1440, height: 900 },
   });
 
   test("desktop carousel previous button is enabled and functional with multiple podcasts", async ({
     page,
-  }) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
+  }, testInfo) => {
     await setupRoutes(page, 6);
 
     await page.goto("/subscriptions");
@@ -203,7 +215,7 @@ test.describe("Subscriptions Carousel Loop", () => {
     await expect(nextButton).toBeEnabled();
 
     await page.screenshot({
-      path: "/Users/cross/.gemini/antigravity/brain/7075f6a9-9d38-4740-8d66-1adfa8f16739/carousel-desktop-loop.png",
+      path: testInfo.outputPath("carousel-desktop-loop.png"),
     });
   });
 });

@@ -20,6 +20,7 @@ frontend/dist/
 frontend/build/
 frontend/storybook-static/
 frontend/coverage/
+frontend/test-results/
 
 # Local tool caches
 .tmp/
