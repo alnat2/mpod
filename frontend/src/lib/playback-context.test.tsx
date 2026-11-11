@@ -936,6 +936,57 @@ describe("PlaybackProvider", () => {
     expect(audio.playImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("resumes playback immediately via fast path without awaiting pending playback refresh", async () => {
+    const user = userEvent.setup();
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+
+    const audio = FakeAudio.first;
+    await emitAudioReady(audio);
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+      expect(mediaSession.playbackState).toBe("playing");
+    });
+
+    audio.currentTime = 222;
+    mediaSession.invoke("pause");
+    audio.emit("pause");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("no");
+      expect(mediaSession.playbackState).toBe("paused");
+    });
+
+    const refreshDeferred = deferred<Awaited<ReturnType<typeof api.playback.get>>>();
+    const playbackGetSpy = vi.mocked(api.playback.get);
+    playbackGetSpy.mockImplementationOnce(() => refreshDeferred.promise);
+
+    mediaSession.invoke("play");
+
+    // The fast path MUST synchronously invoke audio.playImpl() without waiting for api.playback.get to settle
+    expect(audio.playImpl).toHaveBeenCalledTimes(2);
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+      expect(mediaSession.playbackState).toBe("playing");
+    });
+
+    // Resolve deferred to clean up any pending promises
+    await act(async () => {
+      refreshDeferred.resolve({
+        playback: {
+          episodeId: 1,
+          positionSeconds: 222,
+          lastUpdated: new Date().toISOString(),
+        },
+      });
+    });
+  });
+
   it("does not re-register Media Session action handlers on timeupdate", async () => {
     const user = userEvent.setup();
     renderPlaybackProvider();

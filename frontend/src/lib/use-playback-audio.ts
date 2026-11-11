@@ -1548,6 +1548,37 @@ export function usePlaybackAudio({
     if (audio && currentEpisode) {
       completedAudioSourceRef.current = null;
       allowPlaybackProgress(currentEpisode);
+
+      const currentSrc = audio.currentSrc || audio.src;
+      const canFastResume =
+        Boolean(currentSrc) &&
+        sourcePrimedRef.current &&
+        sourceReadyRef.current &&
+        Number.isFinite(audio.currentTime) &&
+        audio.error === null &&
+        !audio.ended &&
+        !sourceSwitchingRef.current &&
+        matchesMediaSource(currentSrc, getAudioSourceUrl(currentEpisode));
+
+      if (canFastResume) {
+        const currentGen = sourceGenerationRef.current;
+        applyPlaybackRate(audio, speedLabel);
+        playingRef.current = true;
+        setPlaying(true);
+        void attemptAudioPlay(
+          audio,
+          (error) => {
+            if (sourceGenerationRef.current !== currentGen) return;
+            playingRef.current = false;
+            userInitiatedPlayRef.current = false;
+            setPlaying(false);
+            setPlaybackError(describeAudioError(error));
+          },
+          () => sourceGenerationRef.current === currentGen
+        );
+        return;
+      }
+
       sourcePrimeCleanupRef.current?.();
       sourcePrimeCleanupRef.current = null;
       sourceGenerationRef.current += 1;

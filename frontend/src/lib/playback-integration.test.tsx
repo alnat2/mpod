@@ -1075,9 +1075,9 @@ describe("combined playback integration", () => {
     await act(async () => {});
 
     await user.click(screen.getByRole("button", { name: "Toggle" }));
-    await waitFor(() => expect(get.mock.calls.filter(
+    expect(get.mock.calls.filter(
       ([target]) => typeof target !== "number" && "trackId" in target && target.trackId === 2
-    )).toHaveLength(chapterTwoReadsBeforeResume + 1));
+    )).toHaveLength(chapterTwoReadsBeforeResume);
     await waitFor(() => expect(audio.paused).toBe(false));
     expect(audio.currentTime).toBe(17);
 
