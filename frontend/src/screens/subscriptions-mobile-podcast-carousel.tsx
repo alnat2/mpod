@@ -86,9 +86,9 @@ export function SubscriptionsMobilePodcastCarousel({
       aria-label="Podcast subscriptions"
       opts={{
         align: "start",
-        containScroll: "trimSnaps",
+        containScroll: false,
         dragFree: false,
-        loop: podcasts.length >= 3,
+        loop: podcasts.length >= 2,
         skipSnaps: false,
         watchDrag: podcasts.length > 1,
       }}

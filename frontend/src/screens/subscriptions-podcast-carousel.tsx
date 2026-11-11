@@ -25,6 +25,7 @@ export function SubscriptionsPodcastCarousel<T extends { id: number }>({
         opts={{
           align: "start",
           containScroll: "trimSnaps",
+          loop: podcasts.length >= 2,
         }}
       >
         <CarouselContent className={cn("ml-0 gap-5", podcasts.length < 4 && "justify-center")}>

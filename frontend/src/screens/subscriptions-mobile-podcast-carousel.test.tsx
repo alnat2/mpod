@@ -5,6 +5,21 @@ import { describe, expect, it, vi } from "vitest";
 import type { CachedSubscriptionPodcast } from "@/lib/subscriptions-cache";
 import { SubscriptionsMobilePodcastCarousel } from "./subscriptions-mobile-podcast-carousel";
 
+let lastCarouselProps: { opts?: Record<string, unknown> } | null = null;
+function getLastCarouselProps() {
+  return lastCarouselProps;
+}
+vi.mock("@/components/ui/carousel", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/ui/carousel")>();
+  return {
+    ...actual,
+    Carousel: (props: { opts?: Record<string, unknown> }) => {
+      lastCarouselProps = props;
+      return actual.Carousel(props as any);
+    },
+  };
+});
+
 const mockPodcasts: CachedSubscriptionPodcast[] = [
   {
     id: 1,
@@ -152,5 +167,47 @@ describe("SubscriptionsMobilePodcastCarousel", () => {
     expect(actionsRow).not.toBeNull();
     expect(actionsRow!.className).toContain("w-full");
     expect(actionsRow!.className).toContain("justify-center");
+  });
+
+  it("configures loop: true and containScroll: false when podcasts count >= 2", () => {
+    lastCarouselProps = null;
+
+    render(
+      <SubscriptionsMobilePodcastCarousel
+        podcasts={mockPodcasts.slice(0, 2)}
+        selectedPodcastId={1}
+        onSelectPodcast={vi.fn()}
+        onRefreshPodcast={vi.fn()}
+        onUnsubscribePodcast={vi.fn()}
+        refreshingPodcastIds={new Set()}
+        exitingPodcastIds={new Set()}
+      />
+    );
+
+    expect(getLastCarouselProps()?.opts).toMatchObject({
+      loop: true,
+      containScroll: false,
+      align: "start",
+    });
+  });
+
+  it("configures loop: false when podcasts count < 2", () => {
+    lastCarouselProps = null;
+
+    render(
+      <SubscriptionsMobilePodcastCarousel
+        podcasts={mockPodcasts.slice(0, 1)}
+        selectedPodcastId={1}
+        onSelectPodcast={vi.fn()}
+        onRefreshPodcast={vi.fn()}
+        onUnsubscribePodcast={vi.fn()}
+        refreshingPodcastIds={new Set()}
+        exitingPodcastIds={new Set()}
+      />
+    );
+
+    expect(getLastCarouselProps()?.opts).toMatchObject({
+      loop: false,
+    });
   });
 });
