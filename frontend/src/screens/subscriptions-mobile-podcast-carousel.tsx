@@ -30,6 +30,7 @@ export function SubscriptionsMobilePodcastCarousel({
   refreshingPodcastIds,
   selectedPodcastId,
 }: SubscriptionsMobilePodcastCarouselProps) {
+  const isSingle = podcasts.length <= 1;
   const [carouselApi, setCarouselApi] = useState<CarouselApi>();
   const initialIndex = Math.max(
     0,
@@ -80,12 +81,15 @@ export function SubscriptionsMobilePodcastCarousel({
   return (
     <Carousel
       setApi={setCarouselApi}
-      className="touch-pan-y relative h-[160px] w-full shrink-0 overflow-hidden [&_[data-slot=carousel-content]]:h-full"
+      className={cn(
+        "touch-pan-y relative h-[160px] w-full shrink-0 overflow-hidden [&_[data-slot=carousel-content]]:h-full",
+        isSingle && "px-5"
+      )}
       role="region"
       aria-roledescription="carousel"
       aria-label="Podcast subscriptions"
       opts={{
-        align: "start",
+        align: "center",
         containScroll: false,
         dragFree: false,
         loop: podcasts.length >= 2,
@@ -93,7 +97,7 @@ export function SubscriptionsMobilePodcastCarousel({
         watchDrag: podcasts.length > 1,
       }}
     >
-      <CarouselContent className="ml-0 h-full gap-3">
+      <CarouselContent className="ml-0 h-full">
         {podcasts.map((podcast, index) => {
           const isActive = index === activeIndex;
           const isExiting = exitingPodcastIds.has(podcast.id);
@@ -101,7 +105,10 @@ export function SubscriptionsMobilePodcastCarousel({
           return (
             <CarouselItem
               key={podcast.id}
-              className="h-[160px] basis-full min-w-0 shrink-0 grow-0 pl-0"
+              className={cn(
+                "h-[160px] min-w-0 shrink-0 grow-0",
+                isSingle ? "basis-full px-0" : "basis-[calc(100%-60px)] px-1.5"
+              )}
               role="group"
               aria-roledescription="slide"
               aria-label={`${podcast.title} (${index + 1} of ${podcasts.length})`}
@@ -129,11 +136,9 @@ export function SubscriptionsMobilePodcastCarousel({
                     onRefresh={() => onRefreshPodcast(podcast.id)}
                     onUnsubscribe={() => onUnsubscribePodcast(podcast)}
                     className={cn(
-                      "transition-[opacity,transform] duration-200 ease-out",
-                      isActive
-                        ? "opacity-100 scale-100 shadow-md"
-                        : "opacity-60 scale-[0.96]",
-                      isExiting && "pointer-events-none scale-[0.98] opacity-0"
+                      "transition-opacity duration-200 ease-out opacity-100 scale-100",
+                      isActive && "shadow-md",
+                      isExiting && "pointer-events-none opacity-0"
                     )}
                   />
                 </div>

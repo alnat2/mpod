@@ -378,8 +378,8 @@ export function ComponentPreview() {
 
     return (
       <div className="flex h-screen w-full flex-col overflow-hidden bg-background text-foreground">
-        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden px-5 pb-[65px]">
-          <div className="pt-4">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden pb-[65px]">
+          <div className="px-5 pt-4">
             <PageHeader
               layout="mobile"
               title="Podcasts"
@@ -411,15 +411,17 @@ export function ComponentPreview() {
                 refreshingPodcastIds={new Set()}
                 exitingPodcastIds={new Set()}
               />
-              <SubscriptionsMobileEpisodeList
-                podcast={selectedPodcast}
-                visibleEpisodes={previewSubscriptionEpisodes}
-                onAddToPlaylist={() => undefined}
-                onMarkAllListened={() => undefined}
-                onMarkListened={() => undefined}
-                onRemoveFromPlaylist={() => undefined}
-                onShowNotes={() => undefined}
-              />
+              <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col px-5">
+                <SubscriptionsMobileEpisodeList
+                  podcast={selectedPodcast}
+                  visibleEpisodes={previewSubscriptionEpisodes}
+                  onAddToPlaylist={() => undefined}
+                  onMarkAllListened={() => undefined}
+                  onMarkListened={() => undefined}
+                  onRemoveFromPlaylist={() => undefined}
+                  onShowNotes={() => undefined}
+                />
+              </div>
             </div>
           </div>
         </div>

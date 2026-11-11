@@ -178,10 +178,13 @@ function AuthenticatedAppLayout() {
     [setOnAddPodcast]
   );
 
+  const isSubscriptions = location.pathname.startsWith("/subscriptions");
+
   return (
     <>
       <AppShell
         activeNavItem={activeNavItem}
+        className={isSubscriptions ? "px-0 md:px-6 xl:px-20" : undefined}
         mainClassName="xl:max-w-[1280px]"
         pageHeaderVisible={false}
         onAddPodcast={handleAdd}

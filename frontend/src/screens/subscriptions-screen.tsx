@@ -313,13 +313,15 @@ export function SubscriptionsScreen() {
         pageHeaderVisible={false}
       >
         <div className="flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5 md:pb-8">
-          <SubscriptionsPageHeader
-            isMobile={isMobile}
-            title={pageTitle}
-            subtitle={pageSubtitle}
-            actions={pageActions}
-          />
-          <div className="w-full">
+          <div className="w-full px-5 md:px-0">
+            <SubscriptionsPageHeader
+              isMobile={isMobile}
+              title={pageTitle}
+              subtitle={pageSubtitle}
+              actions={pageActions}
+            />
+          </div>
+          <div className="w-full px-5 md:px-0">
             <ScreenBannerStack>
               {error ? (
                 <ErrorBanner onClose={() => setError(null)}>{error}</ErrorBanner>
@@ -341,7 +343,7 @@ export function SubscriptionsScreen() {
           </div>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-4 md:py-6">
             {loading ? (
-              <div className="w-full">
+              <div className="w-full px-5 md:px-0">
                 <ListLoadingState label="Loading subscriptions" />
               </div>
             ) : visiblePodcasts.length > 0 ? (
@@ -360,24 +362,26 @@ export function SubscriptionsScreen() {
                         refreshingPodcastIds={refreshingPodcastIds}
                         exitingPodcastIds={exitingPodcastIds}
                       />
-                      <SubscriptionsMobileEpisodeList
-                        key={`${selectedPodcast.id}-${showAll ? "all" : "unlistened"}`}
-                        podcast={selectedPodcast}
-                        visibleEpisodes={visibleEpisodes}
-                        onMarkAllListened={(podcastId) =>
-                          void markAllListened(podcastId)
-                        }
-                        onMarkListened={(items, isListened) =>
-                          void markListened(items, isListened)
-                        }
-                        onRemoveFromPlaylist={(episode) =>
-                          void removeFromPlaylist(episode)
-                        }
-                        onAddToPlaylist={(id) =>
-                          void runAction(() => api.playlist.add(id))
-                        }
-                        onShowNotes={showEpisodeNotes}
-                      />
+                      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col px-5 md:px-0">
+                        <SubscriptionsMobileEpisodeList
+                          key={`${selectedPodcast.id}-${showAll ? "all" : "unlistened"}`}
+                          podcast={selectedPodcast}
+                          visibleEpisodes={visibleEpisodes}
+                          onMarkAllListened={(podcastId) =>
+                            void markAllListened(podcastId)
+                          }
+                          onMarkListened={(items, isListened) =>
+                            void markListened(items, isListened)
+                          }
+                          onRemoveFromPlaylist={(episode) =>
+                            void removeFromPlaylist(episode)
+                          }
+                          onAddToPlaylist={(id) =>
+                            void runAction(() => api.playlist.add(id))
+                          }
+                          onShowNotes={showEpisodeNotes}
+                        />
+                      </div>
                     </>
                   ) : null
                 ) : selectedPodcast ? (
@@ -408,7 +412,7 @@ export function SubscriptionsScreen() {
                 ) : null}
               </div>
             ) : (
-              <div className="h-full w-full flex flex-col">
+              <div className="flex h-full w-full flex-col px-5 md:px-0">
                 <SubscriptionsEmptyState
                   title={hasSubscriptions ? "All caught up" : "No podcasts yet"}
                   description={

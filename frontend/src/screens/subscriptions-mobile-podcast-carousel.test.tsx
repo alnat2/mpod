@@ -142,7 +142,7 @@ describe("SubscriptionsMobilePodcastCarousel", () => {
     expect(onUnsubscribePodcast).toHaveBeenCalledWith(mockPodcasts[0]);
   });
 
-  it("configures slide basis to match 20px mobile margins and renders actions in a full-width bottom row", () => {
+  it("configures centered full-bleed carousel with peek basis when multiple podcasts, and renders actions in a full-width bottom row", () => {
     render(
       <SubscriptionsMobilePodcastCarousel
         podcasts={mockPodcasts}
@@ -155,8 +155,20 @@ describe("SubscriptionsMobilePodcastCarousel", () => {
       />
     );
 
+    const carousel = screen.getByRole("region", {
+      name: "Podcast subscriptions",
+    });
+    expect(carousel.className).toContain("w-full");
+    expect(carousel.className).not.toContain("px-5");
+    expect(carousel.className).not.toContain("-mx-5");
+
     const slides = screen.getAllByRole("group");
-    expect(slides[0]!.className).toContain("basis-full");
+    expect(slides[0]!.className).toContain("basis-[calc(100%-60px)]");
+    expect(slides[0]!.className).toContain("px-1.5");
+
+    // Inactive slides must retain opacity-100 scale-100 (not dimmed or scaled down)
+    const inactiveCard = slides[1]!.querySelector(".opacity-100.scale-100");
+    expect(inactiveCard).not.toBeNull();
 
     // Refresh and Unsubscribe buttons should be inside a full-width bottom row
     const refreshButton = screen.getAllByRole("button", { name: "Refresh" })[0]!;
@@ -166,7 +178,7 @@ describe("SubscriptionsMobilePodcastCarousel", () => {
     expect(actionsRow!.className).toContain("justify-center");
   });
 
-  it("configures loop: true and containScroll: false when podcasts count >= 2", () => {
+  it("configures loop: true, align: center, and containScroll: false when podcasts count >= 2", () => {
     onCarouselRender.mockClear();
 
     render(
@@ -186,13 +198,14 @@ describe("SubscriptionsMobilePodcastCarousel", () => {
         opts: expect.objectContaining({
           loop: true,
           containScroll: false,
-          align: "start",
+          align: "center",
+          watchDrag: true,
         }),
       })
     );
   });
 
-  it("configures loop: false when podcasts count < 2", () => {
+  it("configures single podcast to span full content width without full-bleed and with drag disabled", () => {
     onCarouselRender.mockClear();
 
     render(
@@ -207,10 +220,21 @@ describe("SubscriptionsMobilePodcastCarousel", () => {
       />
     );
 
+    const carousel = screen.getByRole("region", {
+      name: "Podcast subscriptions",
+    });
+    expect(carousel.className).toContain("w-full");
+    expect(carousel.className).toContain("px-5");
+    expect(carousel.className).not.toContain("-mx-5");
+
+    const slides = screen.getAllByRole("group");
+    expect(slides[0]!.className).toContain("basis-full");
+
     expect(onCarouselRender).toHaveBeenLastCalledWith(
       expect.objectContaining({
         opts: expect.objectContaining({
           loop: false,
+          watchDrag: false,
         }),
       })
     );
