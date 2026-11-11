@@ -987,6 +987,156 @@ describe("PlaybackProvider", () => {
     });
   });
 
+  it("ignores a late play rejection and delayed pause event from an older attempt after rapid re-play", async () => {
+    const user = userEvent.setup();
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+    const audio = FakeAudio.first;
+    await emitAudioReady(audio);
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+
+    audio.currentTime = 50;
+    mediaSession.invoke("pause");
+    audio.emit("pause");
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("no");
+    });
+
+    const playOneDeferred = deferred<void>();
+    audio.playImpl.mockImplementationOnce(() => playOneDeferred.promise);
+
+    mediaSession.invoke("play");
+    mediaSession.invoke("pause");
+
+    audio.playImpl.mockImplementationOnce(async () => {
+      audio.paused = false;
+    });
+    mediaSession.invoke("play");
+
+    // Delayed pause event from earlier pause arrives on the event loop
+    audio.emit("pause");
+
+    // Play 1 promise now rejects
+    await act(async () => {
+      playOneDeferred.reject(new DOMException("The play() request was interrupted by a call to pause().", "AbortError"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+    expect(audio.paused).toBe(false);
+    expect(screen.getByTestId("playback-error")).toHaveTextContent("none");
+  });
+
+  it("plays immediately on fast path and subsequently transitions to a newer backend position from another device", async () => {
+    const user = userEvent.setup();
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+    const audio = FakeAudio.first;
+    await emitAudioReady(audio);
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+
+    audio.currentTime = 100;
+    mediaSession.invoke("pause");
+    audio.emit("pause");
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("no");
+    });
+
+    const refreshDeferred = deferred<Awaited<ReturnType<typeof api.playback.get>>>();
+    const playbackGetSpy = vi.mocked(api.playback.get);
+    playbackGetSpy.mockImplementationOnce(() => refreshDeferred.promise);
+
+    mediaSession.invoke("play");
+
+    expect(audio.playImpl).toHaveBeenCalled();
+    expect(audio.currentTime).toBe(100);
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+
+    await act(async () => {
+      refreshDeferred.resolve({
+        playback: {
+          episodeId: 1,
+          positionSeconds: 333,
+          lastUpdated: new Date(Date.now() + 60000).toISOString(),
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(audio.currentTime).toBe(333);
+      expect(screen.getByTestId("position")).toHaveTextContent("333");
+    });
+    expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+  });
+
+  it("does not rewind actively playing audio or displayed position when delayed backend response has a smaller position", async () => {
+    const user = userEvent.setup();
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+    const audio = FakeAudio.first;
+    await emitAudioReady(audio);
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+    });
+
+    audio.currentTime = 100;
+    mediaSession.invoke("pause");
+    audio.emit("pause");
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("no");
+    });
+
+    const refreshDeferred = deferred<Awaited<ReturnType<typeof api.playback.get>>>();
+    const playbackGetSpy = vi.mocked(api.playback.get);
+    playbackGetSpy.mockImplementationOnce(() => refreshDeferred.promise);
+
+    mediaSession.invoke("play");
+
+    audio.currentTime = 150;
+    await act(async () => {
+      audio.emit("timeupdate");
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("position")).toHaveTextContent("150");
+    });
+
+    await act(async () => {
+      refreshDeferred.resolve({
+        playback: {
+          episodeId: 1,
+          positionSeconds: 120,
+          lastUpdated: new Date(Date.now() + 60000).toISOString(),
+        },
+      });
+    });
+
+    expect(audio.currentTime).toBe(150);
+    expect(screen.getByTestId("position")).toHaveTextContent("150");
+    expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+  });
+
   it("does not re-register Media Session action handlers on timeupdate", async () => {
     const user = userEvent.setup();
     renderPlaybackProvider();

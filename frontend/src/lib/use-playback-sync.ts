@@ -400,9 +400,15 @@ export function usePlaybackSync({
           );
           const audio = audioRef.current;
           if (audio && sourcePrimedRef.current && sourceReadyRef.current) {
-            setAudioPosition(audio, nextPosition);
+            const isActivelyPlaying = !audio.paused || playingRef.current;
+            const shouldSeek = !isActivelyPlaying || nextPosition > audio.currentTime;
+            if (shouldSeek) {
+              setAudioPosition(audio, nextPosition);
+              setPositionSeconds(nextPosition);
+            }
+          } else {
+            setPositionSeconds(nextPosition);
           }
-          setPositionSeconds(nextPosition);
         }
 
         return { ...episode, playback: nextPlayback };
