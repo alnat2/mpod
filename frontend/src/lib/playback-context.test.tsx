@@ -1100,6 +1100,46 @@ describe("PlaybackProvider", () => {
     expect(screen.getByTestId("playback-error")).toHaveTextContent("none");
   });
 
+  it("resets playing state and playingRef when play() rejects and does not falsely commit playback on subsequent pause", async () => {
+    const user = userEvent.setup();
+    const updateSpy = vi.mocked(api.playback.update);
+    updateSpy.mockClear();
+
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    const audio = FakeAudio.first;
+    audio.playImpl.mockImplementationOnce(async () => {
+      throw new DOMException(
+        "The play() request was blocked by the browser.",
+        "NotAllowedError"
+      );
+    });
+
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+    await emitAudioReady(audio);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("no");
+      expect(screen.getByTestId("playback-error")).toHaveTextContent(
+        "NotAllowedError"
+      );
+    });
+
+    const callsBeforePause = updateSpy.mock.calls.length;
+
+    // Immediately invoke pause via MediaSession and emit pause event
+    mediaSession.invoke("pause");
+    audio.emit("pause");
+
+    expect(screen.getByTestId("playing")).toHaveTextContent("no");
+    // Confirm no additional playback update commit was sent as if it were actively playing
+    expect(updateSpy.mock.calls.length).toBe(callsBeforePause);
+  });
+
   it("plays immediately on fast path and subsequently transitions to a newer backend position from another device", async () => {
     const user = userEvent.setup();
     renderPlaybackProvider();

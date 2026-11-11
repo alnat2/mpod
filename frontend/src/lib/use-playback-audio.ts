@@ -436,8 +436,9 @@ export function usePlaybackAudio({
             if (onFailure) {
               onFailure(error);
             } else {
-              setPlaying(false);
+              playingRef.current = false;
               userInitiatedPlayRef.current = false;
+              setPlaying(false);
               setPlaybackError(describeAudioError(error));
             }
           },
@@ -451,7 +452,7 @@ export function usePlaybackAudio({
         }
       }
     },
-    [audioRef, setPlaybackError, setPlaying, userInitiatedPlayRef]
+    [audioRef, playingRef, setPlaybackError, setPlaying, userInitiatedPlayRef]
   );
 
   useEffect(() => {
