@@ -57,4 +57,66 @@ describe("useVirtualScroll", () => {
     expect(result.current.topSpacerHeight).toBeGreaterThan(0);
     expect(result.current.virtualItems[0]).toBe("item-8");
   });
+
+  it("resets scroll position and renders from the top immediately when resetKey changes", () => {
+    let resetKey = 1;
+    let items = sampleItems;
+
+    const { result, rerender } = renderHook(() =>
+      useVirtualScroll({
+        items,
+        itemHeight: 70,
+        itemGap: 4,
+        overscan: 2,
+        defaultViewportHeight: 600,
+        resetKey,
+      })
+    );
+
+    // Scroll down deeply
+    act(() => {
+      result.current.onScroll({
+        currentTarget: { scrollTop: 1480 },
+      } as any);
+    });
+    expect(result.current.virtualItems[0]).toBe("item-18");
+
+    // Change resetKey and switch to a short list of 3 items
+    resetKey = 2;
+    items = ["short-0", "short-1", "short-2"];
+    rerender();
+
+    // Must immediately render from the beginning without blank frame
+    expect(result.current.topSpacerHeight).toBe(0);
+    expect(result.current.virtualItems).toEqual(["short-0", "short-1", "short-2"]);
+  });
+
+  it("clamps startIndex to prevent empty virtualItems slice if scrolled past the end of new items list", () => {
+    let items = sampleItems;
+
+    const { result, rerender } = renderHook(() =>
+      useVirtualScroll({
+        items,
+        itemHeight: 70,
+        itemGap: 4,
+        overscan: 2,
+        defaultViewportHeight: 600,
+      })
+    );
+
+    // Scroll down deeply (past index 20)
+    act(() => {
+      result.current.onScroll({
+        currentTarget: { scrollTop: 1480 },
+      } as any);
+    });
+
+    // Switch to short list without resetKey
+    items = ["short-0", "short-1", "short-2"];
+    rerender();
+
+    // Should clamp rather than returning empty slice []
+    expect(result.current.virtualItems.length).toBe(3);
+    expect(result.current.virtualItems).toEqual(["short-0", "short-1", "short-2"]);
+  });
 });

@@ -364,7 +364,6 @@ export function SubscriptionsScreen() {
                       />
                       <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col px-5 md:px-0">
                         <SubscriptionsMobileEpisodeList
-                          key={`${selectedPodcast.id}-${showAll ? "all" : "unlistened"}`}
                           podcast={selectedPodcast}
                           visibleEpisodes={visibleEpisodes}
                           onMarkAllListened={(podcastId) =>

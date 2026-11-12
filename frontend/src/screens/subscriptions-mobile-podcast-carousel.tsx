@@ -44,28 +44,15 @@ export function SubscriptionsMobilePodcastCarousel({
     const onSelect = () => {
       const snap = carouselApi.selectedScrollSnap();
       setActiveIndex(snap);
-    };
-
-    carouselApi.on("select", onSelect);
-    return () => {
-      carouselApi.off("select", onSelect);
-    };
-  }, [carouselApi]);
-
-  useEffect(() => {
-    if (!carouselApi) return;
-
-    const onSettle = () => {
-      const snap = carouselApi.selectedScrollSnap();
       const targetPodcast = podcasts[snap];
       if (targetPodcast && targetPodcast.id !== selectedPodcastId) {
         onSelectPodcast(targetPodcast.id);
       }
     };
 
-    carouselApi.on("settle", onSettle);
+    carouselApi.on("select", onSelect);
     return () => {
-      carouselApi.off("settle", onSettle);
+      carouselApi.off("select", onSelect);
     };
   }, [carouselApi, onSelectPodcast, podcasts, selectedPodcastId]);
 

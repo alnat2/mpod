@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from "react";
 
 export type UseVirtualScrollOptions<T> = {
   items: T[];
@@ -6,6 +6,7 @@ export type UseVirtualScrollOptions<T> = {
   itemGap?: number;
   overscan?: number;
   defaultViewportHeight?: number;
+  resetKey?: unknown;
 };
 
 export function useVirtualScroll<T>({
@@ -14,14 +15,31 @@ export function useVirtualScroll<T>({
   itemGap = 4,
   overscan = 4,
   defaultViewportHeight = 600,
+  resetKey,
 }: UseVirtualScrollOptions<T>) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(defaultViewportHeight);
 
+  // Synchronously reset scrollTop during rendering if resetKey changed
+  const [prevResetKey, setPrevResetKey] = useState(resetKey);
+  let effectiveScrollTop = scrollTop;
+  if (resetKey !== prevResetKey) {
+    setPrevResetKey(resetKey);
+    setScrollTop(0);
+    effectiveScrollTop = 0;
+  }
+
   const onScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     setScrollTop(event.currentTarget.scrollTop);
   }, []);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (container && resetKey !== undefined) {
+      container.scrollTop = 0;
+    }
+  }, [resetKey]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -55,11 +73,16 @@ export function useVirtualScroll<T>({
       };
     }
 
-    const startIndex = Math.max(
+    const rawStartIndex = Math.max(
       0,
-      Math.floor(scrollTop / rowPitch) - overscan
+      Math.floor(effectiveScrollTop / rowPitch) - overscan
     );
     const visibleRowCount = Math.ceil(viewportHeight / rowPitch) + overscan * 2;
+    // Clamping to avoid slicing out-of-bounds if scrollTop was out of sync
+    const startIndex = Math.min(
+      rawStartIndex,
+      Math.max(0, totalCount - visibleRowCount)
+    );
     const endIndex = Math.min(totalCount, startIndex + visibleRowCount);
 
     return {
@@ -69,7 +92,7 @@ export function useVirtualScroll<T>({
       topSpacerHeight: startIndex * rowPitch,
       bottomSpacerHeight: (totalCount - endIndex) * rowPitch,
     };
-  }, [items, itemGap, overscan, rowPitch, scrollTop, viewportHeight]);
+  }, [items, itemGap, overscan, rowPitch, effectiveScrollTop, viewportHeight]);
 
   return {
     containerRef,

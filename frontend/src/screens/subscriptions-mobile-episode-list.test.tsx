@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -128,5 +128,91 @@ describe("SubscriptionsMobileEpisodeList", () => {
     );
 
     expect(screen.getByText("0 / 0 episodes")).toBeInTheDocument();
+  });
+
+  it("resets scroll position and immediately renders first episodes when switched to another podcast after scrolling down", () => {
+    const longEpisodes: CachedSubscriptionEpisode[] = Array.from(
+      { length: 40 },
+      (_, i) => ({
+        id: 200 + i,
+        podcastId: 1,
+        title: `Long Episode ${i + 1}`,
+        description: `Description ${i + 1}`,
+        audioUrl: `https://example.com/ep${i + 1}.mp3`,
+        downloaded: false,
+        publishedAt: "2026-01-01T00:00:00Z",
+        isListened: false,
+        inPlaylist: false,
+        duration: 1800,
+      })
+    );
+
+    const podcastLong: CachedSubscriptionPodcast = {
+      ...mockPodcast,
+      id: 1,
+      episodes: longEpisodes,
+    };
+
+    const shortEpisodes: CachedSubscriptionEpisode[] = [
+      {
+        id: 301,
+        podcastId: 2,
+        title: "Short Podcast Episode 1",
+        description: "Short Description 1",
+        audioUrl: "https://example.com/short1.mp3",
+        downloaded: false,
+        publishedAt: "2026-01-01T00:00:00Z",
+        isListened: false,
+        inPlaylist: false,
+        duration: 600,
+      },
+    ];
+
+    const podcastShort: CachedSubscriptionPodcast = {
+      ...mockPodcast,
+      id: 2,
+      title: "Short Podcast",
+      episodes: shortEpisodes,
+    };
+
+    const { rerender, container } = render(
+      <TooltipProvider>
+        <SubscriptionsMobileEpisodeList
+          podcast={podcastLong}
+          visibleEpisodes={longEpisodes}
+          onAddToPlaylist={vi.fn()}
+          onMarkAllListened={vi.fn()}
+          onMarkListened={vi.fn()}
+          onRemoveFromPlaylist={vi.fn()}
+          onShowNotes={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    // Initial render shows first episode
+    expect(screen.getByText("Long Episode 1")).toBeInTheDocument();
+
+    // Scroll container down deep
+    const scrollContainer = container.querySelector('[class*="overflow-y-auto"]');
+    expect(scrollContainer).not.toBeNull();
+    fireEvent.scroll(scrollContainer!, { target: { scrollTop: 2000 } });
+
+    // Re-render with podcastShort (different podcast.id, short list)
+    rerender(
+      <TooltipProvider>
+        <SubscriptionsMobileEpisodeList
+          podcast={podcastShort}
+          visibleEpisodes={shortEpisodes}
+          onAddToPlaylist={vi.fn()}
+          onMarkAllListened={vi.fn()}
+          onMarkListened={vi.fn()}
+          onRemoveFromPlaylist={vi.fn()}
+          onShowNotes={vi.fn()}
+        />
+      </TooltipProvider>
+    );
+
+    // The short podcast's first episode must be rendered immediately without a blank frame
+    expect(screen.getByText("Short Podcast Episode 1")).toBeInTheDocument();
   });
 });

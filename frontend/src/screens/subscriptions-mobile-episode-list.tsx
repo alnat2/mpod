@@ -62,7 +62,9 @@ export function SubscriptionsMobileEpisodeList({
     itemGap: EPISODE_ROW_GAP,
     overscan: EPISODE_OVERSCAN_ROWS,
     defaultViewportHeight: MOBILE_EPISODE_VIEWPORT_HEIGHT,
+    resetKey: podcast.id,
   });
+
   const durationForEpisode = useAudioMetadataDurations(virtualEpisodes);
 
   const episodes = podcast.episodes ?? [];
