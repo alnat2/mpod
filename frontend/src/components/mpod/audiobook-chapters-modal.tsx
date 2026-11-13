@@ -97,7 +97,7 @@ export function AudiobookChaptersModal({
                     key={track.id}
                     data-slot="chapter-item"
                     data-in-playlist={inPlaylist ? "true" : undefined}
-                    className="flex h-[70px] w-full min-w-0 shrink-0 items-center gap-3 overflow-hidden rounded-[16px] bg-card px-3 text-foreground shadow-xs"
+                    className="flex h-[70px] w-full min-w-0 shrink-0 items-center gap-3 overflow-hidden rounded-[16px] bg-card px-3 text-foreground shadow-xs dark:shadow-[0_2px_4px_rgba(0,0,0,0.5),0_1px_2px_rgba(0,0,0,0.4)]"
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-1">
                       <HugeiconsIcon

@@ -89,7 +89,7 @@ export function FileManagerItem({
     <div
       data-slot="fm-item"
       className={cn(
-        "flex h-[70px] w-full items-center gap-3 bg-card text-foreground shadow-xs transition-colors hover:bg-accent/40 rounded-[16px] px-3",
+        "flex h-[70px] w-full items-center gap-3 bg-card text-foreground shadow-xs dark:shadow-[0_2px_4px_rgba(0,0,0,0.5),0_1px_2px_rgba(0,0,0,0.4)] transition-colors hover:bg-accent/40 rounded-[16px] px-3",
         onOpen && "cursor-pointer",
         className
       )}

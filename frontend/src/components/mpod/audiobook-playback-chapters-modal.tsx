@@ -113,7 +113,7 @@ export function AudiobookPlaybackChaptersModal({
                 <div
                   key={track.id}
                   className={cn(
-                    "flex h-[70px] w-full min-w-0 shrink-0 items-center gap-3 overflow-hidden rounded-[16px] px-3 text-foreground shadow-xs",
+                    "flex h-[70px] w-full min-w-0 shrink-0 items-center gap-3 overflow-hidden rounded-[16px] px-3 text-foreground shadow-xs dark:shadow-[0_2px_4px_rgba(0,0,0,0.5),0_1px_2px_rgba(0,0,0,0.4)]",
                     current
                       ? "bg-accent border border-border"
                       : "bg-card border border-transparent"
