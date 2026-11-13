@@ -35,6 +35,7 @@ import type {
   CachedSubscriptionPodcast,
 } from "@/lib/subscriptions-cache";
 import { AudiobookPlaybackChaptersModal } from "@/components/mpod/audiobook-playback-chapters-modal";
+import { AudiobookChaptersModal } from "@/components/mpod/audiobook-chapters-modal";
 import { ModalScreen } from "@/components/mpod/modal-screen";
 import { Button } from "@/components/ui/button";
 import {
@@ -761,6 +762,18 @@ export function ComponentPreview() {
           playing={true}
           onClose={() => undefined}
           onPlayTrack={() => undefined}
+        />
+      </div>
+    );
+  }
+
+  if (modalParam === "abookchapters-select") {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <AudiobookChaptersModal
+          audiobook={previewAudiobook}
+          onClose={() => undefined}
+          onToggleTrackPlaylist={() => undefined}
         />
       </div>
     );

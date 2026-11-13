@@ -79,7 +79,8 @@ describe("AudiobookChaptersModal", () => {
       "w-full",
       "min-w-0",
       "overflow-hidden",
-      "px-1"
+      "rounded-[16px]",
+      "px-3"
     );
     expect(document.querySelector('[data-slot="scroll-area"]')).toHaveClass(
       "[&_[data-slot=scroll-area-viewport]>div]:!block",

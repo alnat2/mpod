@@ -113,8 +113,10 @@ export function AudiobookPlaybackChaptersModal({
                 <div
                   key={track.id}
                   className={cn(
-                    "flex h-[70px] w-full min-w-0 shrink-0 items-center gap-3 overflow-hidden rounded-[2px] px-1 text-foreground shadow-xs",
-                    current ? "bg-accent" : "bg-card"
+                    "flex h-[70px] w-full min-w-0 shrink-0 items-center gap-3 overflow-hidden rounded-[16px] px-3 text-foreground shadow-xs",
+                    current
+                      ? "bg-accent border border-border"
+                      : "bg-card border border-transparent"
                   )}
                   data-current={current ? "true" : undefined}
                   data-completed={completed ? "true" : undefined}
