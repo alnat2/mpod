@@ -81,8 +81,8 @@ export function AudiobookChaptersModal({
           </Button>
         </div>
 
-        <ScrollArea className="h-[360px] w-full sm:h-[408px] [&_[data-slot=scroll-area-scrollbar]]:w-1.5 [&_[data-slot=scroll-area-scrollbar]]:border-0 [&_[data-slot=scroll-area-scrollbar]]:p-0 [&_[data-slot=scroll-area-thumb]]:bg-muted-foreground [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:!min-w-0 [&_[data-slot=scroll-area-viewport]>div]:!w-full">
-          <div className="flex w-full min-w-0 flex-col gap-1 overflow-hidden">
+        <ScrollArea className="-mx-1.5 h-[360px] sm:h-[408px] [&_[data-slot=scroll-area-scrollbar]]:w-1.5 [&_[data-slot=scroll-area-scrollbar]]:border-0 [&_[data-slot=scroll-area-scrollbar]]:p-0 [&_[data-slot=scroll-area-thumb]]:bg-muted-foreground [&_[data-slot=scroll-area-viewport]>div]:!block [&_[data-slot=scroll-area-viewport]>div]:!min-w-0 [&_[data-slot=scroll-area-viewport]>div]:!w-full">
+          <div className="flex w-full min-w-0 flex-col gap-1.5 px-1.5 pt-1 pb-2 pr-5">
             {tracks.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 No chapters found.
