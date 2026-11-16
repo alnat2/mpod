@@ -372,6 +372,131 @@ export function ComponentPreview() {
     );
   }
 
+  if (viewParam === "desktop-audiobooks") {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <AppShell
+          activeNavItem="Abooks"
+          pageTitle="Audiobooks"
+          pageSubtitle="Local collection · 19 items"
+          pageActions={[]}
+          pageHeaderVisible={false}
+        >
+          <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5">
+            <PageHeader
+              layout="desktop"
+              title="Audiobooks"
+              subtitle="Local collection · 19 items"
+              actions={[
+                {
+                  label: "Rescan library",
+                  icon: <HugeiconsIcon icon={Refresh01Icon} className="size-4" />,
+                  onClick: () => undefined,
+                  variant: "secondary",
+                },
+              ]}
+            />
+            <div className="mpod-scroll -mx-1.5 flex h-full min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-1.5 pt-2 pb-5 md:pb-6">
+              <Breadcrumb className="no-scrollbar flex h-[50px] w-full shrink-0 items-center overflow-x-auto py-0">
+                <BreadcrumbList className="flex w-max flex-nowrap items-center gap-1.5 sm:gap-2">
+                  <BreadcrumbItem className="shrink-0">
+                    <BreadcrumbPage className="whitespace-nowrap">Abooks</BreadcrumbPage>
+                  </BreadcrumbItem>
+                </BreadcrumbList>
+              </Breadcrumb>
+              <div data-slot="filemanager" className="flex flex-col gap-1.5 py-1.5">
+                <FileManagerItem type="folder" title="Benacquista_Tonino_-_Malavita_2_(Knyazev_Igor)" onOpen={() => undefined} />
+                <FileManagerItem type="folder" title="Kaganov_Leonid_Kommutacija" onOpen={() => undefined} />
+                <FileManagerItem type="audiobook" title="milgram" duration="6:14:20" onOpen={() => undefined} onTogglePlaylist={() => undefined} />
+                <FileManagerItem type="audiobook" title="Normalisaciya_zreniya" duration="55:16" onOpen={() => undefined} onTogglePlaylist={() => undefined} />
+                <FileManagerItem type="folder" title="russo" onOpen={() => undefined} />
+              </div>
+            </div>
+          </div>
+        </AppShell>
+      </div>
+    );
+  }
+
+  if (viewParam === "desktop-player") {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <AppShell
+          activeNavItem="Player"
+          pageTitle="Now playing"
+          pageSubtitle=""
+          pageActions={[]}
+          pageHeaderVisible={false}
+        >
+          <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background md:rounded-md md:border md:border-border md:bg-card md:px-10 md:py-5">
+            <PageHeader
+              layout="desktop"
+              title="Now playing"
+            />
+            <div className="mpod-scroll flex min-h-0 flex-1 flex-col items-center gap-4 overflow-y-auto px-0 pt-4 pb-5 md:py-6">
+              <Player
+                mode="episode"
+                title="Why store loyalty cards became a UX minefield"
+                podcastTitle="Decoder Ring"
+                elapsedLabel="23:14"
+                durationLabel="54:03"
+                playing={false}
+                progressValue={43}
+                speedLabel="Speed 1.5x"
+                onBack={() => undefined}
+                onForward={() => undefined}
+                onPlay={() => undefined}
+                onProgressSeek={() => undefined}
+                onNotes={() => undefined}
+              />
+              <PlaylistQueue
+                summary="3 episodes · 2:13:00"
+                className="min-h-0 w-full flex-1 md:max-w-[1040px]"
+                bodyClassName="mpod-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain"
+              >
+                <EpisodeRow
+                  showDragHandle
+                  current
+                  downloaded
+                  title="Why store loyalty cards became a UX minefield"
+                  podcastTitle="Decoder Ring"
+                  durationLabel="54:00"
+                  thumbnailUrl={episodeArtwork}
+                  actions={[
+                    { label: "Pause", icon: PauseIcon },
+                    { label: "Remove from playlist", icon: PlayListRemoveIcon },
+                  ]}
+                />
+                <EpisodeRow
+                  showDragHandle
+                  title="How public transit maps teach invisible habits"
+                  podcastTitle="Decoder Ring"
+                  durationLabel="36:00"
+                  thumbnailUrl={episodeArtwork}
+                  actions={[
+                    { label: "Play", icon: PlayIcon },
+                    { label: "Remove from playlist", icon: PlayListRemoveIcon },
+                  ]}
+                />
+                <EpisodeRow
+                  showDragHandle
+                  title="The app menu nobody understands but everyone uses"
+                  podcastTitle="Decoder Ring"
+                  durationLabel="43:00"
+                  thumbnailUrl={episodeArtwork}
+                  actions={[
+                    { label: "Play", icon: PlayIcon },
+                    { label: "Remove from playlist", icon: PlayListRemoveIcon },
+                  ]}
+                />
+              </PlaylistQueue>
+            </div>
+          </div>
+        </AppShell>
+      </div>
+    );
+  }
+
   if (viewParam === "mobile-subscriptions") {
     const selectedPodcast =
       previewSubscriptionPodcasts.find((p) => p.id === selectedMobilePodcastId) ??

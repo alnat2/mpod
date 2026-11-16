@@ -179,7 +179,7 @@ export const EpisodeRow = memo(function EpisodeRow({
   return (
     <div
       className={cn(
-        "w-full shrink-0 bg-card text-foreground shadow-xs border border-transparent",
+        "w-full shrink-0 bg-card text-foreground shadow-xs dark:shadow-[0_2px_4px_rgba(0,0,0,0.5),0_1px_2px_rgba(0,0,0,0.4)] border border-transparent transition-colors",
         isMobile
           ? cn(
               "relative grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2 overflow-hidden rounded-[16px] py-3 pr-3",
@@ -196,7 +196,7 @@ export const EpisodeRow = memo(function EpisodeRow({
               ),
         draggable && "cursor-grab",
         dragging && "opacity-60",
-        current && "bg-accent border-border shadow-sm",
+        current && "bg-accent border-border shadow-sm dark:shadow-[0_2px_4px_rgba(0,0,0,0.5),0_1px_2px_rgba(0,0,0,0.4)]",
         className
       )}
       data-episode-row-id={episodeRowId}

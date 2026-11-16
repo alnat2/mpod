@@ -32,7 +32,7 @@ export function PlaylistQueue({
       </div>
       <div
         ref={bodyRef}
-        className={cn("flex w-full flex-col gap-1 overflow-x-hidden", bodyClassName)}
+        className={cn("flex w-full flex-col gap-1.5 overflow-x-hidden px-1.5 py-1.5", bodyClassName)}
         onScroll={bodyOnScroll}
       >
         {children}

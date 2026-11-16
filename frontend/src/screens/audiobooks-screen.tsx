@@ -331,7 +331,7 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
             {error && <ErrorBanner>{error}</ErrorBanner>}
           </ScreenBannerStack>
 
-          <div className="mpod-scroll flex h-full min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pt-2 pb-5 md:pb-6">
+          <div className="mpod-scroll -mx-1.5 flex h-full min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-1.5 pt-2 pb-5 md:pb-6">
             {/* Breadcrumb Navigation */}
         <Breadcrumb
           ref={breadcrumbRef}
@@ -407,7 +407,7 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
         ) : (
           <div
             data-slot="filemanager"
-            className="flex flex-col gap-1"
+            className="flex flex-col gap-1.5 py-1.5"
           >
             {/* 1. All Folders (general + audiobook folders) sorted alphabetically */}
             {explorerItems.folders.map((item) => {
