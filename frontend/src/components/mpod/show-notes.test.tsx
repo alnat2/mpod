@@ -84,5 +84,20 @@ describe("ShowNotes", () => {
 
     await user.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("does not show tooltip on initial render or focus", () => {
+    render(
+      <TooltipProvider>
+        <ShowNotes podcastTitle="Podcast" episodeTitle="Episode" onClose={vi.fn()}>
+          Notes
+        </ShowNotes>
+      </TooltipProvider>
+    );
+
+    const closeBtn = screen.getByRole("button", { name: "Close" });
+    closeBtn.focus();
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 });
