@@ -38,6 +38,9 @@ if (!HTMLElement.prototype.setPointerCapture) {
   HTMLElement.prototype.releasePointerCapture = () => {};
   HTMLElement.prototype.hasPointerCapture = () => false;
 }
+if (!HTMLElement.prototype.scrollIntoView) {
+  HTMLElement.prototype.scrollIntoView = () => {};
+}
 globalThis.matchMedia =
   globalThis.matchMedia ??
   ((query: string) => ({

@@ -284,6 +284,7 @@ Rules:
 - in the playback chapters modal, completed chapters remain visible with Replay
 - Replay starts the chapter at `0:00` and makes it current
 - in the playback chapters modal, the current chapter row is highlighted and shows current/total time
+- in the playback chapters modal, the list automatically scrolls to bring the current chapter to the top on open and when switching chapters
 - the current playback row shows Pause while audio is playing and Play while paused
 - not-yet-started playback rows show duration and Play
 - after the final selected chapter becomes listened, the book leaves the playlist

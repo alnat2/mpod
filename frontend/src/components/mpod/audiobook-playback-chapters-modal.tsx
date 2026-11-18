@@ -1,3 +1,4 @@
+import { useCallback, useRef } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   AudioBook01Icon,
@@ -33,9 +34,28 @@ export function AudiobookPlaybackChaptersModal({
   onClose,
   onPlayTrack,
 }: AudiobookPlaybackChaptersModalProps) {
+  const lastScrolledTrackIdRef = useRef<number | null>(null);
+
+  const handleCurrentTrackRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (
+        node &&
+        currentTrackId !== undefined &&
+        lastScrolledTrackIdRef.current !== currentTrackId
+      ) {
+        lastScrolledTrackIdRef.current = currentTrackId;
+        if (typeof node.scrollIntoView === "function") {
+          node.scrollIntoView({ block: "start" });
+        }
+      }
+    },
+    [currentTrackId]
+  );
+
   const tracks = (audiobook.tracks ?? []).filter((track) =>
     Boolean(track.inPlaylist ?? track.isInPlaylist)
   );
+
   const coverSrc = audiobook.hasCover
     ? api.audiobooks.coverUrl(audiobook.id)
     : "/audiobook-fallback.png";
@@ -112,6 +132,7 @@ export function AudiobookPlaybackChaptersModal({
               return (
                 <div
                   key={track.id}
+                  ref={current ? handleCurrentTrackRef : undefined}
                   className={cn(
                     "flex h-[70px] w-full min-w-0 shrink-0 items-center gap-3 overflow-hidden rounded-[16px] px-3 text-foreground shadow-xs dark:shadow-[0_2px_4px_rgba(0,0,0,0.5),0_1px_2px_rgba(0,0,0,0.4)]",
                     current

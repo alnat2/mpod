@@ -58,4 +58,112 @@ describe("AudiobookPlaybackChaptersModal", () => {
       "size-11"
     );
   });
+
+  it("scrolls the current chapter into view on mount", () => {
+    const scrollIntoViewMock = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+
+    render(
+      <AudiobookPlaybackChaptersModal
+        audiobook={audiobook}
+        currentTrackId={2}
+        playing
+        onClose={vi.fn()}
+        onPlayTrack={vi.fn()}
+      />
+    );
+
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: "start" });
+  });
+
+  it("scrolls to the new chapter when currentTrackId changes", () => {
+    const scrollIntoViewMock = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+
+    const { rerender } = render(
+      <AudiobookPlaybackChaptersModal
+        audiobook={audiobook}
+        currentTrackId={1}
+        playing
+        onClose={vi.fn()}
+        onPlayTrack={vi.fn()}
+      />
+    );
+
+    expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <AudiobookPlaybackChaptersModal
+        audiobook={audiobook}
+        currentTrackId={2}
+        playing
+        onClose={vi.fn()}
+        onPlayTrack={vi.fn()}
+      />
+    );
+
+    expect(scrollIntoViewMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not re-scroll on duration or playing updates when currentTrackId has not changed", () => {
+    const scrollIntoViewMock = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+
+    const { rerender } = render(
+      <AudiobookPlaybackChaptersModal
+        audiobook={audiobook}
+        currentTrackId={2}
+        currentDurationSeconds={40}
+        playing={true}
+        onClose={vi.fn()}
+        onPlayTrack={vi.fn()}
+      />
+    );
+
+    expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
+
+    // Progress updates to 41 seconds
+    rerender(
+      <AudiobookPlaybackChaptersModal
+        audiobook={audiobook}
+        currentTrackId={2}
+        currentDurationSeconds={41}
+        playing={true}
+        onClose={vi.fn()}
+        onPlayTrack={vi.fn()}
+      />
+    );
+
+    // Paused
+    rerender(
+      <AudiobookPlaybackChaptersModal
+        audiobook={audiobook}
+        currentTrackId={2}
+        currentDurationSeconds={41}
+        playing={false}
+        onClose={vi.fn()}
+        onPlayTrack={vi.fn()}
+      />
+    );
+
+    // Must still be called only once
+    expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not scroll if currentTrackId does not match any track", () => {
+    const scrollIntoViewMock = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+
+    render(
+      <AudiobookPlaybackChaptersModal
+        audiobook={audiobook}
+        currentTrackId={999}
+        playing
+        onClose={vi.fn()}
+        onPlayTrack={vi.fn()}
+      />
+    );
+
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
+  });
 });
