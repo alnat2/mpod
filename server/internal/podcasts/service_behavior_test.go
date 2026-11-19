@@ -203,6 +203,101 @@ func TestDeleteReturnsNotFoundForMissingPodcast(t *testing.T) {
 	}
 }
 
+func TestRefreshFallsBackToDirectAfterProxyAttempts(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+	mustExecPodcast(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+
+	proxyAttempts := 0
+	directAttempts := 0
+	service := NewServiceWithDirectFallback(
+		db.SQL,
+		newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+			proxyAttempts++
+			return nil, errors.New("TLS handshake timeout")
+		}),
+		newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+			directAttempts++
+			return xmlResponse(testRSSFeed("Podcast", "New Episode", "new-guid", "https://cdn.example.com/new.mp3")), nil
+		}),
+		func(context.Context) bool { return true },
+	)
+	service.sleep = func(context.Context, time.Duration) error { return nil }
+
+	newEpisodes, _, err := service.Refresh(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("Refresh failed after direct fallback: %v", err)
+	}
+	if newEpisodes != 1 {
+		t.Fatalf("expected one episode from direct feed, got %d", newEpisodes)
+	}
+	if proxyAttempts != feedProxyAttempts || directAttempts != 1 {
+		t.Fatalf("expected proxy/direct requests %d/1, got %d/%d", feedProxyAttempts, proxyAttempts, directAttempts)
+	}
+}
+
+func TestRefreshAllFallsBackToDirectForScheduledRefreshPath(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+	mustExecPodcast(t, db.SQL, `INSERT INTO podcasts (id, title, rss_url) VALUES (1, 'Podcast', 'https://example.com/feed.xml')`)
+
+	proxyAttempts := 0
+	directAttempts := 0
+	service := NewServiceWithDirectFallback(
+		db.SQL,
+		newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+			proxyAttempts++
+			return nil, errors.New("TLS handshake timeout")
+		}),
+		newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+			directAttempts++
+			return xmlResponse(testRSSFeed("Podcast", "New Episode", "new-guid", "https://cdn.example.com/new.mp3")), nil
+		}),
+		func(context.Context) bool { return true },
+	)
+	service.sleep = func(context.Context, time.Duration) error { return nil }
+
+	if err := service.RefreshAll(context.Background()); err != nil {
+		t.Fatalf("RefreshAll failed after direct fallback: %v", err)
+	}
+	if proxyAttempts != feedProxyAttempts || directAttempts != 1 {
+		t.Fatalf("expected proxy/direct requests %d/1, got %d/%d", feedProxyAttempts, proxyAttempts, directAttempts)
+	}
+}
+
+func TestImportOPMLFallsBackToDirectAfterProxyAttempts(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	proxyAttempts := 0
+	directAttempts := 0
+	service := NewServiceWithDirectFallback(
+		db.SQL,
+		newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+			proxyAttempts++
+			return nil, errors.New("TLS handshake timeout")
+		}),
+		newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+			directAttempts++
+			return xmlResponse(testRSSFeed("Imported Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
+		}),
+		func(context.Context) bool { return true },
+	)
+	service.sleep = func(context.Context, time.Duration) error { return nil }
+
+	opml := `<opml version="2.0"><body><outline text="Imported" xmlUrl="https://example.com/feed.xml"/></body></opml>`
+	result, err := service.ImportOPML(context.Background(), strings.NewReader(opml))
+	if err != nil {
+		t.Fatalf("ImportOPML failed after direct fallback: %v", err)
+	}
+	if result.Imported != 1 || result.Skipped != 0 {
+		t.Fatalf("expected one imported feed, got %+v", result)
+	}
+	if proxyAttempts != feedProxyAttempts || directAttempts != 1 {
+		t.Fatalf("expected proxy/direct requests %d/1, got %d/%d", feedProxyAttempts, proxyAttempts, directAttempts)
+	}
+}
+
 func TestRefreshUpsertsEpisodesWithoutDuplicates(t *testing.T) {
 	db := newBehaviorTestDB(t)
 	defer db.Close()

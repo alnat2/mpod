@@ -838,7 +838,6 @@ func TestPodcastImageInvalidContentTypeAndUpstreamError(t *testing.T) {
 	})
 }
 
-
 func TestSettingsPatchRejectsInvalidTime(t *testing.T) {
 	handler, cookie := newAuthedRouter(t)
 
@@ -1488,6 +1487,40 @@ func TestPodcastRefreshReturnsNewEpisodes(t *testing.T) {
 	}
 
 	assertTableCount(t, db, `SELECT COUNT(*) FROM episodes WHERE podcast_id = 1`, 2)
+}
+
+func TestPodcastCreateUsesDirectRSSFallbackThroughRouter(t *testing.T) {
+	cfg := config.Config{
+		Environment:  "development",
+		DownloadsDir: t.TempDir(),
+		SOCKS5Host:   "127.0.0.1",
+		SOCKS5Port:   "1080",
+	}
+	proxyAttempts := 0
+	directAttempts := 0
+	proxyClient := newRouterTestClient(func(*nethttp.Request) (*nethttp.Response, error) {
+		proxyAttempts++
+		return nil, errors.New("TLS handshake timeout")
+	})
+	directClient := newRouterTestClient(func(*nethttp.Request) (*nethttp.Response, error) {
+		directAttempts++
+		return routerXMLResponse(testRouterRSSFeed("Fallback Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
+	})
+	db := newTestDB(t)
+	handler := newSplitRouterWithClients(t, cfg, db, db, proxyClient, proxyClient, directClient)
+	cookie := register(t, handler, "admin", "secret")
+	enableProxyForTest(t, handler, cookie)
+
+	req := httptest.NewRequest(nethttp.MethodPost, "/api/podcasts", bytes.NewReader([]byte(`{"rssUrl":"https://example.com/feed.xml"}`)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected podcast creation to succeed through direct fallback, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if proxyAttempts != 2 || directAttempts != 1 {
+		t.Fatalf("expected two proxy attempts and one direct attempt, got %d/%d", proxyAttempts, directAttempts)
+	}
 }
 
 func TestPodcastRefreshRejectsFeedFetchFailure(t *testing.T) {
@@ -4330,8 +4363,11 @@ func newSplitRouterWithClient(t *testing.T, cfg config.Config, authDB, appDB *st
 	return newSplitRouterWithClients(t, cfg, authDB, appDB, client, client)
 }
 
-func newSplitRouterWithClients(t *testing.T, cfg config.Config, authDB, appDB *storage.DB, client, directAudioClient *nethttp.Client) nethttp.Handler {
+func newSplitRouterWithClients(t *testing.T, cfg config.Config, authDB, appDB *storage.DB, client, directAudioClient *nethttp.Client, directFeedClients ...*nethttp.Client) nethttp.Handler {
 	t.Helper()
+	if len(directFeedClients) > 1 {
+		t.Fatal("at most one direct feed client may be provided")
+	}
 
 	if client == nil {
 		client = newRouterDefaultClient(t, cfg, appDB)
@@ -4343,10 +4379,18 @@ func newSplitRouterWithClients(t *testing.T, cfg config.Config, authDB, appDB *s
 	settingsService := settings.NewServiceWithProxyStatusLookup(appDB.SQL, cfg.SOCKS5Host != "", cfg.AppBuild, func(ctx context.Context) (settings.ProxyLookupResult, error) {
 		return fetchObservedProxyStatus(ctx, client)
 	})
+	proxyEnabled := func(ctx context.Context) bool {
+		enabled, err := settingsService.ProxyEnabled(ctx)
+		return err == nil && enabled
+	}
 	playlistService := playlist.NewService(appDB.SQL)
 	downloadsService := downloads.NewService(appDB.SQL, client, cfg.DownloadsDir)
 	playlistActions := playlist.NewActions(appDB.SQL, downloadsService)
-	podcastsService := podcasts.NewService(appDB.SQL, client)
+	var directFeedClient *nethttp.Client
+	if len(directFeedClients) == 1 {
+		directFeedClient = directFeedClients[0]
+	}
+	podcastsService := podcasts.NewServiceWithDirectFallback(appDB.SQL, client, directFeedClient, proxyEnabled)
 	schedulerService, err := scheduler.NewService(
 		appDB.SQL,
 		log.New(io.Discard, "", 0),

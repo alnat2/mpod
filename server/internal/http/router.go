@@ -146,20 +146,21 @@ func NewRouterServicesForRuntime(cfg config.Config, db *sql.DB) (*RouterServices
 		return nil, err
 	}
 	directFeedClient := (*nethttp.Client)(nil)
-	directAudioCfg := cfg
-	directAudioCfg.SOCKS5Host = ""
-	directAudioCfg.SOCKS5Port = ""
-	directAudioCfg.SOCKS5Username = ""
-	directAudioCfg.SOCKS5Password = ""
+	directCfg := cfg
+	directCfg.SOCKS5Host = ""
+	directCfg.SOCKS5Port = ""
+	directCfg.SOCKS5Username = ""
+	directCfg.SOCKS5Password = ""
+	directAudioClient := (*nethttp.Client)(nil)
 	if cfg.SOCKS5Host != "" {
-		directFeedClient, err = remote.NewHTTPClientWithProxyDecider(directAudioCfg, nil)
+		directFeedClient, err = remote.NewHTTPClientWithProxyDecider(directCfg, nil)
 		if err != nil {
 			return nil, err
 		}
-	}
-	directAudioClient, err := remote.NewStreamingHTTPClientWithProxyDecider(directAudioCfg, nil)
-	if err != nil {
-		return nil, err
+		directAudioClient, err = remote.NewStreamingHTTPClientWithProxyDecider(directCfg, nil)
+		if err != nil {
+			return nil, err
+		}
 	}
 	settingsService = settings.NewServiceWithProxyStatusLookup(db, cfg.SOCKS5Host != "", cfg.AppBuild, func(ctx context.Context) (settings.ProxyLookupResult, error) {
 		return fetchObservedProxyStatus(ctx, client)

@@ -3,6 +3,7 @@ package podcasts
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -35,10 +36,116 @@ func TestCreateFromFeedRejectsNonHTTPAndCredentialURLsBeforeFetch(t *testing.T) 
 	}
 }
 
+func TestCreateFromFeedWithoutDirectClientReturnsFetchError(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	proxyAttempts := 0
+	service := NewService(db.SQL, newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+		proxyAttempts++
+		return nil, errors.New("TLS handshake timeout")
+	}))
+
+	_, err := service.CreateFromFeed(context.Background(), "https://example.com/feed.xml")
+	if !errors.Is(err, ErrFeedFetchFailed) {
+		t.Fatalf("expected feed fetch error, got %v", err)
+	}
+	if proxyAttempts != 1 {
+		t.Fatalf("expected one request when no direct client is configured, got %d", proxyAttempts)
+	}
+}
+
 func TestCreateFromFeedRetriesProxyThenFallsBackDirect(t *testing.T) {
 	db := newBehaviorTestDB(t)
 	defer db.Close()
 
+	proxyAttempts := 0
+	directAttempts := 0
+	proxyRetryPauses := 0
+	service := NewServiceWithDirectFallback(
+		db.SQL,
+		newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+			proxyAttempts++
+			return nil, errors.New("TLS handshake timeout")
+		}),
+		newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+			directAttempts++
+			return xmlResponse(testRSSFeed("Fallback Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
+		}),
+		func(context.Context) bool { return true },
+	)
+	service.sleep = func(_ context.Context, delay time.Duration) error {
+		proxyRetryPauses++
+		if delay != feedProxyRetryDelay {
+			t.Fatalf("expected %s proxy retry delay, got %s", feedProxyRetryDelay, delay)
+		}
+		return nil
+	}
+
+	podcast, err := service.CreateFromFeed(context.Background(), "https://example.com/feed.xml")
+	if err != nil {
+		t.Fatalf("CreateFromFeed failed after direct fallback: %v", err)
+	}
+	if podcast.Title != "Fallback Podcast" {
+		t.Fatalf("expected direct feed title, got %q", podcast.Title)
+	}
+	if proxyAttempts != feedProxyAttempts {
+		t.Fatalf("expected %d proxied attempts, got %d", feedProxyAttempts, proxyAttempts)
+	}
+	if directAttempts != 1 {
+		t.Fatalf("expected one direct attempt, got %d", directAttempts)
+	}
+	if proxyRetryPauses != 1 {
+		t.Fatalf("expected one pause between proxy attempts, got %d", proxyRetryPauses)
+	}
+}
+
+func TestCreateFromFeedFallsBackDirectAfterProxyHTTPFailure(t *testing.T) {
+	for _, statusCode := range []int{http.StatusForbidden, http.StatusBadGateway} {
+		t.Run(http.StatusText(statusCode), func(t *testing.T) {
+			db := newBehaviorTestDB(t)
+			defer db.Close()
+
+			proxyAttempts := 0
+			directAttempts := 0
+			service := NewServiceWithDirectFallback(
+				db.SQL,
+				newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+					proxyAttempts++
+					return &http.Response{
+						StatusCode: statusCode,
+						Status:     http.StatusText(statusCode),
+						Body:       io.NopCloser(strings.NewReader("proxy error")),
+						Header:     make(http.Header),
+					}, nil
+				}),
+				newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+					directAttempts++
+					return xmlResponse(testRSSFeed("Fallback Podcast", "Episode One", "guid-1", "https://cdn.example.com/1.mp3")), nil
+				}),
+				func(context.Context) bool { return true },
+			)
+			service.sleep = func(context.Context, time.Duration) error { return nil }
+
+			if _, err := service.CreateFromFeed(context.Background(), "https://example.com/feed.xml"); err != nil {
+				t.Fatalf("CreateFromFeed failed after direct fallback: %v", err)
+			}
+			if proxyAttempts != feedProxyAttempts {
+				t.Fatalf("expected %d proxy attempts, got %d", feedProxyAttempts, proxyAttempts)
+			}
+			if directAttempts != 1 {
+				t.Fatalf("expected one direct attempt, got %d", directAttempts)
+			}
+		})
+	}
+}
+
+func TestCreateFromFeedCancellationDuringProxyRetrySkipsDirectFallback(t *testing.T) {
+	db := newBehaviorTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	proxyAttempts := 0
 	directAttempts := 0
 	service := NewServiceWithDirectFallback(
@@ -53,20 +160,23 @@ func TestCreateFromFeedRetriesProxyThenFallsBackDirect(t *testing.T) {
 		}),
 		func(context.Context) bool { return true },
 	)
-	service.sleep = func(context.Context, time.Duration) error { return nil }
+	service.sleep = func(ctx context.Context, delay time.Duration) error {
+		if delay != feedProxyRetryDelay {
+			t.Fatalf("expected %s proxy retry delay, got %s", feedProxyRetryDelay, delay)
+		}
+		cancel()
+		return ctx.Err()
+	}
 
-	podcast, err := service.CreateFromFeed(context.Background(), "https://example.com/feed.xml")
-	if err != nil {
-		t.Fatalf("CreateFromFeed failed after direct fallback: %v", err)
+	_, err := service.CreateFromFeed(ctx, "https://example.com/feed.xml")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected canceled context error, got %v", err)
 	}
-	if podcast.Title != "Fallback Podcast" {
-		t.Fatalf("expected direct feed title, got %q", podcast.Title)
+	if proxyAttempts != 1 {
+		t.Fatalf("expected one proxy attempt before cancellation, got %d", proxyAttempts)
 	}
-	if proxyAttempts != feedProxyAttempts {
-		t.Fatalf("expected %d proxied attempts, got %d", feedProxyAttempts, proxyAttempts)
-	}
-	if directAttempts != 1 {
-		t.Fatalf("expected one direct attempt, got %d", directAttempts)
+	if directAttempts != 0 {
+		t.Fatalf("expected cancellation to prevent direct fallback, got %d direct attempts", directAttempts)
 	}
 }
 
@@ -127,16 +237,20 @@ func TestCreateFromFeedDoesNotUseDirectFallbackForMalformedFeed(t *testing.T) {
 	}
 }
 
-func TestCreateFromFeedReportsProxyAndDirectFetchFailures(t *testing.T) {
+func TestCreateFromFeedReturnsGenericErrorWhenProxyAndDirectFetchFail(t *testing.T) {
 	db := newBehaviorTestDB(t)
 	defer db.Close()
 
+	proxyAttempts := 0
+	directAttempts := 0
 	service := NewServiceWithDirectFallback(
 		db.SQL,
 		newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+			proxyAttempts++
 			return nil, errors.New("proxy TLS handshake timeout")
 		}),
 		newPodcastTestClient(func(*http.Request) (*http.Response, error) {
+			directAttempts++
 			return nil, errors.New("direct connection refused")
 		}),
 		func(context.Context) bool { return true },
@@ -144,10 +258,14 @@ func TestCreateFromFeedReportsProxyAndDirectFetchFailures(t *testing.T) {
 	service.sleep = func(context.Context, time.Duration) error { return nil }
 
 	_, err := service.CreateFromFeed(context.Background(), "https://example.com/feed.xml")
-	if err == nil || !strings.Contains(err.Error(), "proxy feed request failed") ||
-		!strings.Contains(err.Error(), "proxy TLS handshake timeout") ||
-		!strings.Contains(err.Error(), "direct connection refused") {
-		t.Fatalf("expected error to include both route failures, got %v", err)
+	if !errors.Is(err, ErrFeedFetchFailed) {
+		t.Fatalf("expected feed fetch error, got %v", err)
+	}
+	if strings.Contains(err.Error(), "proxy TLS handshake timeout") || strings.Contains(err.Error(), "direct connection refused") {
+		t.Fatalf("expected route-specific errors to stay private, got %v", err)
+	}
+	if proxyAttempts != feedProxyAttempts || directAttempts != 1 {
+		t.Fatalf("expected proxy/direct requests %d/1, got %d/%d", feedProxyAttempts, proxyAttempts, directAttempts)
 	}
 }
 

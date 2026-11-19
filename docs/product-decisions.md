@@ -1092,9 +1092,9 @@ RSS import and refresh must be tolerant of imperfect real-world feeds. A bad or 
 ### Feed Validation
 - If the RSS or Atom document cannot be fetched, return a feed fetch error.
 - If the response is fetched but cannot be parsed, return a feed parse error.
-- When proxy usage is enabled and SOCKS5 is configured, RSS fetching makes up to two attempts through the proxy, with a 500 ms delay between attempts, then one direct attempt if the proxied fetch attempts fail. This applies to subscription creation, OPML import, and manual or scheduled refresh. A response that cannot be fetched or has a non-success HTTP status may use this fallback; an RSS/Atom parse error does not.
+- When proxy usage is enabled and SOCKS5 is configured, RSS fetching makes up to two attempts through the proxy, with a 500 ms delay between attempts, then one direct attempt if the proxied fetch attempts fail. This applies to subscription creation, OPML import, and manual or scheduled refresh. Transport failures, response-body read failures, and non-2xx HTTP statuses may use this fallback; RSS/Atom parse errors do not.
 - When proxy usage is disabled or unavailable, RSS fetching uses the direct route once and does not repeat the request through a second direct client.
-- If both proxied and direct RSS requests fail, return a feed fetch error containing both route failures. Existing scheduler retry behavior remains in effect.
+- If both proxied and direct RSS requests fail, return a generic feed fetch error without exposing route-specific network details. Existing scheduler retry behavior remains in effect.
 - If the feed has no usable title, the app may use the feed URL or hostname as a fallback display title.
 - If the feed later provides a better title, the title may be updated.
 

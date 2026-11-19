@@ -40,7 +40,7 @@ const (
 	feedUserAgent       = "mpod/1.0 (+self-hosted podcast client)"
 	feedAccept          = "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.1"
 	MaxOPMLFeedURLs     = 1000
-	feedProxyAttempts   = 2
+	feedProxyAttempts   = 2 // Initial request plus one short retry before the direct fallback.
 	feedProxyRetryDelay = 500 * time.Millisecond
 )
 
@@ -280,31 +280,29 @@ func (s *Service) Delete(ctx context.Context, podcastID int64) error {
 
 func (s *Service) fetchFeed(ctx context.Context, normalizedURL string) (*gofeed.Feed, error) {
 	proxyFallbackEnabled := s.directClient != nil && s.directClient != s.client && s.proxyEnabled != nil && s.proxyEnabled(ctx)
-	proxyAttempts := 1
-	if proxyFallbackEnabled {
-		proxyAttempts = feedProxyAttempts
+	if !proxyFallbackEnabled {
+		return s.fetchFeedWithClient(ctx, s.client, normalizedURL)
 	}
 
-	var proxyErr error
+	proxyAttempts := feedProxyAttempts
 	for attempt := 0; attempt < proxyAttempts; attempt++ {
 		feed, err := s.fetchFeedWithClient(ctx, s.client, normalizedURL)
 		if err == nil {
 			return feed, nil
 		}
-		proxyErr = err
-		if !proxyFallbackEnabled || !errors.Is(err, ErrFeedFetchFailed) || ctx.Err() != nil {
+		if !errors.Is(err, ErrFeedFetchFailed) || ctx.Err() != nil {
 			return nil, err
 		}
 		if attempt+1 < proxyAttempts {
 			if err := s.sleep(ctx, feedProxyRetryDelay); err != nil {
-				return nil, fmt.Errorf("retry feed through proxy: %w", err)
+				return nil, fmt.Errorf("proxy feed retry interrupted: %w", err)
 			}
 		}
 	}
 
 	feed, directErr := s.fetchFeedWithClient(ctx, s.directClient, normalizedURL)
 	if directErr != nil {
-		return nil, fmt.Errorf("proxy feed request failed after %d attempts: %v; direct feed request failed: %w", proxyAttempts, proxyErr, directErr)
+		return nil, fmt.Errorf("%w: feed fetch failed after retry", ErrFeedFetchFailed)
 	}
 	return feed, nil
 }

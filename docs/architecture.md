@@ -281,7 +281,7 @@ Responsible for:
 - keep `downloaded_path` aligned with disk state
 
 This module should use one shared HTTP client configuration path so proxy-aware network behavior and outbound URL validation are consistent across all backend network operations, including RSS fetching, scheduled refreshes, media downloads, audio proxying, image proxying, and proxy identity lookup. The shared transport accepts only HTTP(S) targets without embedded credentials and revalidates every redirect. Private and loopback HTTP(S) targets remain valid for trusted local-network podcast sources.
-When SOCKS5 proxy usage is enabled, RSS fetches may retry twice through the proxy and then once directly after fetch failures. The direct client uses the same outbound URL policy and redirect validation as the proxy-aware client. RSS parse failures do not trigger a direct retry.
+When SOCKS5 proxy usage is enabled, RSS fetches may make up to two attempts through the proxy and then one direct attempt after fetch failures. The direct client uses the same outbound URL policy and redirect validation as the proxy-aware client. RSS parse failures do not trigger a direct retry.
 
 ### Scheduler Module
 
