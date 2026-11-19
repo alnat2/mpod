@@ -37,23 +37,27 @@ var (
 )
 
 const (
-	feedUserAgent   = "mpod/1.0 (+self-hosted podcast client)"
-	feedAccept      = "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.1"
-	MaxOPMLFeedURLs = 1000
+	feedUserAgent       = "mpod/1.0 (+self-hosted podcast client)"
+	feedAccept          = "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.1"
+	MaxOPMLFeedURLs     = 1000
+	feedProxyAttempts   = 2
+	feedProxyRetryDelay = 500 * time.Millisecond
 )
 
 var unsupportedFeedURIAttrPattern = regexp.MustCompile(`\buri="at://[^"]*"`)
 
 type Service struct {
-	db          *sql.DB
-	client      *http.Client
-	parser      *gofeed.Parser
-	retryDelays []time.Duration
-	sleep       func(context.Context, time.Duration) error
-	refreshMu   sync.Mutex
-	refreshing  map[int64]struct{}
-	importMu    sync.Mutex
-	importing   bool
+	db           *sql.DB
+	client       *http.Client
+	directClient *http.Client
+	proxyEnabled func(context.Context) bool
+	parser       *gofeed.Parser
+	retryDelays  []time.Duration
+	sleep        func(context.Context, time.Duration) error
+	refreshMu    sync.Mutex
+	refreshing   map[int64]struct{}
+	importMu     sync.Mutex
+	importing    bool
 }
 
 type Podcast struct {
@@ -67,10 +71,16 @@ type Podcast struct {
 }
 
 func NewService(db *sql.DB, client *http.Client) *Service {
+	return NewServiceWithDirectFallback(db, client, nil, nil)
+}
+
+func NewServiceWithDirectFallback(db *sql.DB, client *http.Client, directClient *http.Client, proxyEnabled func(context.Context) bool) *Service {
 	return &Service{
-		db:     db,
-		client: client,
-		parser: gofeed.NewParser(),
+		db:           db,
+		client:       client,
+		directClient: directClient,
+		proxyEnabled: proxyEnabled,
+		parser:       gofeed.NewParser(),
 		retryDelays: []time.Duration{
 			30 * time.Second,
 			2 * time.Minute,
@@ -269,6 +279,37 @@ func (s *Service) Delete(ctx context.Context, podcastID int64) error {
 }
 
 func (s *Service) fetchFeed(ctx context.Context, normalizedURL string) (*gofeed.Feed, error) {
+	proxyFallbackEnabled := s.directClient != nil && s.directClient != s.client && s.proxyEnabled != nil && s.proxyEnabled(ctx)
+	proxyAttempts := 1
+	if proxyFallbackEnabled {
+		proxyAttempts = feedProxyAttempts
+	}
+
+	var proxyErr error
+	for attempt := 0; attempt < proxyAttempts; attempt++ {
+		feed, err := s.fetchFeedWithClient(ctx, s.client, normalizedURL)
+		if err == nil {
+			return feed, nil
+		}
+		proxyErr = err
+		if !proxyFallbackEnabled || !errors.Is(err, ErrFeedFetchFailed) || ctx.Err() != nil {
+			return nil, err
+		}
+		if attempt+1 < proxyAttempts {
+			if err := s.sleep(ctx, feedProxyRetryDelay); err != nil {
+				return nil, fmt.Errorf("retry feed through proxy: %w", err)
+			}
+		}
+	}
+
+	feed, directErr := s.fetchFeedWithClient(ctx, s.directClient, normalizedURL)
+	if directErr != nil {
+		return nil, fmt.Errorf("proxy feed request failed after %d attempts: %v; direct feed request failed: %w", proxyAttempts, proxyErr, directErr)
+	}
+	return feed, nil
+}
+
+func (s *Service) fetchFeedWithClient(ctx context.Context, client *http.Client, normalizedURL string) (*gofeed.Feed, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, normalizedURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build feed request: %w", err)
@@ -276,7 +317,7 @@ func (s *Service) fetchFeed(ctx context.Context, normalizedURL string) (*gofeed.
 	req.Header.Set("User-Agent", feedUserAgent)
 	req.Header.Set("Accept", feedAccept)
 
-	resp, err := s.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrFeedFetchFailed, err)
 	}

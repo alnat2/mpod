@@ -399,7 +399,7 @@ Rules:
 - The endpoint requires authentication
 - The endpoint is for playback only; it does not mark the episode as downloaded
 - Range requests for remote audio should be forwarded so browser media controls can seek
-- Direct retry is a resilience fallback for podcast/CDN compatibility; it must not change RSS fetching, OPML import, refresh, artwork, or proxy-status network behavior
+- Direct retry is a resilience fallback for podcast/CDN compatibility. Audio streaming and downloads may retry directly after a failed proxied audio request. RSS fetching and refresh use the RSS fallback rules defined in RSS Edge Cases. Artwork and proxy-status network behavior do not use direct fallback.
 - Missing episodes return `404 Not Found`
 
 #### `DELETE /api/episodes/:id/download`
@@ -1092,6 +1092,9 @@ RSS import and refresh must be tolerant of imperfect real-world feeds. A bad or 
 ### Feed Validation
 - If the RSS or Atom document cannot be fetched, return a feed fetch error.
 - If the response is fetched but cannot be parsed, return a feed parse error.
+- When proxy usage is enabled and SOCKS5 is configured, RSS fetching makes up to two attempts through the proxy, with a 500 ms delay between attempts, then one direct attempt if the proxied fetch attempts fail. This applies to subscription creation, OPML import, and manual or scheduled refresh. A response that cannot be fetched or has a non-success HTTP status may use this fallback; an RSS/Atom parse error does not.
+- When proxy usage is disabled or unavailable, RSS fetching uses the direct route once and does not repeat the request through a second direct client.
+- If both proxied and direct RSS requests fail, return a feed fetch error containing both route failures. Existing scheduler retry behavior remains in effect.
 - If the feed has no usable title, the app may use the feed URL or hostname as a fallback display title.
 - If the feed later provides a better title, the title may be updated.
 
@@ -1293,8 +1296,9 @@ Deployment note:
   - episode downloads
   - podcast artwork proxying
   - proxy runtime identity lookup
-- When proxy usage is enabled, all backend outbound HTTP network operations must use the configured proxy path.
-- Exception: authenticated playback streaming and background episode downloads may make one direct retry only after the configured proxy path returns a failed or non-playable audio response. This avoids playback and download failure when a podcast CDN blocks or fails over a specific proxy exit. The retry applies only to audio streaming (`GET /api/episodes/:id/audio`) and background episode downloads; it does not apply to RSS fetching, OPML import, refresh, artwork proxying, or proxy identity lookup.
+- When proxy usage is enabled, backend outbound HTTP requests use the configured proxy path first.
+- RSS fetching may make up to two proxied attempts followed by one direct attempt on fetch failure, as defined in RSS Edge Cases. This applies to subscription creation, OPML import, and refresh.
+- Authenticated playback streaming and background episode downloads may make one direct retry only after the configured proxy path returns a failed or non-playable audio response. This avoids playback and download failure when a podcast CDN blocks or fails over a specific proxy exit. The audio retry applies only to `GET /api/episodes/:id/audio` and background episode downloads. Artwork proxying and proxy identity lookup do not use direct fallback.
 - If proxy variables are not provided, or if proxy usage is disabled in Settings, all backend outbound HTTP network operations use direct connection.
 - The Settings screen must provide a proxy on/off switch when proxy configuration is available.
 - The proxy switch controls whether configured proxy settings are used; it does not edit proxy host, port, username, or password.

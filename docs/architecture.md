@@ -281,6 +281,7 @@ Responsible for:
 - keep `downloaded_path` aligned with disk state
 
 This module should use one shared HTTP client configuration path so proxy-aware network behavior and outbound URL validation are consistent across all backend network operations, including RSS fetching, scheduled refreshes, media downloads, audio proxying, image proxying, and proxy identity lookup. The shared transport accepts only HTTP(S) targets without embedded credentials and revalidates every redirect. Private and loopback HTTP(S) targets remain valid for trusted local-network podcast sources.
+When SOCKS5 proxy usage is enabled, RSS fetches may retry twice through the proxy and then once directly after fetch failures. The direct client uses the same outbound URL policy and redirect validation as the proxy-aware client. RSS parse failures do not trigger a direct retry.
 
 ### Scheduler Module
 
@@ -492,6 +493,7 @@ When a downloaded file exists locally, the backend serves that file.
 When no local file exists, the backend proxies the remote episode audio URL through the authenticated audio endpoint.
 Remote proxying must preserve playback needs such as Range requests so browser media controls can seek.
 When SOCKS5 proxy usage is enabled, playback streaming uses that proxy first. If that proxied response fails or is clearly not playable audio, the backend may make one direct retry for this playback request only, because public podcast CDNs can block individual proxy exits while still serving the same audio directly.
+Background episode downloads have the same one-time direct retry for failed or non-playable proxied audio. RSS feed fetches have a separate sequence: up to two attempts through the proxy, then one direct attempt after fetch failures.
 This keeps file storage, authentication, and proxy-aware network behavior on the backend while still allowing streaming before download.
 
 ## Configuration Boundaries

@@ -145,11 +145,18 @@ func NewRouterServicesForRuntime(cfg config.Config, db *sql.DB) (*RouterServices
 	if err != nil {
 		return nil, err
 	}
+	directFeedClient := (*nethttp.Client)(nil)
 	directAudioCfg := cfg
 	directAudioCfg.SOCKS5Host = ""
 	directAudioCfg.SOCKS5Port = ""
 	directAudioCfg.SOCKS5Username = ""
 	directAudioCfg.SOCKS5Password = ""
+	if cfg.SOCKS5Host != "" {
+		directFeedClient, err = remote.NewHTTPClientWithProxyDecider(directAudioCfg, nil)
+		if err != nil {
+			return nil, err
+		}
+	}
 	directAudioClient, err := remote.NewStreamingHTTPClientWithProxyDecider(directAudioCfg, nil)
 	if err != nil {
 		return nil, err
@@ -171,7 +178,7 @@ func NewRouterServicesForRuntime(cfg config.Config, db *sql.DB) (*RouterServices
 		Playlist:          playlistService,
 		PlaylistActions:   playlist.NewActions(db, downloadsService),
 		Downloads:         downloadsService,
-		Podcasts:          podcasts.NewService(db, client),
+		Podcasts:          podcasts.NewServiceWithDirectFallback(db, client, directFeedClient, proxyEnabled),
 		Audiobooks:        audiobooksService,
 		RemoteClient:      client,
 		AudioClient:       audioClient,
