@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api, ApiError, type AuthSession } from "@/lib/api";
+import { SESSION_RETRY_CONFIG } from "@/lib/session-recovery";
 
 import App from "./App";
 
@@ -436,48 +437,62 @@ describe("App routing", () => {
   });
 
   it("shows retry screen when all transient retry attempts fail", async () => {
-    const networkError = new TypeError("Failed to fetch");
-    const sessionSpy = vi
-      .spyOn(api.auth, "session")
-      .mockRejectedValue(networkError);
+    vi.useFakeTimers();
+    try {
+      const networkError = new TypeError("Failed to fetch");
+      const sessionSpy = vi
+        .spyOn(api.auth, "session")
+        .mockRejectedValue(networkError);
 
-    render(<App />);
+      render(<App />);
 
-    expect(
-      await screen.findByText("mpod is not reachable", undefined, {
-        timeout: 4000,
-      })
-    ).toBeInTheDocument();
-    expect(sessionSpy).toHaveBeenCalledTimes(3);
+      for (const delay of SESSION_RETRY_CONFIG.foreground.backoffDelays) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(delay);
+        });
+      }
+
+      expect(screen.getByText("mpod is not reachable")).toBeInTheDocument();
+      expect(sessionSpy).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("automatically retries session loading on window online event when session error is displayed", async () => {
-    const networkError = new TypeError("Failed to fetch");
-    const sessionSpy = vi
-      .spyOn(api.auth, "session")
-      .mockRejectedValue(networkError);
+    vi.useFakeTimers();
+    try {
+      const networkError = new TypeError("Failed to fetch");
+      const sessionSpy = vi
+        .spyOn(api.auth, "session")
+        .mockRejectedValue(networkError);
 
-    render(<App />);
+      render(<App />);
 
-    expect(
-      await screen.findByText("mpod is not reachable", undefined, {
-        timeout: 4000,
-      })
-    ).toBeInTheDocument();
-    expect(sessionSpy).toHaveBeenCalledTimes(3);
+      for (const delay of SESSION_RETRY_CONFIG.foreground.backoffDelays) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(delay);
+        });
+      }
 
-    sessionSpy.mockResolvedValueOnce({
-      authenticated: true,
-      user: { id: 1, username: "qa" },
-      setupRequired: false,
-    });
+      expect(screen.getByText("mpod is not reachable")).toBeInTheDocument();
+      expect(sessionSpy).toHaveBeenCalledTimes(3);
 
-    await act(async () => {
-      window.dispatchEvent(new Event("online"));
-    });
+      sessionSpy.mockResolvedValueOnce({
+        authenticated: true,
+        user: { id: 1, username: "qa" },
+        setupRequired: false,
+      });
 
-    expect(await screen.findByText("Home screen")).toBeInTheDocument();
-    expect(sessionSpy).toHaveBeenCalledTimes(4);
+      await act(async () => {
+        window.dispatchEvent(new Event("online"));
+      });
+
+      expect(screen.getByText("Home screen")).toBeInTheDocument();
+      expect(sessionSpy).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not trigger extra session loading on window online event when session is already loaded", async () => {
