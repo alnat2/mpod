@@ -21,7 +21,7 @@ Single-user web application: React frontend, Go backend, SQLite, local storage. 
 - Перед изменением `server/` прочитай `server/AGENTS.md`.
 - Frontend-задача меняет frontend и frontend-owned docs; backend-задача — backend и backend-owned docs.
 - Причина вне заданной области: сообщи вывод и дождись разрешения на cross-domain fix. Изначальный full-stack запрос разрешает обе области.
-- Docker/runtime/deploy: сначала `docs/deployment.md`. Test branch — `test`, production — `main`; не переключай источник самостоятельно. Production — после явного подтверждения.
+- Docker/runtime/deploy: сначала `docs/deployment.md`. Test branch — `test`, production — `main`; не переключай источник самостоятельно. Любой deploy (и test, и production) и любые команды через SSH на внешние хосты (`nas` и др.) СТРОГО ЗАПРЕЩЕНЫ без прямого, явного приказа пользователя (например, «задеплой на тест»). Запросы про git push, статус веток или тестирование НЕ являются разрешением на деплой. Агент работает только в локальном репозитории.
 
 ## Готовность
 
