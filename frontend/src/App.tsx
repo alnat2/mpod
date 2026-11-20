@@ -27,6 +27,8 @@ import {
 import {
   fetchSessionWithTimeout,
   isTransientSessionError,
+  sleepWithSignal,
+  SESSION_RETRY_CONFIG,
 } from "@/lib/session-recovery";
 import { useLatestRequest } from "@/lib/use-latest-request";
 import { PlaybackProvider, usePlaybackDispatch } from "@/lib/playback-context";
@@ -219,31 +221,52 @@ function AppRoutes() {
   const [sessionError, setSessionError] = useState(false);
   const sessionRequests = useLatestRequest();
   const passiveSessionRefreshRef = useRef<Promise<void> | null>(null);
+  const activeAbortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      activeAbortControllerRef.current?.abort();
+    };
+  }, []);
 
   const loadSession = useCallback(
     async (options: { background?: boolean } = {}) => {
       const isBackground = options.background ?? false;
       const requestGeneration = sessionRequests.beginRequest();
+
+      activeAbortControllerRef.current?.abort();
+      const abortController = new AbortController();
+      activeAbortControllerRef.current = abortController;
+
       if (!isBackground) {
         setLoading(true);
         setSessionError(false);
       }
 
-      const maxAttempts = isBackground ? 1 : 3;
-      const timeoutMs = isBackground ? 4000 : 2500;
-      const backoffDelays = [400, 800];
+      const config = isBackground
+        ? SESSION_RETRY_CONFIG.background
+        : SESSION_RETRY_CONFIG.foreground;
 
       let attempt = 0;
 
-      while (attempt < maxAttempts) {
-        if (!sessionRequests.isLatestRequest(requestGeneration)) {
+      while (attempt < config.maxAttempts) {
+        if (
+          !sessionRequests.isLatestRequest(requestGeneration) ||
+          abortController.signal.aborted
+        ) {
           return;
         }
 
         try {
-          const nextSession = await fetchSessionWithTimeout(timeoutMs);
+          const nextSession = await fetchSessionWithTimeout(
+            config.timeoutMs,
+            abortController.signal
+          );
 
-          if (sessionRequests.isLatestRequest(requestGeneration)) {
+          if (
+            sessionRequests.isLatestRequest(requestGeneration) &&
+            !abortController.signal.aborted
+          ) {
             if (!nextSession.authenticated) {
               clearCachedSettings();
               clearCachedAudiobooks();
@@ -258,21 +281,28 @@ function AppRoutes() {
         } catch (error) {
           attempt++;
 
-          if (!sessionRequests.isLatestRequest(requestGeneration)) {
+          if (
+            !sessionRequests.isLatestRequest(requestGeneration) ||
+            abortController.signal.aborted
+          ) {
             return;
           }
 
-          if (attempt < maxAttempts && isTransientSessionError(error)) {
-            const delayMs = backoffDelays[attempt - 1] ?? 800;
-            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          if (attempt < config.maxAttempts && isTransientSessionError(error)) {
+            const delayMs = config.backoffDelays[attempt - 1] ?? 800;
+            await sleepWithSignal(delayMs, abortController.signal);
             continue;
           }
 
+          console.error("Session loading failed after retries:", error);
           break;
         }
       }
 
-      if (sessionRequests.isLatestRequest(requestGeneration)) {
+      if (
+        sessionRequests.isLatestRequest(requestGeneration) &&
+        !abortController.signal.aborted
+      ) {
         if (!isBackground) {
           setSessionError(true);
           setLoading(false);
@@ -364,7 +394,7 @@ function AppRoutes() {
   useEffect(() => {
     const handleOnline = () => {
       if (sessionError) {
-        void loadSession();
+        void loadSession({ background: false });
       }
     };
 

@@ -1,5 +1,27 @@
 import { api, ApiError, type AuthSession } from "@/lib/api";
 
+export type SessionRetryConfig = {
+  maxAttempts: number;
+  timeoutMs: number;
+  backoffDelays: number[];
+};
+
+export const SESSION_RETRY_CONFIG: {
+  foreground: SessionRetryConfig;
+  background: SessionRetryConfig;
+} = {
+  foreground: {
+    maxAttempts: 3,
+    timeoutMs: 2500,
+    backoffDelays: [400, 800],
+  },
+  background: {
+    maxAttempts: 1,
+    timeoutMs: 4000,
+    backoffDelays: [],
+  },
+};
+
 export function isTransientSessionError(error: unknown): boolean {
   if (!error || typeof error !== "object") {
     return false;
@@ -24,6 +46,29 @@ export function isTransientSessionError(error: unknown): boolean {
     return true;
   }
   return false;
+}
+
+export function sleepWithSignal(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onAbort = () => {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+      resolve();
+    };
+    timer = setTimeout(() => {
+      if (signal) {
+        signal.removeEventListener("abort", onAbort);
+      }
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 export async function fetchSessionWithTimeout(

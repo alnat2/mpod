@@ -206,6 +206,7 @@ describe("pwa-update", () => {
           "api-session-cache",
           "api-playback-cache",
           "api-data-cache",
+          "api-v2-cache",
           "workbox-precache-v2",
           "custom-app-assets",
         ]),
@@ -222,6 +223,7 @@ describe("pwa-update", () => {
       expect(mockStorage.delete).toHaveBeenCalledWith("api-session-cache");
       expect(mockStorage.delete).toHaveBeenCalledWith("api-playback-cache");
       expect(mockStorage.delete).toHaveBeenCalledWith("api-data-cache");
+      expect(mockStorage.delete).not.toHaveBeenCalledWith("api-v2-cache");
       expect(mockStorage.delete).not.toHaveBeenCalledWith("workbox-precache-v2");
       expect(mockStorage.delete).not.toHaveBeenCalledWith("custom-app-assets");
     });

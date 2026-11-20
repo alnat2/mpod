@@ -498,4 +498,104 @@ describe("App routing", () => {
 
     expect(sessionSpy).not.toHaveBeenCalled();
   });
+
+  it("cancels ongoing session request when a new session load begins", async () => {
+    let callCount = 0;
+    let firstSignal: AbortSignal | undefined;
+
+    vi.spyOn(api.auth, "session").mockImplementation(async ({ signal } = {}) => {
+      callCount++;
+      if (callCount === 2) {
+        firstSignal = signal;
+        return new Promise((_, reject) => {
+          signal?.addEventListener("abort", () => {
+            const err = new Error("Aborted");
+            err.name = "AbortError";
+            reject(err);
+          });
+        });
+      }
+      return {
+        authenticated: false,
+        user: null,
+        setupRequired: true,
+      };
+    });
+
+    render(<App />);
+
+    await screen.findByText("Setup screen");
+    const setupProps = setupScreenMock.mock.calls.at(-1)?.[0];
+    expect(setupProps?.onAuthenticated).toBeDefined();
+
+    act(() => {
+      void setupProps?.onAuthenticated?.();
+    });
+
+    await waitFor(() => {
+      expect(callCount).toBe(2);
+      expect(firstSignal).toBeDefined();
+    });
+
+    expect(firstSignal?.aborted).toBe(false);
+
+    act(() => {
+      void setupProps?.onAuthenticated?.();
+    });
+
+    await waitFor(() => {
+      expect(firstSignal?.aborted).toBe(true);
+    });
+  });
+
+  it("cancels ongoing retry loop during backoff sleep when a new session load begins", async () => {
+    let callCount = 0;
+
+    vi.spyOn(api.auth, "session").mockImplementation(async () => {
+      callCount++;
+      if (callCount === 2) {
+        // First retry loop attempt 1 fails
+        throw new TypeError("Failed to fetch");
+      }
+      if (callCount === 3) {
+        // New session load succeeds
+        return {
+          authenticated: true,
+          user: { id: 1, username: "qa" },
+          setupRequired: false,
+        };
+      }
+      return {
+        authenticated: false,
+        user: null,
+        setupRequired: true,
+      };
+    });
+
+    render(<App />);
+
+    await screen.findByText("Setup screen");
+    const setupProps = setupScreenMock.mock.calls.at(-1)?.[0];
+    expect(setupProps?.onAuthenticated).toBeDefined();
+
+    // Start first loadSession which will fail attempt 1 and enter backoff sleep
+    act(() => {
+      void setupProps?.onAuthenticated?.();
+    });
+
+    await waitFor(() => {
+      expect(callCount).toBe(2);
+    });
+
+    // Start new session load while the first loop is in backoff delay
+    act(() => {
+      void setupProps?.onAuthenticated?.();
+    });
+
+    expect(await screen.findByText("Home screen")).toBeInTheDocument();
+
+    // Wait past the original 400ms backoff to ensure the first loop did not fire attempts 2 and 3
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(callCount).toBe(3);
+  });
 });

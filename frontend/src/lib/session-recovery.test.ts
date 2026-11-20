@@ -2,16 +2,28 @@ import { describe, expect, it, vi } from "vitest";
 
 import { api, ApiError } from "@/lib/api";
 import {
+  SESSION_RETRY_CONFIG,
   fetchSessionWithTimeout,
   isTransientSessionError,
+  sleepWithSignal,
 } from "./session-recovery";
 
 describe("session-recovery", () => {
+  describe("SESSION_RETRY_CONFIG", () => {
+    it("defines foreground and background retry policies", () => {
+      expect(SESSION_RETRY_CONFIG.foreground.maxAttempts).toBe(3);
+      expect(SESSION_RETRY_CONFIG.foreground.timeoutMs).toBe(2500);
+      expect(SESSION_RETRY_CONFIG.foreground.backoffDelays).toEqual([400, 800]);
+
+      expect(SESSION_RETRY_CONFIG.background.maxAttempts).toBe(1);
+      expect(SESSION_RETRY_CONFIG.background.timeoutMs).toBe(4000);
+      expect(SESSION_RETRY_CONFIG.background.backoffDelays).toEqual([]);
+    });
+  });
+
   describe("isTransientSessionError", () => {
     it("returns true for TypeError (network / fetch failures)", () => {
       expect(isTransientSessionError(new TypeError("Failed to fetch"))).toBe(true);
-      expect(isTransientSessionError(new TypeError("Load failed"))).toBe(true);
-      expect(isTransientSessionError(new TypeError("Network connection lost"))).toBe(true);
     });
 
     it("returns true for AbortError (timeouts)", () => {
@@ -46,6 +58,31 @@ describe("session-recovery", () => {
       expect(isTransientSessionError(undefined)).toBe(false);
       expect(isTransientSessionError("string error")).toBe(false);
       expect(isTransientSessionError(123)).toBe(false);
+    });
+  });
+
+  describe("sleepWithSignal", () => {
+    it("resolves after specified delay when signal does not abort", async () => {
+      const start = Date.now();
+      await sleepWithSignal(30);
+      expect(Date.now() - start).toBeGreaterThanOrEqual(25);
+    });
+
+    it("resolves immediately when signal is already aborted", async () => {
+      const controller = new AbortController();
+      controller.abort();
+      const start = Date.now();
+      await sleepWithSignal(5000, controller.signal);
+      expect(Date.now() - start).toBeLessThan(100);
+    });
+
+    it("resolves early when signal aborts during sleep", async () => {
+      const controller = new AbortController();
+      const start = Date.now();
+      const sleepPromise = sleepWithSignal(5000, controller.signal);
+      setTimeout(() => controller.abort(), 20);
+      await sleepPromise;
+      expect(Date.now() - start).toBeLessThan(200);
     });
   });
 

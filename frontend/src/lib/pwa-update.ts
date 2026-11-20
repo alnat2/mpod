@@ -29,10 +29,7 @@ export async function cleanupLegacyCaches(
     const deleted: string[] = [];
     await Promise.all(
       keys.map(async (key) => {
-        if (
-          LEGACY_API_CACHE_NAMES.includes(key) ||
-          key.startsWith("api-")
-        ) {
+        if (LEGACY_API_CACHE_NAMES.includes(key)) {
           const success = await storage.delete(key);
           if (success) {
             deleted.push(key);
