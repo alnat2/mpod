@@ -2,10 +2,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   clearCachedAudiobooks,
+  clearCachedScheduler,
   clearCachedSettings,
   getCachedAudiobooks,
+  getCachedScheduler,
   getCachedSettings,
   setCachedAudiobooks,
+  setCachedScheduler,
   setCachedSettings,
   updateCachedSettings,
 } from "./screen-cache";
@@ -32,6 +35,25 @@ describe("screen-cache", () => {
     expect(getCachedAudiobooks()).toEqual(books);
     clearCachedAudiobooks();
     expect(getCachedAudiobooks()).toBeNull();
+  });
+
+  it("stores and clears scheduler cache", () => {
+    expect(getCachedScheduler()).toBeNull();
+    const scheduler = {
+      state: "idle",
+      lastRunAt: "2026-03-31T03:00:00Z",
+      lastSuccessAt: "2026-03-31T03:00:00Z",
+    };
+    setCachedScheduler(scheduler);
+    expect(getCachedScheduler()).toEqual(scheduler);
+    clearCachedScheduler();
+    expect(getCachedScheduler()).toBeNull();
+
+    // Cleared by clearCachedSettings too
+    setCachedScheduler(scheduler);
+    expect(getCachedScheduler()).toEqual(scheduler);
+    clearCachedSettings();
+    expect(getCachedScheduler()).toBeNull();
   });
 
   it("stores, updates, and clears settings cache", () => {

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ScreenErrorBoundary } from "@/components/screen-error-boundary";
 import { api, ApiError, type Episode, type Podcast } from "@/lib/api";
+import { clearCachedScheduler } from "@/lib/screen-cache";
 import {
   type CachedSubscriptionEpisode,
   type CachedSubscriptionPodcast,
@@ -257,6 +258,7 @@ describe("SubscriptionsScreen", () => {
   beforeEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    clearCachedScheduler();
     reloadQueueMock.mockReset();
     setViewportMatch(false);
     globalThis.IntersectionObserver = defaultIntersectionObserver;
@@ -1102,6 +1104,8 @@ describe("SubscriptionsScreen", () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
 
+    // Call 1: initial screen mount (loadSubscriptions)
+    // Call 2: first poll after 3s while background job is running
     expect(statusSpy).toHaveBeenCalledTimes(2);
     expect(refreshButton).toBeDisabled();
     expect(listSpy).toHaveBeenCalledTimes(1);
@@ -1110,6 +1114,8 @@ describe("SubscriptionsScreen", () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
 
+    // Call 3: second poll after another 3s seeing "completed" state
+    // Call 4: reloadSubscriptions triggered by setReloadKey on refresh completion
     expect(statusSpy).toHaveBeenCalledTimes(4);
     expect(refreshButton).not.toBeDisabled();
     expect(listSpy).toHaveBeenCalledTimes(2);
@@ -1213,8 +1219,14 @@ describe("SubscriptionsScreen", () => {
     await user.click(unsubButton);
 
     // Undo banner should be visible after exit animation
-    const statusBanner = await screen.findByRole("status");
-    expect(statusBanner).toHaveTextContent(/Unsubscribed from "Build Your SaaS"/i);
+    await waitFor(async () => {
+      const statusBanners = await screen.findAllByRole("status");
+      const statusBanner = statusBanners.find((el) =>
+        /Unsubscribed from "Build Your SaaS"/i.test(el.textContent ?? "")
+      );
+      expect(statusBanner).toBeDefined();
+      expect(statusBanner).toHaveTextContent(/Unsubscribed from "Build Your SaaS"/i);
+    });
     const undoButton = screen.getByRole("button", { name: "Undo" });
     expect(undoButton).toBeInTheDocument();
 
@@ -1238,8 +1250,14 @@ describe("SubscriptionsScreen", () => {
     await user.click(unsubButton);
 
     // Wait until scheduled action is active
-    const statusBanner = await screen.findByRole("status");
-    expect(statusBanner).toHaveTextContent(/Unsubscribed from "Build Your SaaS"/i);
+    await waitFor(async () => {
+      const statusBanners = await screen.findAllByRole("status");
+      const statusBanner = statusBanners.find((el) =>
+        /Unsubscribed from "Build Your SaaS"/i.test(el.textContent ?? "")
+      );
+      expect(statusBanner).toBeDefined();
+      expect(statusBanner).toHaveTextContent(/Unsubscribed from "Build Your SaaS"/i);
+    });
     expect(removeSpy).not.toHaveBeenCalled();
 
     // Navigating away / unmounting

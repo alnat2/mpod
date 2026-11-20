@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { api, type Episode, type SchedulerStatus } from "@/lib/api";
+import { getCachedScheduler, setCachedScheduler } from "@/lib/screen-cache";
 import type { CachedSubscriptionPodcast } from "@/lib/subscriptions-cache";
 
 import { getErrorMessage } from "./screen-utils";
@@ -20,8 +21,6 @@ type UseSubscriptionsDataOptions = {
   setSelectedPodcastId: Dispatch<SetStateAction<number | null>>;
 };
 
-let cachedScheduler: SchedulerStatus | null = null;
-
 export function useSubscriptionsData({
   hasLoaded,
   markLoaded,
@@ -31,8 +30,8 @@ export function useSubscriptionsData({
 }: UseSubscriptionsDataOptions) {
   const [loading, setLoading] = useState(!hasLoaded);
   const [error, setError] = useState<string | null>(null);
-  const [scheduler, setScheduler] = useState<SchedulerStatus | null>(
-    () => cachedScheduler
+  const [scheduler, setScheduler] = useState<SchedulerStatus | null>(() =>
+    getCachedScheduler()
   );
   const loadedOnceRef = useRef(hasLoaded);
 
@@ -83,7 +82,7 @@ export function useSubscriptionsData({
 
         if (!cancelled) {
           const nextScheduler = jobsResponse.scheduler ?? null;
-          cachedScheduler = nextScheduler;
+          setCachedScheduler(nextScheduler);
           setScheduler(nextScheduler);
 
           const applySubscriptions = () => {
@@ -118,12 +117,12 @@ export function useSubscriptionsData({
     void loadSubscriptions();
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState === "visible" && loadedOnceRef.current) {
         api.jobs
           .status()
           .then((res) => {
             if (!cancelled && res.scheduler) {
-              cachedScheduler = res.scheduler;
+              setCachedScheduler(res.scheduler);
               setScheduler(res.scheduler);
             }
           })

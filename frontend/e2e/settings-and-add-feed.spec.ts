@@ -172,6 +172,8 @@ test("saves settings and adds a feed from the empty subscriptions state", async 
   await page.getByRole("button", { name: "Save time" }).click();
 
   await expect(page.locator('input[aria-label="Daily refresh time"]')).toHaveValue("04:15");
+  await expect(page.getByText("Last refresh never")).not.toBeVisible();
+  await expect(page.getByText("Proxy is off")).not.toBeVisible();
   await expect(
     page.getByText("Turn on if direct connection update fails.")
   ).toBeVisible();

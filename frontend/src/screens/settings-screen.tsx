@@ -46,7 +46,7 @@ function getProxyDescription(
     return "Proxy runtime configuration is not available.";
   }
 
-  if (!settings?.proxyEnabled) {
+  if (!settings?.proxyEnabled || proxyStatus?.status === "off") {
     return "Turn on if direct connection update fails.";
   }
 
@@ -196,7 +196,6 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
           statusPollRequests.isLatestRequest(requestGeneration)
         ) {
           setProxyStatus(proxy);
-          updateCachedSettings({ proxyStatus: proxy });
         }
       } catch {
         // Keep the last known status visible instead of turning transient polling

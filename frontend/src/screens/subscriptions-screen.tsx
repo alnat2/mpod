@@ -171,7 +171,13 @@ export function SubscriptionsScreen() {
           podcastsWithUnlistenedCount
         )}
       </span>
-      <span>{formatSchedulerRefresh(scheduler)}</span>
+      <span
+        role={!loading ? "status" : undefined}
+        aria-live={!loading ? "polite" : undefined}
+        aria-atomic={!loading ? "true" : undefined}
+      >
+        {formatSchedulerRefresh(scheduler)}
+      </span>
     </div>
   ) : (
     "Start with one RSS feed or import subscriptions from another app."
