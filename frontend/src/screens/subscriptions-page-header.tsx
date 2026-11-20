@@ -14,7 +14,7 @@ export type SubscriptionsPageAction = {
 type SubscriptionsPageHeaderProps = {
   actions: SubscriptionsPageAction[];
   isMobile: boolean;
-  subtitle: string;
+  subtitle?: ReactNode;
   title: string;
 };
 
@@ -43,9 +43,11 @@ export function SubscriptionsPageHeader({
         <h1 className="truncate text-3xl leading-9 font-semibold tracking-normal text-foreground">
           {title}
         </h1>
-        <p className="truncate text-base leading-6 font-medium text-muted-foreground">
-          {subtitle}
-        </p>
+        {subtitle ? (
+          <div className="text-base leading-6 font-medium text-muted-foreground">
+            {subtitle}
+          </div>
+        ) : null}
       </div>
       {actions.length > 0 ? (
         <div className="flex h-[34px] shrink-0 items-center gap-2 overflow-hidden">

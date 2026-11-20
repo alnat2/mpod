@@ -88,13 +88,13 @@ describe("SettingsScreen", () => {
     );
   }
 
-  async function expectProxyIdentityInPageHeader() {
+  async function expectProxyIdentityInCard() {
     expect(
       await screen.findByText("Current IP: 43.32.112.45 • Geo: UK")
     ).toBeInTheDocument();
   }
 
-  it("loads settings and scheduler status", async () => {
+  it("loads settings and shows default proxy card description", async () => {
     const { container } = renderScreen();
 
     expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
@@ -104,12 +104,10 @@ describe("SettingsScreen", () => {
     expect(timeInput).toHaveAttribute("placeholder", "04:00");
     expect(timeInput).toHaveAttribute("maxLength", "5");
     expect(
-      screen.getByText("Last refresh never")
-    ).toBeInTheDocument();
-    expect(screen.getByText("Proxy is off")).toBeInTheDocument();
-    expect(
       screen.getByText("Turn on if direct connection update fails.")
     ).toBeInTheDocument();
+    expect(screen.queryByText("Last refresh never")).not.toBeInTheDocument();
+    expect(screen.queryByText("Proxy is off")).not.toBeInTheDocument();
     await expectNoA11yViolations(container);
   });
 
@@ -122,25 +120,6 @@ describe("SettingsScreen", () => {
     expect(await screen.findByText("Current app build: test-build")).toBeInTheDocument();
     expect(screen.getByDisplayValue("03:00")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save time" })).toBeEnabled();
-  });
-
-  it("displays last refresh time in 24-hour format", async () => {
-    const todayAt1352 = new Date();
-    todayAt1352.setHours(13, 52, 0, 0);
-
-    vi.spyOn(api.jobs, "status").mockResolvedValue({
-      scheduler: {
-        state: "idle",
-        lastRunAt: todayAt1352.toISOString(),
-        lastSuccessAt: todayAt1352.toISOString(),
-      },
-    });
-
-    renderScreen();
-
-    expect(
-      await screen.findByText("Last refresh today at 13:52")
-    ).toBeInTheDocument();
   });
 
   it("saves the daily refresh time", async () => {
@@ -218,7 +197,7 @@ describe("SettingsScreen", () => {
     await waitFor(() => {
       expect(updateSpy).toHaveBeenCalledWith({ proxyEnabled: true });
     });
-    await expectProxyIdentityInPageHeader();
+    await expectProxyIdentityInCard();
   });
 
   it("toggles dark theme locally without saving backend settings", async () => {
@@ -267,7 +246,7 @@ describe("SettingsScreen", () => {
 
     renderScreen();
 
-    await expectProxyIdentityInPageHeader();
+    await expectProxyIdentityInCard();
   });
 
   it("shows the backend proxy error when proxy lookup fails", async () => {
@@ -327,7 +306,9 @@ describe("SettingsScreen", () => {
 
     renderScreen();
 
-    expect(await screen.findByText("Proxy is off")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Turn on if direct connection update fails.")
+    ).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Use SOCKS5 proxy" })).toBeEnabled();
   });
 

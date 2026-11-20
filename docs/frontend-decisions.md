@@ -76,18 +76,21 @@ Tablet:
 - tablet layouts are out of scope for MVP as separate mockups
 - implementation may interpolate between desktop and mobile behavior, but tablet is not a separate design target
 
-### Settings Status Presentation
+### Settings and Proxy Status Presentation
 
 Decision:
-- desktop and mobile Settings screens show operational status as a two-line `PageHeader` subtitle
-- the first line shows the latest feed refresh time
-- the second line shows proxy runtime identity or its backend-reported off/error state
-- the proxy setting card uses the static description `Turn on if direct connection update fails.`
+- desktop and mobile Settings screens show a clean `PageHeader` with title only and no operational status subtitle
+- the latest feed refresh time is moved from Settings to the Subscriptions (Podcasts) page header subtitle
+- proxy runtime identity is displayed directly inside the SOCKS5 proxy setting card (`Use SOCKS5 proxy`), rather than in the page header
+- when proxy usage is enabled, the proxy setting card description dynamically displays the current IP and country (`Current IP: {ip} • Geo: {country}`)
+- when proxy usage is disabled, the proxy setting card description displays the default static guidance `Turn on if direct connection update fails.`
 
 Rules:
-- when proxy runtime lookup succeeds, use `Current IP: {ip} • Geo: {country}` with backend-provided values
-- when proxy runtime lookup fails or reports an error, error copy must use the `destructive` font color (`text-destructive`)
-- do not repeat scheduler or proxy runtime status inside their setting cards
+- when proxy usage is enabled and runtime lookup succeeds, display `Current IP: {ip} • Geo: {country}` using backend values inside the proxy card description
+- when proxy usage is enabled and runtime lookup fails, display the error message in the proxy card description using the `destructive` font color (`text-destructive`)
+- when proxy usage is disabled, display the static description `Turn on if direct connection update fails.`
+- when proxy runtime configuration is not available on the server, display `Proxy runtime configuration is not available.`
+- do not display proxy or scheduler status in the Settings page header
 - desktop keeps the wide refresh card on the left and the remaining settings in a compact `2×2` grid; mobile stacks the same cards vertically
 
 ### Error Text and Status Styling
@@ -200,7 +203,9 @@ Rules:
 
 Decision:
 - subscription browsing should show podcasts with unlistened episodes by default
-- the Subscriptions page header metadata should display the current number of subscribed podcasts and how many of those podcasts contain at least one unlistened episode, using the format `12 podcasts · 2 unlistened`; count each podcast at most once and do not display the latest refresh time
+- the Subscriptions page header metadata displays a two-line subtitle:
+  - the first line displays the current number of subscribed podcasts and how many of those podcasts contain at least one unlistened episode, using the format `12 podcasts · 2 unlistened` (counting each podcast at most once)
+  - the second line displays the latest feed refresh time from the scheduler (e.g. `Last refresh today at 03:04` / `Last refresh {date} at {time}` / `Last refresh never`), moved here from Settings
 - by default, the selected podcast episode list should also show only unlistened episodes
 - the selected podcast episode-list header summary should display total episode count and unlistened episode count for that podcast, for example `123 / 2 episodes`, instead of repeating the selected podcast name
 - podcast cards may expose a manual refresh control for refreshing a single subscription

@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils";
 import {
   api,
   type ProxyRuntimeStatus,
-  type SchedulerStatus,
   type SettingsValues,
 } from "@/lib/api";
 import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
@@ -38,45 +37,7 @@ type SettingsScreenProps = {
   onSessionChange?: () => void | Promise<void>;
 };
 
-const schedulerTimeFormatter = new Intl.DateTimeFormat("en-GB", {
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-  hourCycle: "h23",
-});
-
-const schedulerDateFormatter = new Intl.DateTimeFormat("en-GB", {
-  month: "short",
-  day: "numeric",
-});
-
-function formatSchedulerRefresh(status: SchedulerStatus | null) {
-  const lastRefreshAt =
-    status?.lastRunAt ?? status?.lastSuccessAt ?? status?.lastFailureAt ?? null;
-
-  if (!lastRefreshAt) {
-    return "Last refresh never";
-  }
-
-  const refreshDate = new Date(lastRefreshAt);
-  const now = new Date();
-  const isSameDay =
-    refreshDate.getFullYear() === now.getFullYear() &&
-    refreshDate.getMonth() === now.getMonth() &&
-    refreshDate.getDate() === now.getDate();
-
-  const timeLabel = schedulerTimeFormatter.format(refreshDate);
-
-  if (isSameDay) {
-    return `Last refresh today at ${timeLabel}`;
-  }
-
-  const dateLabel = schedulerDateFormatter.format(refreshDate);
-
-  return `Last refresh ${dateLabel} at ${timeLabel}`;
-}
-
-function formatProxyIdentity(
+function getProxyDescription(
   proxyConfigured: boolean,
   settings: SettingsValues | null,
   proxyStatus: ProxyRuntimeStatus | null
@@ -85,19 +46,18 @@ function formatProxyIdentity(
     return "Proxy runtime configuration is not available.";
   }
 
-  if (!settings?.proxyEnabled || proxyStatus?.status === "off") {
-    return "Proxy is off";
+  if (!settings?.proxyEnabled) {
+    return "Turn on if direct connection update fails.";
   }
 
   if (proxyStatus?.status === "ok") {
-    if (proxyStatus.externalIp || proxyStatus.country) {
-      return [
-        proxyStatus.externalIp ? `Current IP: ${proxyStatus.externalIp}` : null,
-        proxyStatus.country ? `Geo: ${proxyStatus.country}` : null,
-      ]
-        .filter(Boolean)
-        .join(" • ");
-    }
+    const details = [
+      proxyStatus.externalIp ? `Current IP: ${proxyStatus.externalIp}` : null,
+      proxyStatus.country ? `Geo: ${proxyStatus.country}` : null,
+    ]
+      .filter(Boolean)
+      .join(" • ");
+    return details || "Proxy is on";
   }
 
   if (proxyStatus?.status === "error") {
@@ -164,7 +124,6 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
   const [modal, setModal] = useState<AddPodcastModalMode>(null);
   const [settings, setSettings] = useState<SettingsValues | null>(() => cached?.settings ?? null);
   const [proxyStatus, setProxyStatus] = useState<ProxyRuntimeStatus | null>(() => cached?.proxyStatus ?? null);
-  const [scheduler, setScheduler] = useState<SchedulerStatus | null>(() => cached?.scheduler ?? null);
   const [dailyRefreshTime, setDailyRefreshTime] = useState(() =>
     normalizeDailyRefreshTime(cached?.dailyRefreshTime)
   );
@@ -175,17 +134,6 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
   const [reloadKey, setReloadKey] = useState(0);
   const statusPollRequests = useLatestRequest();
   const proxyConfigured = settings?.proxyConfigured || proxyStatus?.proxyConfigured || false;
-  const settingsStatus = (
-    <div
-      className="flex flex-col"
-      role={!loading ? "status" : undefined}
-      aria-live={!loading ? "polite" : undefined}
-      aria-atomic={!loading ? "true" : undefined}
-    >
-      <span>{formatSchedulerRefresh(scheduler)}</span>
-      <span>{formatProxyIdentity(proxyConfigured, settings, proxyStatus)}</span>
-    </div>
-  );
 
   useEffect(() => {
     let cancelled = false;
@@ -197,20 +145,15 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
       setError(null);
 
       try {
-        const [{ settings: values }, { scheduler: status }] = await Promise.all([
-          api.settings.get(),
-          api.jobs.status(),
-        ]);
+        const { settings: values } = await api.settings.get();
 
         if (!cancelled) {
           const normalizedTime = normalizeDailyRefreshTime(values.dailyRefreshTime);
           setSettings(values);
           setDailyRefreshTime(normalizedTime);
-          setScheduler(status);
           updateCachedSettings({
             settings: values,
             dailyRefreshTime: normalizedTime,
-            scheduler: status,
           });
           setLoading(false);
         }
@@ -244,19 +187,16 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
   useEffect(() => {
     let cancelled = false;
 
-    async function refreshSchedulerStatus() {
+    async function refreshProxyStatus() {
       const requestGeneration = statusPollRequests.beginRequest();
       try {
-        const [{ scheduler: status }, { proxy }] = await Promise.all([
-          api.jobs.status(),
-          api.settings.proxyStatus(),
-        ]);
+        const { proxy } = await api.settings.proxyStatus();
         if (
           !cancelled &&
           statusPollRequests.isLatestRequest(requestGeneration)
         ) {
-          setScheduler(status);
           setProxyStatus(proxy);
+          updateCachedSettings({ proxyStatus: proxy });
         }
       } catch {
         // Keep the last known status visible instead of turning transient polling
@@ -266,13 +206,13 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
 
     const interval = window.setInterval(() => {
       if (typeof document === "undefined" || document.visibilityState === "visible") {
-        void refreshSchedulerStatus();
+        void refreshProxyStatus();
       }
     }, 15000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        void refreshSchedulerStatus();
+        void refreshProxyStatus();
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -361,7 +301,6 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
               <PageHeader
                 layout="mobile"
                 title="Settings"
-                subtitle={settingsStatus}
                 actions={[]}
               />
             </div>
@@ -369,7 +308,6 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
             <PageHeader
               layout="desktop"
               title="Settings"
-              subtitle={settingsStatus}
               actions={[]}
             />
           )}
@@ -438,7 +376,11 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                 <div className="grid gap-4 min-[1360px]:grid-cols-2">
                   <SettingsCard
                     title="Use SOCKS5 proxy"
-                    description="Turn on if direct connection update fails."
+                    description={getProxyDescription(
+                      proxyConfigured,
+                      settings,
+                      proxyStatus
+                    )}
                     action={
                       <Switch
                         aria-label="Use SOCKS5 proxy"

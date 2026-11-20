@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -39,7 +39,7 @@ import {
   ScreenBannerStack,
   UndoBanner,
 } from "./screen-states";
-import { getEpisodeShowNotes } from "./screen-utils";
+import { formatSchedulerRefresh, getEpisodeShowNotes } from "./screen-utils";
 import { useSubscriptionActions } from "./use-subscription-actions";
 import { useSubscriptionsData } from "./use-subscriptions-data";
 
@@ -80,7 +80,7 @@ export function SubscriptionsScreen() {
   const [showNotesError, setShowNotesError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
-  const { error, loading, setError } = useSubscriptionsData({
+  const { error, loading, scheduler, setError } = useSubscriptionsData({
     hasLoaded,
     markLoaded,
     reloadKey,
@@ -161,14 +161,21 @@ export function SubscriptionsScreen() {
         ? "No unlistened podcasts"
         : "Podcasts"
       : "No podcasts";
-  const pageSubtitle = !hasLoaded
-    ? "Loading your podcast library."
-    : hasSubscriptions
-      ? subscriptionSummaryLabel(
+  const pageSubtitle: ReactNode = !hasLoaded ? (
+    "Loading your podcast library."
+  ) : hasSubscriptions ? (
+    <div className="flex flex-col">
+      <span>
+        {subscriptionSummaryLabel(
           podcastsWithPending.length,
           podcastsWithUnlistenedCount
-        )
-      : "Start with one RSS feed or import subscriptions from another app.";
+        )}
+      </span>
+      <span>{formatSchedulerRefresh(scheduler)}</span>
+    </div>
+  ) : (
+    "Start with one RSS feed or import subscriptions from another app."
+  );
   const pageActions: SubscriptionsPageAction[] = hasSubscriptions
     ? [
         {

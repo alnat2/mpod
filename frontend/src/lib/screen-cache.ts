@@ -7,7 +7,7 @@ import type {
 
 export type SettingsMemoryCache = {
   settings: SettingsValues;
-  scheduler: SchedulerStatus;
+  scheduler?: SchedulerStatus | null;
   proxyStatus: ProxyRuntimeStatus | null;
   dailyRefreshTime: string;
 };
@@ -38,10 +38,10 @@ export function setCachedSettings(cache: SettingsMemoryCache): void {
 export function updateCachedSettings(patch: Partial<SettingsMemoryCache>): void {
   if (settingsMemoryCache) {
     settingsMemoryCache = { ...settingsMemoryCache, ...patch };
-  } else if (patch.settings && patch.scheduler && patch.dailyRefreshTime) {
+  } else if (patch.settings && patch.dailyRefreshTime) {
     settingsMemoryCache = {
       settings: patch.settings,
-      scheduler: patch.scheduler,
+      scheduler: patch.scheduler ?? null,
       dailyRefreshTime: patch.dailyRefreshTime,
       proxyStatus: patch.proxyStatus ?? null,
     };

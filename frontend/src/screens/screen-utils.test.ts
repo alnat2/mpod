@@ -13,6 +13,7 @@ import {
   formatEpisodeDuration,
   formatPlaybackProgressDuration,
   formatRemainingTime,
+  formatSchedulerRefresh,
   getErrorMessage,
   isValid24HourTime,
   normalizeDailyRefreshTime,
@@ -158,5 +159,67 @@ describe("screen-utils", () => {
     // Deletion support
     expect(applyTimeMask("14:", "14:3")).toBe("14:");
     expect(applyTimeMask("14", "14:")).toBe("1");
+  });
+
+  it("formats scheduler refresh status appropriately", () => {
+    const fixedNow = new Date("2026-03-31T15:00:00Z");
+
+    // Null or undefined
+    expect(formatSchedulerRefresh(null, fixedNow)).toBe("Last refresh never");
+    expect(formatSchedulerRefresh(undefined, fixedNow)).toBe("Last refresh never");
+    expect(
+      formatSchedulerRefresh(
+        { state: "idle", lastRunAt: null, lastSuccessAt: null },
+        fixedNow
+      )
+    ).toBe("Last refresh never");
+    expect(
+      formatSchedulerRefresh(
+        { state: "idle", lastRunAt: "invalid-date", lastSuccessAt: null },
+        fixedNow
+      )
+    ).toBe("Last refresh never");
+
+    // Today refresh
+    const todayMorning = new Date(fixedNow);
+    todayMorning.setHours(3, 4, 0, 0);
+    expect(
+      formatSchedulerRefresh(
+        { state: "idle", lastRunAt: todayMorning.toISOString(), lastSuccessAt: null },
+        fixedNow
+      )
+    ).toMatch(/^Last refresh today at \d{2}:\d{2}$/);
+
+    // Fallback to lastSuccessAt
+    expect(
+      formatSchedulerRefresh(
+        { state: "idle", lastRunAt: null, lastSuccessAt: todayMorning.toISOString() },
+        fixedNow
+      )
+    ).toMatch(/^Last refresh today at \d{2}:\d{2}$/);
+
+    // Fallback to lastFailureAt
+    expect(
+      formatSchedulerRefresh(
+        {
+          state: "idle",
+          lastRunAt: null,
+          lastSuccessAt: null,
+          lastFailureAt: todayMorning.toISOString(),
+        },
+        fixedNow
+      )
+    ).toMatch(/^Last refresh today at \d{2}:\d{2}$/);
+
+    // Past date refresh
+    const pastDate = new Date(fixedNow);
+    pastDate.setDate(pastDate.getDate() - 3);
+    pastDate.setHours(14, 20, 0, 0);
+    const formattedPast = formatSchedulerRefresh(
+      { state: "idle", lastRunAt: pastDate.toISOString(), lastSuccessAt: null },
+      fixedNow
+    );
+    expect(formattedPast).not.toContain("today");
+    expect(formattedPast).toMatch(/^Last refresh .+ at \d{2}:\d{2}$/);
   });
 });

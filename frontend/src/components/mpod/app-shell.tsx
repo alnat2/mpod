@@ -20,7 +20,7 @@ type AppShellProps = {
   onAddPodcast?: () => void;
   pageActions?: ComponentProps<typeof PageHeader>["actions"];
   pageHeaderVisible?: boolean;
-  pageSubtitle?: string;
+  pageSubtitle?: ReactNode;
   pageTitle?: string;
 };
 

@@ -7,7 +7,7 @@ import {
   type SetStateAction,
 } from "react";
 
-import { api, type Episode } from "@/lib/api";
+import { api, type Episode, type SchedulerStatus } from "@/lib/api";
 import type { CachedSubscriptionPodcast } from "@/lib/subscriptions-cache";
 
 import { getErrorMessage } from "./screen-utils";
@@ -20,6 +20,8 @@ type UseSubscriptionsDataOptions = {
   setSelectedPodcastId: Dispatch<SetStateAction<number | null>>;
 };
 
+let cachedScheduler: SchedulerStatus | null = null;
+
 export function useSubscriptionsData({
   hasLoaded,
   markLoaded,
@@ -29,6 +31,9 @@ export function useSubscriptionsData({
 }: UseSubscriptionsDataOptions) {
   const [loading, setLoading] = useState(!hasLoaded);
   const [error, setError] = useState<string | null>(null);
+  const [scheduler, setScheduler] = useState<SchedulerStatus | null>(
+    () => cachedScheduler
+  );
   const loadedOnceRef = useRef(hasLoaded);
 
   useEffect(() => {
@@ -42,12 +47,17 @@ export function useSubscriptionsData({
       setError(null);
 
       try {
-        const [podcastResponse, playlistResponse, episodeResponse] =
-          await Promise.all([
-            api.podcasts.list(),
-            api.playlist.list(),
-            api.episodes.list(),
-          ]);
+        const [
+          podcastResponse,
+          playlistResponse,
+          episodeResponse,
+          jobsResponse,
+        ] = await Promise.all([
+          api.podcasts.list(),
+          api.playlist.list(),
+          api.episodes.list(),
+          api.jobs.status().catch(() => ({ scheduler: null })),
+        ]);
         const podcastItems = podcastResponse.podcasts ?? [];
         const playlistItems = playlistResponse.items ?? [];
         const episodesByPodcast = new Map<number, Episode[]>();
@@ -72,6 +82,10 @@ export function useSubscriptionsData({
         );
 
         if (!cancelled) {
+          const nextScheduler = jobsResponse.scheduler ?? null;
+          cachedScheduler = nextScheduler;
+          setScheduler(nextScheduler);
+
           const applySubscriptions = () => {
             setPodcasts(nextPodcasts);
             setSelectedPodcastId((current) =>
@@ -103,10 +117,26 @@ export function useSubscriptionsData({
 
     void loadSubscriptions();
 
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        api.jobs
+          .status()
+          .then((res) => {
+            if (!cancelled && res.scheduler) {
+              cachedScheduler = res.scheduler;
+              setScheduler(res.scheduler);
+            }
+          })
+          .catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [markLoaded, reloadKey, setPodcasts, setSelectedPodcastId]);
 
-  return { error, loading, setError };
+  return { error, loading, scheduler, setError };
 }

@@ -123,7 +123,9 @@ Podcast artwork fallback:
 Default podcast visibility:
 - follow the canonical rules in [frontend-decisions.md](frontend-decisions.md#subscription-list-defaults)
 - summary: show podcasts with unlistened episodes by default, provide `Show all` / `Show unlistened`, keep that state local to Subscriptions, and keep the selected episode list in the same visibility mode as the podcast carousel
-- page header metadata displays the current number of subscribed podcasts plus the number of those podcasts that contain at least one unlistened episode, for example `12 podcasts · 2 unlistened`
+- page header metadata displays a two-line subtitle:
+  - line 1: current number of subscribed podcasts plus the number of those podcasts that contain at least one unlistened episode, for example `12 podcasts · 2 unlistened`
+  - line 2: latest feed refresh time from the scheduler (e.g. `Last refresh today at 03:04` / `Last refresh {date} at {time}` / `Last refresh never`)
 
 States:
 - empty state when no podcasts exist
@@ -258,22 +260,21 @@ Purpose:
 Content:
 - export OPML
 - daily refresh time setting
-- scheduler last-refresh information in the page header
 - proxy usage switch when SOCKS5 proxy configuration is available
 - read-only proxy configured status
-- read-only proxy runtime identity status in the page header, with external IP and country when proxy usage is enabled
+- read-only proxy runtime identity status inside the proxy setting card description when proxy usage is enabled, with external IP and country
 - dark-theme switch
 - logout action
 
 UX notes:
 - settings should remain small and practical
 - this is not a profile-management area in the multi-user sense
+- the page header subtitle is no longer used for operational status; Settings uses a clean page header with title only
 - the proxy control should be a simple on/off switch; host, port, username, and password remain runtime configuration
-- the page header subtitle should show the last refresh on its first line and proxy runtime identity on its second line on both desktop and mobile
-- the proxy card description should remain the static guidance `Turn on if direct connection update fails.`
-- when proxy usage is disabled, the second page-header line should show `Proxy is off`
-- when proxy usage is enabled and runtime lookup succeeds, the second page-header line should show `Current IP: {ip} • Geo: {country}` using backend values
-- when proxy runtime lookup fails, the second page-header line should show the explicit backend error rather than inventing geo or connectivity details
+- when proxy usage is enabled and runtime lookup succeeds, the proxy card description dynamically shows `Current IP: {ip} • Geo: {country}` using backend values
+- when proxy usage is disabled, the proxy card description shows the static guidance `Turn on if direct connection update fails.`
+- when proxy usage is enabled and runtime lookup fails, the proxy card description shows the explicit backend error in destructive color rather than inventing geo or connectivity details
+- when proxy configuration is not available, the proxy card description shows `Proxy runtime configuration is not available.`
 - desktop uses a wide daily-refresh card on the left and a `2×2` grid of compact setting cards on the right; mobile stacks all cards in one column
 - for daily refresh time, the save action should be secondary when the time has not changed and primary only after the user changes the time
 - do not add cleanup toggles unless product decisions are intentionally changed

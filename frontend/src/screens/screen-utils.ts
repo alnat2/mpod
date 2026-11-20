@@ -1,4 +1,4 @@
-import { ApiError, type Episode } from "@/lib/api";
+import { ApiError, type Episode, type SchedulerStatus } from "@/lib/api";
 
 export function getErrorMessage(error: unknown) {
   if (error instanceof ApiError) {
@@ -141,6 +141,50 @@ export function formatDateTime(value?: string | null) {
   }
 
   return dateTimeFormatter.format(d);
+}
+
+const schedulerTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+  hourCycle: "h23",
+});
+
+const schedulerDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  month: "short",
+  day: "numeric",
+});
+
+export function formatSchedulerRefresh(
+  status: SchedulerStatus | null | undefined,
+  now = new Date()
+): string {
+  const lastRefreshAt =
+    status?.lastRunAt ?? status?.lastSuccessAt ?? status?.lastFailureAt ?? null;
+
+  if (!lastRefreshAt) {
+    return "Last refresh never";
+  }
+
+  const refreshDate = new Date(lastRefreshAt);
+  if (Number.isNaN(refreshDate.getTime())) {
+    return "Last refresh never";
+  }
+
+  const isSameDay =
+    refreshDate.getFullYear() === now.getFullYear() &&
+    refreshDate.getMonth() === now.getMonth() &&
+    refreshDate.getDate() === now.getDate();
+
+  const timeLabel = schedulerTimeFormatter.format(refreshDate);
+
+  if (isSameDay) {
+    return `Last refresh today at ${timeLabel}`;
+  }
+
+  const dateLabel = schedulerDateFormatter.format(refreshDate);
+
+  return `Last refresh ${dateLabel} at ${timeLabel}`;
 }
 
 export function getEpisodeShowNotes(

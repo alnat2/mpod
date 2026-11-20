@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode, type Ref, type UIEventHandler } from "react";
+import { useState, type ReactNode, type Ref, type UIEventHandler } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,7 +9,6 @@ import {
   type CachedSubscriptionEpisode,
   type CachedSubscriptionPodcast,
   SubscriptionsCacheContext,
-  useSubscriptionsCache,
 } from "@/lib/subscriptions-cache";
 import { SubscriptionsCacheProvider } from "@/lib/subscriptions-cache-provider";
 
@@ -180,7 +179,18 @@ vi.mock("@/components/mpod", () => ({
   ModalScreen: ({ children }: { children: ReactNode }) => (
     <div data-testid="modal">{children}</div>
   ),
-  PageHeader: ({ title }: { title: string }) => <div>{title}</div>,
+  PageHeader: ({
+    title,
+    subtitle,
+  }: {
+    title: string;
+    subtitle?: ReactNode;
+  }) => (
+    <div>
+      <div>{title}</div>
+      {subtitle ? <div>{subtitle}</div> : null}
+    </div>
+  ),
   ShowNotes: ({
     podcastTitle,
     episodeTitle,
@@ -256,6 +266,35 @@ describe("SubscriptionsScreen", () => {
       episodes: [baseEpisode],
     });
     vi.spyOn(api.playlist, "list").mockResolvedValue({ items: [] });
+    vi.spyOn(api.jobs, "status").mockResolvedValue({
+      scheduler: {
+        state: "idle",
+        lastRunAt: null,
+        lastSuccessAt: null,
+      },
+    });
+  });
+
+  it("displays scheduler last refresh time in page header subtitle", async () => {
+    const todayAt1352 = new Date();
+    todayAt1352.setHours(13, 52, 0, 0);
+
+    vi.spyOn(api.jobs, "status").mockResolvedValue({
+      scheduler: {
+        state: "idle",
+        lastRunAt: todayAt1352.toISOString(),
+        lastSuccessAt: todayAt1352.toISOString(),
+      },
+    });
+
+    renderSubscriptionsScreen();
+
+    expect(
+      await screen.findByText("1 podcast · 1 unlistened")
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("Last refresh today at 13:52")
+    ).toBeInTheDocument();
   });
 
   it("does not show an empty-library heading during the first load", async () => {
@@ -1015,6 +1054,13 @@ describe("SubscriptionsScreen", () => {
       .spyOn(api.jobs, "status")
       .mockResolvedValueOnce({
         scheduler: {
+          state: "idle",
+          lastRunAt: "2026-05-27T09:00:00Z",
+          lastSuccessAt: "2026-05-27T09:00:00Z",
+        },
+      })
+      .mockResolvedValueOnce({
+        scheduler: {
           state: "running",
           lastRunAt: "2026-05-27T10:00:00Z",
           lastSuccessAt: null,
@@ -1023,6 +1069,13 @@ describe("SubscriptionsScreen", () => {
       .mockResolvedValueOnce({
         scheduler: {
           state: "completed",
+          lastRunAt: "2026-05-27T10:00:00Z",
+          lastSuccessAt: "2026-05-27T10:00:05Z",
+        },
+      })
+      .mockResolvedValue({
+        scheduler: {
+          state: "idle",
           lastRunAt: "2026-05-27T10:00:00Z",
           lastSuccessAt: "2026-05-27T10:00:05Z",
         },
@@ -1049,7 +1102,7 @@ describe("SubscriptionsScreen", () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
 
-    expect(statusSpy).toHaveBeenCalledTimes(1);
+    expect(statusSpy).toHaveBeenCalledTimes(2);
     expect(refreshButton).toBeDisabled();
     expect(listSpy).toHaveBeenCalledTimes(1);
 
@@ -1057,7 +1110,7 @@ describe("SubscriptionsScreen", () => {
       await vi.advanceTimersByTimeAsync(3000);
     });
 
-    expect(statusSpy).toHaveBeenCalledTimes(2);
+    expect(statusSpy).toHaveBeenCalledTimes(4);
     expect(refreshButton).not.toBeDisabled();
     expect(listSpy).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
