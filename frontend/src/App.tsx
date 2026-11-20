@@ -21,10 +21,13 @@ import {
 import { AddPodcastModal, type AddPodcastModalMode } from "@/screens/add-podcast-modal";
 import { ScreenErrorBoundary } from "@/components/screen-error-boundary";
 import {
-  api,
   subscribeToUnauthorized,
   type AuthSession,
 } from "@/lib/api";
+import {
+  fetchSessionWithTimeout,
+  isTransientSessionError,
+} from "@/lib/session-recovery";
 import { useLatestRequest } from "@/lib/use-latest-request";
 import { PlaybackProvider, usePlaybackDispatch } from "@/lib/playback-context";
 import { prefetchAllRoutes, prefetchRoute } from "@/lib/route-prefetch";
@@ -225,26 +228,54 @@ function AppRoutes() {
         setLoading(true);
         setSessionError(false);
       }
-      try {
-        const nextSession = await api.auth.session();
-        if (sessionRequests.isLatestRequest(requestGeneration)) {
-          if (!nextSession.authenticated) {
-            clearCachedSettings();
-            clearCachedAudiobooks();
-          }
-          setSession(nextSession);
+
+      const maxAttempts = isBackground ? 1 : 3;
+      const timeoutMs = isBackground ? 4000 : 2500;
+      const backoffDelays = [400, 800];
+
+      let attempt = 0;
+
+      while (attempt < maxAttempts) {
+        if (!sessionRequests.isLatestRequest(requestGeneration)) {
+          return;
         }
-      } catch {
-        if (sessionRequests.isLatestRequest(requestGeneration)) {
-          if (!isBackground) {
-            setSessionError(true);
+
+        try {
+          const nextSession = await fetchSessionWithTimeout(timeoutMs);
+
+          if (sessionRequests.isLatestRequest(requestGeneration)) {
+            if (!nextSession.authenticated) {
+              clearCachedSettings();
+              clearCachedAudiobooks();
+            }
+            setSession(nextSession);
+            setSessionError(false);
+            if (!isBackground) {
+              setLoading(false);
+            }
           }
+          return;
+        } catch (error) {
+          attempt++;
+
+          if (!sessionRequests.isLatestRequest(requestGeneration)) {
+            return;
+          }
+
+          if (attempt < maxAttempts && isTransientSessionError(error)) {
+            const delayMs = backoffDelays[attempt - 1] ?? 800;
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+            continue;
+          }
+
+          break;
         }
-      } finally {
-        if (sessionRequests.isLatestRequest(requestGeneration)) {
-          if (!isBackground) {
-            setLoading(false);
-          }
+      }
+
+      if (sessionRequests.isLatestRequest(requestGeneration)) {
+        if (!isBackground) {
+          setSessionError(true);
+          setLoading(false);
         }
       }
     },
@@ -329,6 +360,19 @@ function AppRoutes() {
       );
     };
   }, [refreshSessionOnce, session?.authenticated]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      if (sessionError) {
+        void loadSession();
+      }
+    };
+
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [loadSession, sessionError]);
 
   if (location.pathname === "/component-preview") {
     return (

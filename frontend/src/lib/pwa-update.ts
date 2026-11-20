@@ -5,6 +5,48 @@ let isInitialized = false;
 let registeredUpdateSW: ((reloadPage?: boolean) => Promise<void>) | null = null;
 let visibilityListener: (() => void) | null = null;
 
+export const LEGACY_API_CACHE_NAMES = [
+  "api-session-cache",
+  "api-playback-cache",
+  "api-data-cache",
+];
+
+export async function cleanupLegacyCaches(
+  cacheStorage?: CacheStorage
+): Promise<string[]> {
+  const storage =
+    cacheStorage ??
+    (typeof window !== "undefined" && "caches" in window
+      ? window.caches
+      : undefined);
+
+  if (!storage) {
+    return [];
+  }
+
+  try {
+    const keys = await storage.keys();
+    const deleted: string[] = [];
+    await Promise.all(
+      keys.map(async (key) => {
+        if (
+          LEGACY_API_CACHE_NAMES.includes(key) ||
+          key.startsWith("api-")
+        ) {
+          const success = await storage.delete(key);
+          if (success) {
+            deleted.push(key);
+          }
+        }
+      })
+    );
+    return deleted;
+  } catch (error) {
+    console.warn("Failed to cleanup legacy caches", error);
+    return [];
+  }
+}
+
 export function initPwaUpdate(updateFn?: (reloadPage?: boolean) => Promise<void>) {
   if (updateFn) {
     registeredUpdateSW = updateFn;

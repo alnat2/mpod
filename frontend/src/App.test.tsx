@@ -3,7 +3,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { api, type AuthSession } from "@/lib/api";
+import { api, ApiError, type AuthSession } from "@/lib/api";
 
 import App from "./App";
 
@@ -386,5 +386,116 @@ describe("App routing", () => {
 
     expect(await screen.findByText("Settings screen")).toBeInTheDocument();
     expect(playbackProviderUnmountSpy).not.toHaveBeenCalled();
+  });
+
+  it("recovers automatically when initial session request experiences transient network failure", async () => {
+    const networkError = new TypeError("Failed to fetch");
+    const sessionSpy = vi
+      .spyOn(api.auth, "session")
+      .mockRejectedValueOnce(networkError)
+      .mockResolvedValueOnce({
+        authenticated: true,
+        user: { id: 1, username: "qa" },
+        setupRequired: false,
+      });
+
+    render(<App />);
+
+    expect(await screen.findByText("Home screen")).toBeInTheDocument();
+    expect(screen.queryByText("mpod is not reachable")).not.toBeInTheDocument();
+    expect(sessionSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovers automatically when initial session request returns server 502", async () => {
+    const server502 = new ApiError("Bad Gateway", "HTTP_ERROR", 502);
+    const sessionSpy = vi
+      .spyOn(api.auth, "session")
+      .mockRejectedValueOnce(server502)
+      .mockResolvedValueOnce({
+        authenticated: true,
+        user: { id: 1, username: "qa" },
+        setupRequired: false,
+      });
+
+    render(<App />);
+
+    expect(await screen.findByText("Home screen")).toBeInTheDocument();
+    expect(sessionSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry 401 client errors", async () => {
+    const unauthError = new ApiError("Unauthorized", "UNAUTHORIZED", 401);
+    const sessionSpy = vi
+      .spyOn(api.auth, "session")
+      .mockRejectedValueOnce(unauthError);
+
+    render(<App />);
+
+    expect(await screen.findByText("mpod is not reachable")).toBeInTheDocument();
+    expect(sessionSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows retry screen when all transient retry attempts fail", async () => {
+    const networkError = new TypeError("Failed to fetch");
+    const sessionSpy = vi
+      .spyOn(api.auth, "session")
+      .mockRejectedValue(networkError);
+
+    render(<App />);
+
+    expect(
+      await screen.findByText("mpod is not reachable", undefined, {
+        timeout: 4000,
+      })
+    ).toBeInTheDocument();
+    expect(sessionSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("automatically retries session loading on window online event when session error is displayed", async () => {
+    const networkError = new TypeError("Failed to fetch");
+    const sessionSpy = vi
+      .spyOn(api.auth, "session")
+      .mockRejectedValue(networkError);
+
+    render(<App />);
+
+    expect(
+      await screen.findByText("mpod is not reachable", undefined, {
+        timeout: 4000,
+      })
+    ).toBeInTheDocument();
+    expect(sessionSpy).toHaveBeenCalledTimes(3);
+
+    sessionSpy.mockResolvedValueOnce({
+      authenticated: true,
+      user: { id: 1, username: "qa" },
+      setupRequired: false,
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+    });
+
+    expect(await screen.findByText("Home screen")).toBeInTheDocument();
+    expect(sessionSpy).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not trigger extra session loading on window online event when session is already loaded", async () => {
+    const sessionSpy = vi.spyOn(api.auth, "session").mockResolvedValue({
+      authenticated: true,
+      user: { id: 1, username: "qa" },
+      setupRequired: false,
+    });
+
+    render(<App />);
+    expect(await screen.findByText("Home screen")).toBeInTheDocument();
+    expect(sessionSpy).toHaveBeenCalledTimes(1);
+    sessionSpy.mockClear();
+
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+    });
+
+    expect(sessionSpy).not.toHaveBeenCalled();
   });
 });

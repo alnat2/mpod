@@ -5,7 +5,13 @@ import { registerSW } from "virtual:pwa-register";
 import App from "./App";
 import { ErrorBoundary } from "./components/error-boundary";
 import "./index.css";
-import { handleNeedRefresh, initPwaUpdate } from "./lib/pwa-update";
+import {
+  cleanupLegacyCaches,
+  handleNeedRefresh,
+  initPwaUpdate,
+} from "./lib/pwa-update";
+
+void cleanupLegacyCaches();
 
 const updateSW = registerSW({
   immediate: true,

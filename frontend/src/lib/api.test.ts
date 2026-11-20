@@ -132,4 +132,32 @@ describe("api client", () => {
 
     unsubscribe();
   });
+
+  it("passes abort signal to fetch in auth.session", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          authenticated: true,
+          user: { id: 1, username: "user" },
+          setupRequired: false,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.auth.session({ signal: controller.signal });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/session",
+      expect.objectContaining({
+        signal: controller.signal,
+        credentials: "same-origin",
+      })
+    );
+  });
 });

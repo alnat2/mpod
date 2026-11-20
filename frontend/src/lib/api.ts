@@ -252,7 +252,8 @@ async function apiRequest<T>(path: string, options: RequestOptions = {}) {
 
 export const api = {
   auth: {
-    session: () => apiRequest<AuthSession>("/api/auth/session"),
+    session: (options?: { signal?: AbortSignal }) =>
+      apiRequest<AuthSession>("/api/auth/session", options),
     register: (payload: { username: string; password: string }) =>
       apiRequest<{ user: User }>("/api/auth/register", {
         method: "POST",

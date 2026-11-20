@@ -3,6 +3,7 @@ import {
   _resetPwaUpdateStateForTesting,
   _setUpdateWaitingForTesting,
   applyAppUpdate,
+  cleanupLegacyCaches,
   handleManualReload,
   handleNeedRefresh,
   initPwaUpdate,
@@ -195,6 +196,62 @@ describe("pwa-update", () => {
 
       expect(confirmSpy).toHaveBeenCalledWith("Audio is currently playing. Reload anyway?");
       expect(mockUpdateSW).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("cleanupLegacyCaches", () => {
+    it("deletes legacy api runtime caches and preserves other caches", async () => {
+      const mockStorage = {
+        keys: vi.fn().mockResolvedValue([
+          "api-session-cache",
+          "api-playback-cache",
+          "api-data-cache",
+          "workbox-precache-v2",
+          "custom-app-assets",
+        ]),
+        delete: vi.fn().mockResolvedValue(true),
+      };
+
+      const deleted = await cleanupLegacyCaches(mockStorage as unknown as CacheStorage);
+
+      expect(deleted).toEqual([
+        "api-session-cache",
+        "api-playback-cache",
+        "api-data-cache",
+      ]);
+      expect(mockStorage.delete).toHaveBeenCalledWith("api-session-cache");
+      expect(mockStorage.delete).toHaveBeenCalledWith("api-playback-cache");
+      expect(mockStorage.delete).toHaveBeenCalledWith("api-data-cache");
+      expect(mockStorage.delete).not.toHaveBeenCalledWith("workbox-precache-v2");
+      expect(mockStorage.delete).not.toHaveBeenCalledWith("custom-app-assets");
+    });
+
+    it("returns empty array when caches is not supported", async () => {
+      const originalCaches = window.caches;
+      try {
+        // @ts-expect-error simulating environment without caches
+        delete window.caches;
+        const deleted = await cleanupLegacyCaches();
+        expect(deleted).toEqual([]);
+      } finally {
+        Object.defineProperty(window, "caches", {
+          configurable: true,
+          value: originalCaches,
+        });
+      }
+    });
+
+    it("handles storage errors gracefully without throwing", async () => {
+      const mockStorage = {
+        keys: vi.fn().mockRejectedValue(new Error("SecurityError")),
+        delete: vi.fn(),
+      };
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const deleted = await cleanupLegacyCaches(mockStorage as unknown as CacheStorage);
+
+      expect(deleted).toEqual([]);
+      expect(warnSpy).toHaveBeenCalled();
     });
   });
 });
