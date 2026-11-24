@@ -1,0 +1,12 @@
+#!/bin/sh
+# adb-timeout — run a command with a hard timeout (macOS has no `timeout` binary).
+#
+#   scripts/qa/adb-timeout 90 adb -s 192.168.0.202:41451 shell dumpsys power
+#
+# A hung adb/agent-device call otherwise eats 20-30 minutes of a test run.
+secs="$1"; shift
+if [ -z "$secs" ] || [ -z "$1" ]; then
+  echo "usage: adb-timeout <seconds> <command...>" >&2
+  exit 2
+fi
+exec perl -e 'alarm shift; exec @ARGV' "$secs" "$@"
