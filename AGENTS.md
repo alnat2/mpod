@@ -20,6 +20,7 @@ Single-user web application: React frontend, Go backend, SQLite, local storage. 
 - Для Figma/design/UI-задач и перед изменением `frontend/` прочитай `frontend/AGENTS.md`, в том числе при запуске из корня.
 - Перед изменением `server/` прочитай `server/AGENTS.md`.
 - Frontend-задача меняет frontend и frontend-owned docs; backend-задача — backend и backend-owned docs.
+- Перед любым тестированием на эмуляторах/симуляторах (и перед прогоном по тест-плану PWA) прочитай `docs/emulator-testing.md`: там правила запуска (только по явной команде), готовность окружения и дисциплина работы с устройствами.
 - Причина вне заданной области: сообщи вывод и дождись разрешения на cross-domain fix. Изначальный full-stack запрос разрешает обе области.
 - Docker/runtime/deploy: сначала `docs/deployment.md`. Test branch — `test`, production — `main`; не переключай источник самостоятельно. Любой deploy (и test, и production) и любые команды через SSH на внешние хосты (`nas` и др.) СТРОГО ЗАПРЕЩЕНЫ без прямого, явного приказа пользователя (например, «задеплой на тест»). Запросы про git push, статус веток или тестирование НЕ являются разрешением на деплой. Агент работает только в локальном репозитории.
 
