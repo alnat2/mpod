@@ -48,6 +48,22 @@
 - Через `adb` разрешено только то, чего `agent-device` не умеет: `forward`, `dumpsys deviceidle`,
   `input keyevent` для power, чтение логов, `emu kill`.
 
+### Готовый инструментарий: `scripts/qa/`
+
+Не писать заново то, что уже есть. Подробности и примеры — в
+[`scripts/qa/README.md`](../scripts/qa/README.md).
+
+| Скрипт | Когда использовать |
+|---|---|
+| `adb-timeout <сек> <cmd>` | вокруг **каждой** команды к устройству (в macOS нет `timeout`) |
+| `android-screen.sh <state\|lock\|wake\|unlock\|media-play-pause>` | локскрин и медиаклавиша; `lock` использует `KEYCODE_SLEEP` (223), а не power (26) |
+| `cdp-eval.mjs <port> <url> "<js>"` | снять состояние страницы, включить флаг, прочитать данные (тело с `return`, `await` поддержан) |
+| `cdp-click.mjs <port> <url> "<js → element>"` | клик в установленном WebAPK, где accessibility-дерево пустое |
+| `media-probe.mjs <port> <install\|dump\|state\|reset>` | перехваты `play`/`mediaSession`/lifecycle и сетевых запросов |
+
+Перед подключением устройства: `adb forward tcp:9222 localabstract:chrome_devtools_remote`,
+дальше `curl -s http://127.0.0.1:9222/json/list` — там видно и обычные вкладки, и WebAPK.
+
 ## 4. Регресс ≠ диагностика бага
 
 **Регресс-прогон** (проверяем, что фичи живы): фиксированная матрица кейсов, прогон от начала
