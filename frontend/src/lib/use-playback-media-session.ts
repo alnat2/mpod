@@ -13,6 +13,7 @@ type UsePlaybackMediaSessionOptions = {
   setPlaying: (playing: boolean) => void;
   playToggle: () => void;
   cancelAutoAdvance: () => void;
+  sourceReadyRef?: RefObject<boolean>;
 };
 
 function getEpisodeArtworkUrl(episode: QueueEpisode): string {
@@ -65,6 +66,7 @@ export function usePlaybackMediaSession({
   setPlaying,
   playToggle,
   cancelAutoAdvance,
+  sourceReadyRef,
 }: UsePlaybackMediaSessionOptions) {
   const handlePlayRef = useRef<(() => void) | null>(null);
   const handlePauseRef = useRef<(() => void) | null>(null);
@@ -76,12 +78,25 @@ export function usePlaybackMediaSession({
         return;
       }
 
+      // If audio is already playing, Play is an idempotent no-op.
+      if (!audio.paused) {
+        return;
+      }
+
       // Play is idempotent while a source is still preparing or buffering.
-      if (!audio.paused || playingRef.current) {
+      const isBuffering = sourceReadyRef ? !sourceReadyRef.current : false;
+      if (playingRef.current && isBuffering) {
         playingRef.current = true;
         userInitiatedPlayRef.current = false;
         setPlaying(true);
         return;
+      }
+
+      // Audio is paused and source is ready (or paused by OS/Chrome).
+      // Reset playingRef to false so playToggle can initiate resume.
+      if (playingRef.current) {
+        playingRef.current = false;
+        setPlaying(false);
       }
 
       playToggle();
@@ -112,6 +127,7 @@ export function usePlaybackMediaSession({
     userInitiatedPlayRef,
     playToggle,
     cancelAutoAdvance,
+    sourceReadyRef,
   ]);
 
   useEffect(() => {

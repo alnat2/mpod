@@ -865,6 +865,59 @@ describe("PlaybackProvider", () => {
     expect(screen.getByTestId("position")).toHaveTextContent("237");
   });
 
+  it("stops polling and does not churn reload when episode download is complete", async () => {
+    const user = userEvent.setup();
+    const episodeSpy = vi.mocked(api.episodes.get);
+    episodeSpy.mockResolvedValue({
+      episode: { ...episodes.get(1)!, downloaded: true },
+    });
+
+    renderPlaybackProvider();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading")).toHaveTextContent("no");
+    });
+
+    await user.click(screen.getByRole("button", { name: "Toggle play" }));
+
+    const audio = FakeAudio.first;
+    await emitAudioReady(audio);
+    await waitFor(() => {
+      expect(screen.getByTestId("playing")).toHaveTextContent("yes");
+      expect(episodeSpy).toHaveBeenCalledTimes(1);
+    });
+
+    // Handle initial reload from download
+    await waitFor(() => {
+      expect(audio.pauseImpl).toHaveBeenCalled();
+    });
+    await emitAudioReady(audio);
+    await waitFor(() => {
+      expect(audio.playImpl).toHaveBeenCalled();
+    });
+
+    // Clear call counts
+    audio.pauseImpl.mockClear();
+    audio.loadImpl.mockClear();
+    audio.playImpl.mockClear();
+    episodeSpy.mockClear();
+
+    // Advance time by 15 seconds (multiple polling cycles)
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+
+      expect(episodeSpy).not.toHaveBeenCalled();
+      expect(audio.pauseImpl).not.toHaveBeenCalled();
+      expect(audio.loadImpl).not.toHaveBeenCalled();
+      expect(audio.playImpl).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("polls queue for pending downloads and updates downloaded status", async () => {
     vi.useFakeTimers();
     try {

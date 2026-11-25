@@ -303,6 +303,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     setPlaying,
     playToggle,
     cancelAutoAdvance,
+    sourceReadyRef,
   });
 
   const stateValue = useMemo(

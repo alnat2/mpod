@@ -5,15 +5,23 @@ import type { QueueEpisode } from "./playback-context-types";
 import { usePlaybackMediaSession } from "./use-playback-media-session";
 
 describe("usePlaybackMediaSession", () => {
+  const actionHandlers = new Map<MediaSessionAction, MediaSessionActionHandler>();
   const fakeSession = {
     playbackState: "none",
     metadata: null as MediaMetadata | null,
-    setActionHandler: vi.fn(),
+    setActionHandler: vi.fn((action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
+      if (handler) {
+        actionHandlers.set(action, handler);
+      } else {
+        actionHandlers.delete(action);
+      }
+    }),
   };
 
   beforeEach(() => {
     fakeSession.playbackState = "none";
     fakeSession.metadata = null;
+    actionHandlers.clear();
     vi.clearAllMocks();
 
     Object.defineProperty(navigator, "mediaSession", {
@@ -214,5 +222,187 @@ describe("usePlaybackMediaSession", () => {
 
     expect(fakeSession.playbackState).toBe("none");
     expect(fakeSession.metadata).toBeNull();
+  });
+
+  describe("media session action handlers", () => {
+    it("calls playToggle when play action is invoked and audio is paused, even if playingRef was true", () => {
+      const audio = document.createElement("audio");
+      audio.src = "https://example.com/ep1.mp3";
+      Object.defineProperty(audio, "paused", { value: true, configurable: true, writable: true });
+
+      const audioRef = { current: audio };
+      const currentEpisodeRef = { current: baseEpisode };
+      const playingRef = { current: true }; // simulates stale state after Chrome/hardware pause
+      const setPlaying = vi.fn();
+      const playToggle = vi.fn();
+      const sourceReadyRef = { current: true };
+
+      renderHook(() =>
+        usePlaybackMediaSession({
+          audioRef,
+          currentEpisodeRef,
+          currentEpisode: baseEpisode,
+          playing: true,
+          playingRef,
+          userInitiatedPlayRef: { current: false },
+          commitCurrentPlayback: vi.fn(),
+          setPlaying,
+          playToggle,
+          cancelAutoAdvance: vi.fn(),
+          sourceReadyRef,
+        })
+      );
+
+      const playHandler = actionHandlers.get("play");
+      expect(playHandler).toBeDefined();
+      playHandler!({ action: "play" });
+
+      expect(playingRef.current).toBe(false);
+      expect(setPlaying).toHaveBeenCalledWith(false);
+      expect(playToggle).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not call playToggle when play action is invoked while audio is already playing", () => {
+      const audio = document.createElement("audio");
+      audio.src = "https://example.com/ep1.mp3";
+      Object.defineProperty(audio, "paused", { value: false, configurable: true, writable: true });
+
+      const audioRef = { current: audio };
+      const currentEpisodeRef = { current: baseEpisode };
+      const playingRef = { current: true };
+      const setPlaying = vi.fn();
+      const playToggle = vi.fn();
+
+      renderHook(() =>
+        usePlaybackMediaSession({
+          audioRef,
+          currentEpisodeRef,
+          currentEpisode: baseEpisode,
+          playing: true,
+          playingRef,
+          userInitiatedPlayRef: { current: false },
+          commitCurrentPlayback: vi.fn(),
+          setPlaying,
+          playToggle,
+          cancelAutoAdvance: vi.fn(),
+        })
+      );
+
+      const playHandler = actionHandlers.get("play");
+      expect(playHandler).toBeDefined();
+      playHandler!({ action: "play" });
+
+      expect(playToggle).not.toHaveBeenCalled();
+    });
+
+    it("is idempotent when play action is invoked while source is preparing/buffering", () => {
+      const audio = document.createElement("audio");
+      audio.src = "https://example.com/ep1.mp3";
+      Object.defineProperty(audio, "paused", { value: true, configurable: true, writable: true });
+
+      const audioRef = { current: audio };
+      const currentEpisodeRef = { current: baseEpisode };
+      const playingRef = { current: true };
+      const setPlaying = vi.fn();
+      const playToggle = vi.fn();
+      const sourceReadyRef = { current: false }; // buffering / preparing metadata
+
+      renderHook(() =>
+        usePlaybackMediaSession({
+          audioRef,
+          currentEpisodeRef,
+          currentEpisode: baseEpisode,
+          playing: true,
+          playingRef,
+          userInitiatedPlayRef: { current: false },
+          commitCurrentPlayback: vi.fn(),
+          setPlaying,
+          playToggle,
+          cancelAutoAdvance: vi.fn(),
+          sourceReadyRef,
+        })
+      );
+
+      const playHandler = actionHandlers.get("play");
+      expect(playHandler).toBeDefined();
+      playHandler!({ action: "play" });
+
+      expect(playToggle).not.toHaveBeenCalled();
+      expect(playingRef.current).toBe(true);
+      expect(setPlaying).toHaveBeenCalledWith(true);
+    });
+
+    it("pauses audio, cancels auto advance, and commits playback on pause action", () => {
+      const audio = document.createElement("audio");
+      audio.src = "https://example.com/ep1.mp3";
+      Object.defineProperty(audio, "paused", { value: false, configurable: true, writable: true });
+      const pauseSpy = vi.spyOn(audio, "pause").mockImplementation(() => {
+        Object.defineProperty(audio, "paused", { value: true, configurable: true, writable: true });
+      });
+
+      const audioRef = { current: audio };
+      const currentEpisodeRef = { current: baseEpisode };
+      const playingRef = { current: true };
+      const setPlaying = vi.fn();
+      const playToggle = vi.fn();
+      const cancelAutoAdvance = vi.fn();
+      const commitCurrentPlayback = vi.fn();
+
+      renderHook(() =>
+        usePlaybackMediaSession({
+          audioRef,
+          currentEpisodeRef,
+          currentEpisode: baseEpisode,
+          playing: true,
+          playingRef,
+          userInitiatedPlayRef: { current: false },
+          commitCurrentPlayback,
+          setPlaying,
+          playToggle,
+          cancelAutoAdvance,
+        })
+      );
+
+      const pauseHandler = actionHandlers.get("pause");
+      expect(pauseHandler).toBeDefined();
+      pauseHandler!({ action: "pause" });
+
+      expect(pauseSpy).toHaveBeenCalledTimes(1);
+      expect(playingRef.current).toBe(false);
+      expect(setPlaying).toHaveBeenCalledWith(false);
+      expect(cancelAutoAdvance).toHaveBeenCalledTimes(1);
+      expect(commitCurrentPlayback).toHaveBeenCalledTimes(1);
+    });
+
+    it("calls playToggle when sourceReadyRef is omitted and audio is paused", () => {
+      const audio = document.createElement("audio");
+      audio.src = "https://example.com/ep1.mp3";
+      Object.defineProperty(audio, "paused", { value: true, configurable: true, writable: true });
+
+      const audioRef = { current: audio };
+      const currentEpisodeRef = { current: baseEpisode };
+      const playingRef = { current: false };
+      const playToggle = vi.fn();
+
+      renderHook(() =>
+        usePlaybackMediaSession({
+          audioRef,
+          currentEpisodeRef,
+          currentEpisode: baseEpisode,
+          playing: false,
+          playingRef,
+          userInitiatedPlayRef: { current: false },
+          commitCurrentPlayback: vi.fn(),
+          setPlaying: vi.fn(),
+          playToggle,
+          cancelAutoAdvance: vi.fn(),
+        })
+      );
+
+      const playHandler = actionHandlers.get("play");
+      playHandler!({ action: "play" });
+
+      expect(playToggle).toHaveBeenCalledTimes(1);
+    });
   });
 });
