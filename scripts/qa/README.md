@@ -91,3 +91,13 @@ scripts/qa/media-probe.mjs 9222 state home
 - **Локскрин без медиакарточки** при `paused` — не баг, а поведение системы.
 - **`agent-device` отдаёт чёрный кадр на keyguard** — это ограничение привязки к поверхности
   приложения, не проблема устройства. При необходимости: `adb exec-out screencap -p > shot.png`.
+- **`ms:*` видно только для хендлеров, зарегистрированных после `install`.** Приложение ставит
+  `setActionHandler` на маунте, поэтому инъекция в уже загруженную страницу не покажет `ms:play` /
+  `ms:pause` — это не значит, что action не пришёл. Чтобы поймать их, нужна document-start
+  инъекция: `Page.enable` → `Page.addScriptToEvaluateOnNewDocument` → перезагрузка.
+- **`t` в событиях — это `performance.now()` от навигации страницы**, не от инъекции и не wall
+  clock. Привязка к часам: `page_nav_epoch = t0_install − install_t`.
+- **`Page.reload` через CDP на Android-WebAPK игнорируется** — перезагружать через
+  `Runtime.evaluate` с `location.reload()`.
+- **После lifecycle `freeze` событий не будет вообще** (ни `play:call`, ни сетевых): renderer
+  заморожен. Это ответ, а не зависший probe — см. раздел 7 в `docs/emulator-testing.md`.
