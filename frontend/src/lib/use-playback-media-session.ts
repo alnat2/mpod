@@ -14,6 +14,12 @@ type UsePlaybackMediaSessionOptions = {
   playToggle: () => void;
   cancelAutoAdvance: () => void;
   sourceReadyRef?: RefObject<boolean>;
+  seekForward?: () => void;
+  seekBackward?: () => void;
+  seekTo?: (seconds: number) => void;
+  positionSeconds?: number;
+  duration?: number | null;
+  speedLabel?: string;
 };
 
 function getEpisodeArtworkUrl(episode: QueueEpisode): string {
@@ -67,9 +73,24 @@ export function usePlaybackMediaSession({
   playToggle,
   cancelAutoAdvance,
   sourceReadyRef,
+  seekForward,
+  seekBackward,
+  seekTo,
+  positionSeconds,
+  duration,
+  speedLabel,
 }: UsePlaybackMediaSessionOptions) {
   const handlePlayRef = useRef<(() => void) | null>(null);
   const handlePauseRef = useRef<(() => void) | null>(null);
+  const handleSeekForwardRef = useRef<(() => void) | undefined>(seekForward);
+  const handleSeekBackwardRef = useRef<(() => void) | undefined>(seekBackward);
+  const handleSeekToRef = useRef<((seconds: number) => void) | undefined>(seekTo);
+
+  useEffect(() => {
+    handleSeekForwardRef.current = seekForward;
+    handleSeekBackwardRef.current = seekBackward;
+    handleSeekToRef.current = seekTo;
+  }, [seekForward, seekBackward, seekTo]);
 
   useEffect(() => {
     handlePlayRef.current = () => {
@@ -100,12 +121,42 @@ export function usePlaybackMediaSession({
       }
 
       playToggle();
+
+      // Synchronously signal to MediaSession the actual state after playToggle
+      // (avoiding stale "playing" state if playToggle was an early no-op).
+      if (
+        typeof navigator !== "undefined" &&
+        "mediaSession" in navigator &&
+        navigator.mediaSession
+      ) {
+        try {
+          if (playingRef.current || userInitiatedPlayRef.current) {
+            navigator.mediaSession.playbackState = "playing";
+          } else {
+            navigator.mediaSession.playbackState = "paused";
+          }
+        } catch {
+          // Ignore partial MediaSession support
+        }
+      }
     };
 
     handlePauseRef.current = () => {
       const audio = audioRef.current;
       if (!audio) {
         return;
+      }
+
+      if (
+        typeof navigator !== "undefined" &&
+        "mediaSession" in navigator &&
+        navigator.mediaSession
+      ) {
+        try {
+          navigator.mediaSession.playbackState = "paused";
+        } catch {
+          // Ignore partial MediaSession support
+        }
       }
 
       const wasPlaying = playingRef.current || !audio.paused;
@@ -156,6 +207,13 @@ export function usePlaybackMediaSession({
 
     registerAction("play", () => handlePlayRef.current?.());
     registerAction("pause", () => handlePauseRef.current?.());
+    registerAction("seekforward", () => handleSeekForwardRef.current?.());
+    registerAction("seekbackward", () => handleSeekBackwardRef.current?.());
+    registerAction("seekto", (details) => {
+      if (details.seekTime !== undefined && Number.isFinite(details.seekTime)) {
+        handleSeekToRef.current?.(details.seekTime);
+      }
+    });
 
     return () => {
       for (const action of registeredActions) {
@@ -225,4 +283,44 @@ export function usePlaybackMediaSession({
       // Playback still works when the browser exposes only partial Media Session support.
     }
   }, [currentEpisode, playing]);
+
+  useEffect(() => {
+    if (
+      typeof navigator === "undefined" ||
+      !("mediaSession" in navigator) ||
+      !navigator.mediaSession ||
+      typeof navigator.mediaSession.setPositionState !== "function"
+    ) {
+      return;
+    }
+
+    const audio = audioRef.current;
+    if (!currentEpisode || !audio) {
+      return;
+    }
+
+    const dur = duration ?? audio.duration;
+    if (!Number.isFinite(dur) || dur <= 0) {
+      return;
+    }
+
+    const rawPos = positionSeconds ?? audio.currentTime;
+    if (!Number.isFinite(rawPos) || rawPos < 0) {
+      return;
+    }
+    const pos = Math.min(rawPos, dur);
+
+    const rawRate = audio.playbackRate;
+    const rate = Number.isFinite(rawRate) && rawRate > 0 ? rawRate : 1;
+
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: dur,
+        playbackRate: rate,
+        position: pos,
+      });
+    } catch {
+      // Browsers may throw if position > duration or inputs are invalid.
+    }
+  }, [audioRef, currentEpisode, duration, positionSeconds, speedLabel]);
 }

@@ -21,6 +21,7 @@ describe("usePlaybackMediaSession", () => {
   beforeEach(() => {
     fakeSession.playbackState = "none";
     fakeSession.metadata = null;
+    delete (fakeSession as { setPositionState?: unknown }).setPositionState;
     actionHandlers.clear();
     vi.clearAllMocks();
 
@@ -403,6 +404,229 @@ describe("usePlaybackMediaSession", () => {
       playHandler!({ action: "play" });
 
       expect(playToggle).toHaveBeenCalledTimes(1);
+    });
+
+    it("synchronously sets playbackState to playing on play action and paused on pause action", () => {
+      const audio = document.createElement("audio");
+      audio.src = "https://example.com/ep1.mp3";
+      Object.defineProperty(audio, "paused", { value: true, configurable: true, writable: true });
+
+      const audioRef = { current: audio };
+      const currentEpisodeRef = { current: baseEpisode };
+      const playingRef = { current: false };
+      const userInitiatedPlayRef = { current: false };
+      const playToggle = vi.fn(() => {
+        userInitiatedPlayRef.current = true;
+      });
+
+      renderHook(() =>
+        usePlaybackMediaSession({
+          audioRef,
+          currentEpisodeRef,
+          currentEpisode: baseEpisode,
+          playing: false,
+          playingRef,
+          userInitiatedPlayRef,
+          commitCurrentPlayback: vi.fn(),
+          setPlaying: vi.fn(),
+          playToggle,
+          cancelAutoAdvance: vi.fn(),
+        })
+      );
+
+      const playHandler = actionHandlers.get("play");
+      expect(playHandler).toBeDefined();
+      playHandler!({ action: "play" });
+      expect(fakeSession.playbackState).toBe("playing");
+
+      const pauseHandler = actionHandlers.get("pause");
+      expect(pauseHandler).toBeDefined();
+      pauseHandler!({ action: "pause" });
+      expect(fakeSession.playbackState).toBe("paused");
+    });
+
+    it("keeps playbackState as paused if playToggle is a no-op", () => {
+      const audio = document.createElement("audio");
+      audio.src = "https://example.com/ep1.mp3";
+      Object.defineProperty(audio, "paused", { value: true, configurable: true, writable: true });
+
+      const audioRef = { current: audio };
+      const currentEpisodeRef = { current: baseEpisode };
+      const playingRef = { current: false };
+      const userInitiatedPlayRef = { current: false };
+      const playToggle = vi.fn(); // no-op, does not initiate play
+
+      renderHook(() =>
+        usePlaybackMediaSession({
+          audioRef,
+          currentEpisodeRef,
+          currentEpisode: baseEpisode,
+          playing: false,
+          playingRef,
+          userInitiatedPlayRef,
+          commitCurrentPlayback: vi.fn(),
+          setPlaying: vi.fn(),
+          playToggle,
+          cancelAutoAdvance: vi.fn(),
+        })
+      );
+
+      const playHandler = actionHandlers.get("play");
+      expect(playHandler).toBeDefined();
+      playHandler!({ action: "play" });
+      expect(fakeSession.playbackState).toBe("paused");
+    });
+
+    it("registers and delegates seekforward, seekbackward, and seekto action handlers", () => {
+      const audio = document.createElement("audio");
+      audio.src = "https://example.com/ep1.mp3";
+      const audioRef = { current: audio };
+      const currentEpisodeRef = { current: baseEpisode };
+      const playingRef = { current: true };
+      const seekForward = vi.fn();
+      const seekBackward = vi.fn();
+      const seekTo = vi.fn();
+
+      renderHook(() =>
+        usePlaybackMediaSession({
+          audioRef,
+          currentEpisodeRef,
+          currentEpisode: baseEpisode,
+          playing: true,
+          playingRef,
+          userInitiatedPlayRef: { current: false },
+          commitCurrentPlayback: vi.fn(),
+          setPlaying: vi.fn(),
+          playToggle: vi.fn(),
+          cancelAutoAdvance: vi.fn(),
+          seekForward,
+          seekBackward,
+          seekTo,
+        })
+      );
+
+      const forwardHandler = actionHandlers.get("seekforward");
+      expect(forwardHandler).toBeDefined();
+      forwardHandler!({ action: "seekforward" });
+      expect(seekForward).toHaveBeenCalledTimes(1);
+
+      const backwardHandler = actionHandlers.get("seekbackward");
+      expect(backwardHandler).toBeDefined();
+      backwardHandler!({ action: "seekbackward" });
+      expect(seekBackward).toHaveBeenCalledTimes(1);
+
+      const seekToHandler = actionHandlers.get("seekto");
+      expect(seekToHandler).toBeDefined();
+      seekToHandler!({ action: "seekto", seekTime: 120 });
+      expect(seekTo).toHaveBeenCalledWith(120);
+    });
+
+    it("calls setPositionState with duration, position, and playbackRate", () => {
+      const setPositionState = vi.fn();
+      Object.assign(fakeSession, { setPositionState });
+
+      const audio = document.createElement("audio");
+      audio.src = "https://example.com/ep1.mp3";
+      Object.defineProperty(audio, "currentTime", { value: 45, configurable: true });
+      Object.defineProperty(audio, "playbackRate", { value: 1.5, configurable: true });
+
+      const audioRef = { current: audio };
+      const currentEpisodeRef = { current: baseEpisode };
+      const playingRef = { current: true };
+
+      renderHook(() =>
+        usePlaybackMediaSession({
+          audioRef,
+          currentEpisodeRef,
+          currentEpisode: baseEpisode,
+          playing: true,
+          playingRef,
+          userInitiatedPlayRef: { current: false },
+          commitCurrentPlayback: vi.fn(),
+          setPlaying: vi.fn(),
+          playToggle: vi.fn(),
+          cancelAutoAdvance: vi.fn(),
+          positionSeconds: 45,
+          duration: 3600,
+          speedLabel: "1.5x",
+        })
+      );
+
+      expect(setPositionState).toHaveBeenCalledWith({
+        duration: 3600,
+        playbackRate: 1.5,
+        position: 45,
+      });
+    });
+
+    it("ignores invalid seekTime in seekto handler", () => {
+      const seekTo = vi.fn();
+      const audio = document.createElement("audio");
+      audio.src = "https://example.com/ep1.mp3";
+      const audioRef = { current: audio };
+      const currentEpisodeRef = { current: baseEpisode };
+      const playingRef = { current: true };
+
+      renderHook(() =>
+        usePlaybackMediaSession({
+          audioRef,
+          currentEpisodeRef,
+          currentEpisode: baseEpisode,
+          playing: true,
+          playingRef,
+          userInitiatedPlayRef: { current: false },
+          commitCurrentPlayback: vi.fn(),
+          setPlaying: vi.fn(),
+          playToggle: vi.fn(),
+          cancelAutoAdvance: vi.fn(),
+          seekTo,
+        })
+      );
+
+      const seekToHandler = actionHandlers.get("seekto");
+      expect(seekToHandler).toBeDefined();
+
+      seekToHandler!({ action: "seekto", seekTime: undefined });
+      expect(seekTo).not.toHaveBeenCalled();
+
+      seekToHandler!({ action: "seekto", seekTime: NaN });
+      expect(seekTo).not.toHaveBeenCalled();
+
+      seekToHandler!({ action: "seekto", seekTime: Infinity });
+      expect(seekTo).not.toHaveBeenCalled();
+    });
+
+    it("ignores non-finite duration and position in setPositionState", () => {
+      const setPositionState = vi.fn();
+      Object.assign(fakeSession, { setPositionState });
+
+      const audio = document.createElement("audio");
+      audio.src = "https://example.com/ep1.mp3";
+      Object.defineProperty(audio, "currentTime", { value: NaN, configurable: true });
+      Object.defineProperty(audio, "duration", { value: NaN, configurable: true });
+
+      const audioRef = { current: audio };
+      const currentEpisodeRef = { current: baseEpisode };
+      const playingRef = { current: true };
+
+      renderHook(() =>
+        usePlaybackMediaSession({
+          audioRef,
+          currentEpisodeRef,
+          currentEpisode: baseEpisode,
+          playing: true,
+          playingRef,
+          userInitiatedPlayRef: { current: false },
+          commitCurrentPlayback: vi.fn(),
+          setPlaying: vi.fn(),
+          playToggle: vi.fn(),
+          cancelAutoAdvance: vi.fn(),
+          positionSeconds: NaN,
+          duration: NaN,
+        })
+      );
+
+      expect(setPositionState).not.toHaveBeenCalled();
     });
   });
 });

@@ -304,6 +304,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     playToggle,
     cancelAutoAdvance,
     sourceReadyRef,
+    seekForward,
+    seekBackward,
+    seekTo,
+    positionSeconds,
+    duration: currentEpisodeDuration,
+    speedLabel,
   });
 
   const stateValue = useMemo(
