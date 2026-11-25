@@ -1335,9 +1335,15 @@ export function usePlaybackAudio({
     const episodeId = currentEpisodeId;
     let cancelled = false;
     let checking = false;
+    let intervalId: number | undefined;
 
     const checkDownloadedSource = async () => {
-      if (checking || sourceSwitchingRef.current || !playingRef.current) {
+      if (
+        checking ||
+        sourceSwitchingRef.current ||
+        !playingRef.current ||
+        sourceDownloadStateRef.current?.downloaded
+      ) {
         return;
       }
 
@@ -1357,6 +1363,10 @@ export function usePlaybackAudio({
         const targetSrc = `${window.location.origin}/api/episodes/${episodeId}/audio`;
         if (!audio || !audio.src.includes(targetSrc)) {
           return;
+        }
+
+        if (intervalId !== undefined) {
+          window.clearInterval(intervalId);
         }
 
         const savedPosition = audio.currentTime;
@@ -1425,14 +1435,16 @@ export function usePlaybackAudio({
     };
 
     void checkDownloadedSource();
-    const intervalId = window.setInterval(
+    intervalId = window.setInterval(
       () => void checkDownloadedSource(),
       DOWNLOADED_SOURCE_POLL_MS
     );
 
     return () => {
       cancelled = true;
-      window.clearInterval(intervalId);
+      if (intervalId !== undefined) {
+        window.clearInterval(intervalId);
+      }
     };
   }, [
     audioRef,
@@ -1581,7 +1593,11 @@ export function usePlaybackAudio({
     setPlaybackError(null);
     const audio = audioRef.current;
 
-    if (playing) {
+    if (
+      playing &&
+      playingRef.current &&
+      (!audio || !audio.paused || sourceSwitchingRef.current || !sourceReadyRef.current)
+    ) {
       userInitiatedPlayRef.current = false;
       pendingPlayAttemptRef.current = null;
       autoAdvanceIntentRef.current = false;
