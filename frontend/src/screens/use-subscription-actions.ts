@@ -359,6 +359,22 @@ export function useSubscriptionActions({
     clearPodcastExit(exitingIds);
   }
 
+  function getExitingPodcastIdsForListenedEpisodes(episodeIds: Set<number>) {
+    if (showAll) {
+      return [];
+    }
+    return podcasts
+      .filter((podcast) =>
+        (podcast.episodes ?? []).some((episode) => episodeIds.has(episode.id))
+      )
+      .filter((podcast) =>
+        (podcast.episodes ?? []).every(
+          (episode) => episode.isListened || episodeIds.has(episode.id)
+        )
+      )
+      .map((podcast) => podcast.id);
+  }
+
   async function markListened(
     episodes: Array<Pick<Episode, "id" | "title">>,
     isListened: boolean
@@ -373,19 +389,9 @@ export function useSubscriptionActions({
     }
 
     const previousPodcasts = podcasts;
-    const exitingIds =
-      isListened && !showAll
-        ? podcasts
-            .filter((podcast) =>
-              (podcast.episodes ?? []).some((episode) => episodeIds.has(episode.id))
-            )
-            .filter((podcast) =>
-              (podcast.episodes ?? []).every(
-                (episode) => episode.isListened || episodeIds.has(episode.id)
-              )
-            )
-            .map((podcast) => podcast.id)
-        : [];
+    const exitingIds = isListened
+      ? getExitingPodcastIdsForListenedEpisodes(episodeIds)
+      : [];
 
     await animatePodcastExit(exitingIds);
 
@@ -398,6 +404,7 @@ export function useSubscriptionActions({
                 ...episode,
                 isListened,
                 inPlaylist: isListened ? false : episode.inPlaylist,
+                downloaded: isListened ? false : episode.downloaded,
               }
             : episode
         ),
@@ -469,14 +476,28 @@ export function useSubscriptionActions({
   ) {
     setActionError(null);
     const previousPodcasts = podcasts;
+    const exitingIds = getExitingPodcastIdsForListenedEpisodes(
+      new Set([episode.id])
+    );
+
+    await animatePodcastExit(exitingIds);
+
     setPodcasts((current) =>
       current.map((podcast) => ({
         ...podcast,
         episodes: (podcast.episodes ?? []).map((item) =>
-          item.id === episode.id ? { ...item, inPlaylist: false } : item
+          item.id === episode.id
+            ? {
+                ...item,
+                inPlaylist: false,
+                isListened: true,
+                downloaded: false,
+              }
+            : item
         ),
       }))
     );
+    clearPodcastExit(exitingIds);
 
     try {
       await api.playlist.remove(episode.id);

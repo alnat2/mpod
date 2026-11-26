@@ -47,6 +47,14 @@ func TestRemoveDeletesDownloadThenPlaylistItem(t *testing.T) {
 	if downloadedPath != "" {
 		t.Fatalf("expected downloaded_path to be cleared, got %q", downloadedPath)
 	}
+
+	var isListened bool
+	if err := db.SQL.QueryRow(`SELECT is_listened FROM episodes WHERE id = 1`).Scan(&isListened); err != nil {
+		t.Fatalf("load is_listened: %v", err)
+	}
+	if !isListened {
+		t.Fatalf("expected episode to be marked listened after playlist removal")
+	}
 }
 
 func TestRemoveKeepsPlaylistItemWhenDownloadDeletionFails(t *testing.T) {
@@ -85,5 +93,13 @@ func TestRemoveKeepsPlaylistItemWhenDownloadDeletionFails(t *testing.T) {
 	}
 	if downloadedPath != downloadPath {
 		t.Fatalf("expected downloaded_path to remain %q, got %q", downloadPath, downloadedPath)
+	}
+
+	var isListened bool
+	if err := db.SQL.QueryRow(`SELECT is_listened FROM episodes WHERE id = 1`).Scan(&isListened); err != nil {
+		t.Fatalf("load is_listened: %v", err)
+	}
+	if isListened {
+		t.Fatalf("expected episode to remain unlistened when download deletion fails")
 	}
 }

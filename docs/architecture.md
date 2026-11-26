@@ -459,7 +459,7 @@ Rules carried into architecture:
 - downloaded files are disposable local copies
 - playlist items are automatically downloaded after a persistent 15-second delay
 - playlist items already present at startup are downloaded immediately when no valid local file exists
-- removing from playlist deletes file by default
+- removing from playlist marks the episode as listened and deletes file by default
 - marking listened deletes file by default
 - file deletion and DB updates should stay consistent
 

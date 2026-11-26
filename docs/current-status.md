@@ -23,7 +23,7 @@ The starter documentation set is in place:
 - Database is SQLite.
 - App port is `5050`.
 - Downloads are stored under `/data/downloads`.
-- Removing an episode from playlist deletes its local file by default.
+- Removing an episode from playlist marks it as listened and deletes its local file by default.
 - Marking an episode as listened deletes its local file by default.
 - Scheduler runs once per day at one global configured time.
 - OPML import should trigger immediate feed fetch for newly added subscriptions.

@@ -1851,6 +1851,14 @@ func TestPlaylistEndpoints(t *testing.T) {
 	if removeRec.Code != nethttp.StatusOK {
 		t.Fatalf("expected 200 from remove, got %d body=%s", removeRec.Code, removeRec.Body.String())
 	}
+
+	var listenedAfterRemove bool
+	if err := db.SQL.QueryRow(`SELECT is_listened FROM episodes WHERE id = 1`).Scan(&listenedAfterRemove); err != nil {
+		t.Fatalf("query is_listened after playlist remove: %v", err)
+	}
+	if !listenedAfterRemove {
+		t.Fatalf("expected playlist remove to mark episode listened")
+	}
 }
 
 func TestPlaylistListReturnsEmptyArrayWhenNoItems(t *testing.T) {
@@ -2015,6 +2023,14 @@ func TestPlaylistRemoveReturnsServerErrorWhenDownloadDeletionFails(t *testing.T)
 	}
 	if playlistCount != 1 {
 		t.Fatalf("expected playlist item to remain after failed download delete, got %d rows", playlistCount)
+	}
+
+	var isListened bool
+	if err := db.SQL.QueryRow(`SELECT is_listened FROM episodes WHERE id = 1`).Scan(&isListened); err != nil {
+		t.Fatalf("query is_listened after failed download delete: %v", err)
+	}
+	if isListened {
+		t.Fatalf("expected episode to remain unlistened after failed download delete")
 	}
 }
 

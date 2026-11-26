@@ -741,6 +741,147 @@ describe("SubscriptionsScreen", () => {
     });
   });
 
+  it("marks episode listened, updates UI, and reloads queue when removing from playlist", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api.episodes, "list")
+      .mockResolvedValueOnce({ episodes: [baseEpisode] })
+      .mockResolvedValue({ episodes: [{ ...baseEpisode, isListened: true }] });
+    vi.spyOn(api.playlist, "list")
+      .mockResolvedValueOnce({
+        items: [
+          {
+            episodeId: baseEpisode.id,
+            position: 1,
+            episode: {
+              id: baseEpisode.id,
+              title: baseEpisode.title,
+              podcastId: baseEpisode.podcastId,
+              isListened: false,
+              downloaded: true,
+            },
+          },
+        ],
+      })
+      .mockResolvedValue({ items: [] });
+    const removeSpy = vi
+      .spyOn(api.playlist, "remove")
+      .mockResolvedValue({ success: true });
+
+    renderSubscriptionsScreen();
+
+    await user.click(await screen.findByRole("button", { name: "Show all" }));
+    const row = await screen.findByTestId("episode-row-QA reorder third");
+    await user.click(
+      within(row).getByRole("button", { name: "Remove from playlist" })
+    );
+
+    await waitFor(() => {
+      expect(removeSpy).toHaveBeenCalledWith(baseEpisode.id);
+    });
+    await waitFor(() => {
+      expect(reloadQueueMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(
+        within(row).getByRole("button", { name: "Add to playlist" })
+      ).toBeInTheDocument();
+    });
+    expect(
+      within(row).getByRole("button", { name: "Mark as unlistened" })
+    ).toBeInTheDocument();
+  });
+
+  it("transitions default Subscriptions view to All caught up when removing the last unlistened episode from playlist", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api.episodes, "list")
+      .mockResolvedValueOnce({ episodes: [baseEpisode] })
+      .mockResolvedValue({ episodes: [{ ...baseEpisode, isListened: true }] });
+    vi.spyOn(api.playlist, "list")
+      .mockResolvedValueOnce({
+        items: [
+          {
+            episodeId: baseEpisode.id,
+            position: 1,
+            episode: {
+              id: baseEpisode.id,
+              title: baseEpisode.title,
+              podcastId: baseEpisode.podcastId,
+              isListened: false,
+              downloaded: false,
+            },
+          },
+        ],
+      })
+      .mockResolvedValue({ items: [] });
+    const removeSpy = vi
+      .spyOn(api.playlist, "remove")
+      .mockResolvedValue({ success: true });
+
+    renderSubscriptionsScreen();
+
+    const row = await screen.findByTestId("episode-row-QA reorder third");
+    await user.click(
+      within(row).getByRole("button", { name: "Remove from playlist" })
+    );
+
+    await waitFor(() => {
+      expect(removeSpy).toHaveBeenCalledWith(baseEpisode.id);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("All caught up")).toBeInTheDocument();
+      expect(screen.getByText("1 podcast · 0 unlistened")).toBeInTheDocument();
+    });
+  });
+
+  it("rolls back optimistic listened and playlist state when removeFromPlaylist fails", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api.episodes, "list").mockResolvedValue({
+      episodes: [baseEpisode],
+    });
+    vi.spyOn(api.playlist, "list").mockResolvedValue({
+      items: [
+        {
+          episodeId: baseEpisode.id,
+          position: 1,
+          episode: {
+            id: baseEpisode.id,
+            title: baseEpisode.title,
+            podcastId: baseEpisode.podcastId,
+            isListened: false,
+            downloaded: false,
+          },
+        },
+      ],
+    });
+    const removeSpy = vi
+      .spyOn(api.playlist, "remove")
+      .mockRejectedValue(
+        new ApiError("Failed to remove episode download", "PLAYLIST_REMOVE_FAILED", 500)
+      );
+
+    renderSubscriptionsScreen();
+
+    const row = await screen.findByTestId("episode-row-QA reorder third");
+    await user.click(
+      within(row).getByRole("button", { name: "Remove from playlist" })
+    );
+
+    await waitFor(() => {
+      expect(removeSpy).toHaveBeenCalledWith(baseEpisode.id);
+    });
+    expect(
+      await screen.findByText("Failed to remove episode download")
+    ).toBeInTheDocument();
+    const restoredRow = await screen.findByTestId("episode-row-QA reorder third");
+    expect(
+      within(restoredRow).getByRole("button", { name: "Remove from playlist" })
+    ).toBeInTheDocument();
+    expect(
+      within(restoredRow).getByRole("button", { name: "Mark as listened" })
+    ).toBeInTheDocument();
+    expect(reloadQueueMock).not.toHaveBeenCalled();
+  });
+
   it("clears playlist state and reloads the playback queue after marking a playlist episode listened", async () => {
     const user = userEvent.setup();
     vi.spyOn(api.episodes, "list")

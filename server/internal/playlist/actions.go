@@ -27,7 +27,7 @@ func (a *Actions) Remove(ctx context.Context, episodeID int64) error {
 		return fmt.Errorf("delete playlist episode download: %w", err)
 	}
 
-	if err := a.service.Remove(ctx, episodeID); err != nil {
+	if err := a.service.RemoveAndMarkListened(ctx, episodeID); err != nil {
 		return fmt.Errorf("remove playlist item: %w", err)
 	}
 

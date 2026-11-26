@@ -289,7 +289,7 @@ Design intent:
 Backend rules:
 - duplicate playlist entries are prevented by the backend
 - playlist order is stored explicitly by the backend
-- removing an episode from the playlist deletes its local file by default
+- removing a podcast episode from the playlist marks it as listened and deletes its local file by default
 - removing audiobook content from the playlist never deletes source files
 
 ## Audiobook Library Flow
@@ -518,7 +518,7 @@ Users do not need to manually manage files as a primary workflow.
 Instead, the app applies the approved lifecycle rules behind the scenes.
 
 Important user-facing outcomes:
-- removing an episode from playlist removes it from the queue immediately and deletes its local file by default when the backend mutation commits
+- removing a podcast episode from playlist removes it from the queue immediately, marks it as listened, and deletes its local file by default when the backend mutation commits
 - marking an episode as listened deletes its local file by default when the backend mutation commits
 - marking an episode as unlistened restores listened state only, not deleted local files
 - unsubscribing from a podcast removes the subscription, associated episodes, playlist entries, playback state, and downloaded files after the 15-second undo window expires

@@ -215,17 +215,42 @@ func (s *Service) AddAudiobook(ctx context.Context, audiobookID int64) error {
 }
 
 func (s *Service) Remove(ctx context.Context, episodeID int64) error {
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM playlist WHERE episode_id = ?`, episodeID); err != nil {
+	return s.removeEpisode(ctx, episodeID, false)
+}
+
+// RemoveAndMarkListened removes the episode from the playlist, clears active
+// playback if needed, normalizes positions, and marks the episode listened in
+// one transaction.
+func (s *Service) RemoveAndMarkListened(ctx context.Context, episodeID int64) error {
+	return s.removeEpisode(ctx, episodeID, true)
+}
+
+func (s *Service) removeEpisode(ctx context.Context, episodeID int64, markListened bool) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin remove playlist item tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if markListened {
+		if _, err := tx.ExecContext(ctx, `UPDATE episodes SET is_listened = 1 WHERE id = ?`, episodeID); err != nil {
+			return fmt.Errorf("mark removed playlist episode listened: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM playlist WHERE episode_id = ?`, episodeID); err != nil {
 		return fmt.Errorf("delete playlist item: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, `
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE active_playback
 		SET episode_id = NULL, last_updated = ?
 		WHERE singleton_id = 1 AND episode_id = ?
-	`, time.Now().UTC(), episodeID); err != nil {
+	`, s.now().UTC(), episodeID); err != nil {
 		return fmt.Errorf("clear active playback item: %w", err)
 	}
-	return s.normalizePositions(ctx)
+	if err := normalizePositionsTx(ctx, tx); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Service) RemoveAudiobook(ctx context.Context, audiobookID int64) error {
@@ -251,13 +276,16 @@ func (s *Service) RemoveAudiobook(ctx context.Context, audiobookID int64) error 
 		UPDATE active_playback
 		SET audiobook_id = NULL, audiobook_track_id = NULL, last_updated = ?
 		WHERE singleton_id = 1 AND audiobook_id = ?
-	`, time.Now().UTC(), audiobookID); err != nil {
+	`, s.now().UTC(), audiobookID); err != nil {
 		return fmt.Errorf("clear active playback audiobook: %w", err)
+	}
+	if err := normalizePositionsTx(ctx, tx); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit remove audiobook tx: %w", err)
 	}
-	return s.normalizePositions(ctx)
+	return nil
 }
 
 type ReorderItem struct {
@@ -314,8 +342,8 @@ func (s *Service) Reorder(ctx context.Context, items []ReorderItem) error {
 	return tx.Commit()
 }
 
-func (s *Service) normalizePositions(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM playlist ORDER BY position ASC, id ASC`)
+func normalizePositionsTx(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM playlist ORDER BY position ASC, id ASC`)
 	if err != nil {
 		return fmt.Errorf("load playlist for normalization: %w", err)
 	}
@@ -336,17 +364,11 @@ func (s *Service) normalizePositions(ctx context.Context) error {
 		return nil
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin normalize positions tx: %w", err)
-	}
-	defer tx.Rollback()
-
 	for i, id := range itemIDs {
 		if _, err := tx.ExecContext(ctx, `UPDATE playlist SET position = ? WHERE id = ?`, i+1, id); err != nil {
 			return fmt.Errorf("update playlist item position: %w", err)
 		}
 	}
 
-	return tx.Commit()
+	return nil
 }
