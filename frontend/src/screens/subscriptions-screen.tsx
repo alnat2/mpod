@@ -190,7 +190,7 @@ export function SubscriptionsScreen() {
           icon: (
             <HugeiconsIcon
               icon={refreshingAll ? Loading02Icon : RefreshDotIcon}
-              className={refreshingAll ? "animate-spin" : undefined}
+              className={cn("size-6", refreshingAll && "animate-spin")}
               data-icon="inline-start"
             />
           ),
@@ -203,6 +203,7 @@ export function SubscriptionsScreen() {
           icon: (
             <HugeiconsIcon
               icon={showAll ? ViewOffIcon : ViewIcon}
+              className="size-6"
               data-icon="inline-start"
             />
           ),

@@ -68,14 +68,14 @@ export function PageHeader({
               className={cn(
                 "shrink-0 justify-center",
                 isMobile 
-                  ? "size-11 rounded-[10px] !p-0 shadow-xs [&_svg]:size-6" 
+                  ? "size-11 rounded-[10px] !p-0 shadow-xs border-0 border-transparent [&_svg]:!size-6" 
                   : isDesktop 
                     ? "h-8 px-2.5" 
-                    : "size-11 max-md:!p-0 max-md:rounded-[10px] max-md:[&_svg]:size-6 md:h-8 md:w-auto md:px-2.5",
-                action.variant === "default" && "shadow-xs",
+                    : "size-11 max-md:!p-0 max-md:rounded-[10px] max-md:shadow-xs max-md:border-0 max-md:border-transparent max-md:[&_svg]:!size-6 md:h-8 md:w-auto md:px-2.5",
+                action.variant === "default" && "shadow-xs border-0 border-transparent",
                 (isMobile || !isDesktop) &&
-                  action.variant === "secondary" &&
-                  "max-md:border max-md:border-border max-md:bg-background max-md:text-primary max-md:hover:bg-background/80"
+                  (action.variant === "secondary" || action.variant === "outline") &&
+                  "max-md:border-0 max-md:border-transparent max-md:bg-background max-md:text-primary max-md:hover:bg-background/80"
               )}
               onClick={action.onClick}
             >

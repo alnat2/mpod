@@ -91,7 +91,7 @@ export function AudiobookPlaybackChaptersModal({
             type="button"
             variant="ghost"
             size="icon"
-            className="size-11 shrink-0 rounded-[10px] border-0 border-transparent bg-background text-foreground shadow-sm hover:bg-background dark:border-transparent dark:bg-background"
+            className="size-11 shrink-0 rounded-[10px] border-0 border-transparent bg-background text-primary shadow-xs hover:bg-background/80 hover:text-primary dark:border-transparent dark:bg-background [&_svg]:!size-6"
             aria-label="Close chapters modal"
             onClick={onClose}
           >
@@ -167,7 +167,7 @@ export function AudiobookPlaybackChaptersModal({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="size-11 shrink-0 rounded-[10px] border-0 border-transparent bg-background text-primary shadow-sm hover:bg-background hover:text-primary dark:border-transparent dark:bg-background"
+                    className="size-11 shrink-0 rounded-[10px] border-0 border-transparent bg-background text-primary shadow-xs hover:bg-background/80 hover:text-primary dark:border-transparent dark:bg-background [&_svg]:!size-6"
                     aria-label={actionLabel}
                     onClick={() => void onPlayTrack(track)}
                   >

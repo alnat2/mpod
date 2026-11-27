@@ -125,8 +125,8 @@ export function FileManagerItem({
             aria-busy={isPending ? true : undefined}
             data-pending={isPending ? "true" : undefined}
             className={cn(
-              "rounded-[10px] border-0 border-transparent bg-background text-primary shadow-sm hover:bg-background hover:text-primary disabled:opacity-50 dark:border-transparent dark:bg-background",
-              isMobile ? "size-11 [&_svg]:size-6" : "size-11 md:size-9 [&_svg]:size-5"
+              "rounded-[10px] border-0 border-transparent bg-background text-primary shadow-xs hover:bg-background/80 hover:text-primary disabled:opacity-50 dark:border-transparent dark:bg-background",
+              isMobile ? "size-11 [&_svg]:!size-6" : "size-11 md:size-9 [&_svg]:size-5 md:[&_svg]:size-5"
             )}
             aria-label={
               isPending

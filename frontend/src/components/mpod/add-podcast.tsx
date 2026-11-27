@@ -95,7 +95,7 @@ export function AddPodcast({
           </CardTitle>
           <Button
             aria-label="Close"
-            className="size-11 rounded-[10px] border border-border bg-background text-primary shadow-sm hover:bg-background/80 hover:text-primary [&_svg]:size-6 md:size-8 md:rounded-lg md:border-0 md:bg-transparent md:text-muted-foreground md:shadow-none md:hover:bg-accent md:hover:text-foreground"
+            className="size-11 rounded-[10px] border-0 border-transparent bg-background text-primary shadow-xs hover:bg-background/80 hover:text-primary [&_svg]:!size-6 md:size-8 md:rounded-lg md:border-0 md:bg-transparent md:text-muted-foreground md:shadow-none md:hover:bg-accent md:hover:text-foreground md:[&_svg]:!size-4"
             size="icon"
             variant="ghost"
             type="button"

@@ -83,7 +83,7 @@ function EpisodeIconButton({
         <Button
           aria-label={action.label}
           className={cn(
-            "border-0 border-transparent bg-background text-primary shadow-sm hover:bg-background hover:text-primary dark:border-transparent dark:bg-background",
+            "border-0 border-transparent bg-background text-primary shadow-xs hover:bg-background/80 hover:text-primary dark:border-transparent dark:bg-background",
             mobile
               ? "size-11 rounded-[10px] [&_svg]:size-6"
               : "size-9 rounded-[10px] [&_svg]:size-5"
