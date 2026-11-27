@@ -26,7 +26,28 @@ describe("screen-utils", () => {
     );
   });
 
-  it("falls back to a generic error message", () => {
+  it("formats non-JSON HTTP_ERROR diagnostics with status and path", () => {
+    expect(
+      getErrorMessage(
+        new ApiError("Not Found", "HTTP_ERROR", 404, "/api/podcasts/refresh-all")
+      )
+    ).toBe("404 Not Found (/api/podcasts/refresh-all)");
+    expect(
+      getErrorMessage(
+        new ApiError("HTTP 502", "HTTP_ERROR", 502, "/api/podcasts")
+      )
+    ).toBe("HTTP 502 (/api/podcasts)");
+    expect(
+      getErrorMessage(
+        new ApiError("HTTP Version Not Supported", "HTTP_ERROR", 505, "/api/podcasts")
+      )
+    ).toBe("505 HTTP Version Not Supported (/api/podcasts)");
+  });
+
+  it("formats network TypeError clearly and falls back to generic error message", () => {
+    expect(getErrorMessage(new TypeError("Failed to fetch"))).toBe(
+      "Network connection failed. Check your connection and try again."
+    );
     expect(getErrorMessage(new Error("boom"))).toBe("Request failed");
   });
 

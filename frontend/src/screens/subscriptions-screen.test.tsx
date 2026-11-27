@@ -1,4 +1,4 @@
-import { useState, type ReactNode, type Ref, type UIEventHandler } from "react";
+import { StrictMode, useState, type ReactNode, type Ref, type UIEventHandler } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -1465,5 +1465,75 @@ describe("SubscriptionsScreen", () => {
     expect(screen.queryByText("Couldn't load Subscriptions")).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Podcast With No Episodes" })).toBeInTheDocument();
     expect(screen.getByText("0 / 0 episodes")).toBeInTheDocument();
+  });
+
+  it("revalidates subscriptions when network comes back online and supports Retry on load error", async () => {
+    const user = userEvent.setup();
+    const listSpy = vi
+      .spyOn(api.podcasts, "list")
+      .mockRejectedValueOnce(new ApiError("Not Found", "HTTP_ERROR", 404, "/api/podcasts"))
+      .mockResolvedValue({
+        podcasts: [{ ...podcast, title: "Recovered Podcast" }],
+      });
+
+    renderSubscriptionsScreen();
+
+    expect(
+      await screen.findByText("404 Not Found (/api/podcasts)")
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("Recovered Podcast")).toBeInTheDocument();
+    expect(listSpy).toHaveBeenCalledTimes(2);
+
+    listSpy.mockResolvedValueOnce({
+      podcasts: [{ ...podcast, title: "Online Synced Podcast" }],
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+    });
+
+    expect(await screen.findByText("Online Synced Podcast")).toBeInTheDocument();
+  });
+
+  it("recovers on online event even when initial subscriptions load failed", async () => {
+    const listSpy = vi
+      .spyOn(api.podcasts, "list")
+      .mockRejectedValueOnce(new ApiError("Not Found", "HTTP_ERROR", 404, "/api/podcasts"))
+      .mockResolvedValueOnce({
+        podcasts: [{ ...podcast, title: "Initial Online Recovery" }],
+      });
+
+    renderSubscriptionsScreen();
+
+    expect(
+      await screen.findByText("404 Not Found (/api/podcasts)")
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+    });
+
+    expect(await screen.findByText("Initial Online Recovery")).toBeInTheDocument();
+    expect(listSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("completes initial load cleanly in React StrictMode while deduplicating the fetch", async () => {
+    const listSpy = vi.spyOn(api.podcasts, "list").mockResolvedValue({
+      podcasts: [{ ...podcast, title: "StrictMode Podcast" }],
+    });
+
+    render(
+      <StrictMode>
+        <SubscriptionsCacheProvider>
+          <SubscriptionsScreen />
+        </SubscriptionsCacheProvider>
+      </StrictMode>
+    );
+
+    expect(await screen.findByText("StrictMode Podcast")).toBeInTheDocument();
+    expect(listSpy).toHaveBeenCalledTimes(1);
   });
 });

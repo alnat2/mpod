@@ -16,6 +16,7 @@ import {
   PlaylistQueue,
   ShowNotes,
 } from "@/components/mpod";
+import { PullToRefresh } from "@/components/mpod/pull-to-refresh";
 import { api, type Audiobook, type AudiobookTrack } from "@/lib/api";
 import {
   usePlaybackDispatch,
@@ -608,16 +609,29 @@ export function HomeScreen() {
            <ScreenBannerStack>
              {error ? <ErrorBanner>{error}</ErrorBanner> : null}
              {actionError ? (
-               <ErrorBanner onClose={() => setActionError(null)}>
+               <ErrorBanner
+                 onClose={() => setActionError(null)}
+                 onRetry={() => {
+                   setActionError(null);
+                   void reloadQueue();
+                 }}
+               >
                  {actionError}
                </ErrorBanner>
              ) : null}
              {playbackError ? (
-               <ErrorBanner onClose={clearPlaybackError}>
+               <ErrorBanner
+                 onClose={clearPlaybackError}
+                 onRetry={() => {
+                   clearPlaybackError();
+                   void reloadQueue();
+                 }}
+               >
                  {playbackError}
                </ErrorBanner>
              ) : null}
            </ScreenBannerStack>
+          <PullToRefresh enabled={isMobile} onRefresh={reloadQueue}>
           {loading ? (
             <CenterLoadingState className="mt-4" label="Loading playlist" />
           ) : currentEpisode ? (
@@ -679,6 +693,7 @@ export function HomeScreen() {
               description="Add episodes from Podcasts or audiobooks from Abooks to start listening."
             />
           )}
+          </PullToRefresh>
         </div>
       </AppShell>
       {modal === "show-notes" && showNotesEpisode ? (

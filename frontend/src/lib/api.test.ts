@@ -104,6 +104,26 @@ describe("api client", () => {
     );
   });
 
+  it("uses HTTP status fallback when statusText is empty and preserves request path", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response("<html>404</html>", {
+          status: 404,
+          statusText: "",
+          headers: { "Content-Type": "text/html" },
+        })
+      )
+    );
+
+    await expect(api.podcasts.refreshAll()).rejects.toMatchObject({
+      message: "HTTP 404",
+      code: "HTTP_ERROR",
+      status: 404,
+      path: "/api/podcasts/refresh-all",
+    });
+  });
+
   it("notifies auth state when an API request returns unauthorized", async () => {
     const onUnauthorized = vi.fn();
     const unsubscribe = subscribeToUnauthorized(onUnauthorized);

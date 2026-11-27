@@ -14,6 +14,7 @@ import {
   PodcastCard,
   ShowNotes,
 } from "@/components/mpod";
+import { PullToRefresh } from "@/components/mpod/pull-to-refresh";
 import { api } from "@/lib/api";
 import { usePlaybackDispatch } from "@/lib/playback-context";
 import {
@@ -80,7 +81,7 @@ export function SubscriptionsScreen() {
   const [showNotesError, setShowNotesError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
-  const { error, loading, scheduler, setError } = useSubscriptionsData({
+  const { error, loading, revalidate, scheduler, setError } = useSubscriptionsData({
     hasLoaded,
     markLoaded,
     reloadKey,
@@ -337,10 +338,21 @@ export function SubscriptionsScreen() {
           <div className="w-full px-5 md:px-0">
             <ScreenBannerStack>
               {error ? (
-                <ErrorBanner onClose={() => setError(null)}>{error}</ErrorBanner>
+                <ErrorBanner
+                  onClose={() => setError(null)}
+                  onRetry={() => void revalidate()}
+                >
+                  {error}
+                </ErrorBanner>
               ) : null}
               {actionError ? (
-                <ErrorBanner onClose={() => setActionError(null)}>
+                <ErrorBanner
+                  onClose={() => setActionError(null)}
+                  onRetry={() => {
+                    setActionError(null);
+                    void revalidate();
+                  }}
+                >
                   {actionError}
                 </ErrorBanner>
               ) : null}
@@ -354,7 +366,8 @@ export function SubscriptionsScreen() {
               ))}
             </ScreenBannerStack>
           </div>
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-4 md:py-6">
+          <PullToRefresh enabled={isMobile} onRefresh={revalidate}>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-4 md:py-6">
             {loading ? (
               <div className="w-full px-5 md:px-0">
                 <ListLoadingState label="Loading subscriptions" />
@@ -437,7 +450,8 @@ export function SubscriptionsScreen() {
                 />
               </div>
             )}
-          </div>
+            </div>
+          </PullToRefresh>
         </div>
       </AppShell>
       {modal === "show-notes" && showNotesEpisode && showNotesPodcast ? (

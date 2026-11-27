@@ -2,7 +2,21 @@ import { ApiError, type Episode, type SchedulerStatus } from "@/lib/api";
 
 export function getErrorMessage(error: unknown) {
   if (error instanceof ApiError) {
+    if (error.code === "HTTP_ERROR" && error.status > 0) {
+      const detail = error.message?.trim();
+      const statusText =
+        detail && !/^HTTP \d{3}$/.test(detail)
+          ? `${error.status} ${detail}`
+          : `HTTP ${error.status}`;
+      return error.path ? `${statusText} (${error.path})` : statusText;
+    }
     return error.message;
+  }
+  if (error instanceof TypeError) {
+    return "Network connection failed. Check your connection and try again.";
+  }
+  if (error instanceof Error && error.name === "AbortError") {
+    return "Request timed out. Please try again.";
   }
   return "Request failed";
 }

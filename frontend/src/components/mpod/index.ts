@@ -15,6 +15,7 @@ export { playbackSpeedOptions, type PlaybackSpeedLabel } from "./playback";
 export { Player } from "./player";
 export { PlaylistQueue } from "./playlist-queue";
 export { PodcastCard } from "./podcast-card";
+export { PullToRefresh } from "./pull-to-refresh";
 export { SettingItem } from "./setting-item";
 export { ShowNotes } from "./show-notes";
 export { FileManagerItem, type FileManagerItemProps, type FileManagerItemType } from "./filemanager-item";

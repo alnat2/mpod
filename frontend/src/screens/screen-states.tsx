@@ -34,33 +34,50 @@ export function ErrorBanner({
   children,
   className,
   onClose,
+  onRetry,
+  retryLabel = "Retry",
 }: {
   children: ReactNode;
   className?: string;
   onClose?: () => void;
+  onRetry?: () => void;
+  retryLabel?: string;
 }) {
   return (
     <div
       role="alert"
       aria-atomic="true"
       className={cn(
-        "pointer-events-auto flex items-start gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm leading-5 text-destructive",
+        "pointer-events-auto overflow-hidden rounded-md border border-destructive/50 bg-card text-sm leading-5 text-destructive shadow-md",
         className
       )}
     >
-      <div className="min-w-0 flex-1">{children}</div>
-      {onClose ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="-mr-1 -my-1 size-7 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-          aria-label="Dismiss error"
-          onClick={onClose}
-        >
-          <HugeiconsIcon icon={Cancel01Icon} className="size-4" aria-hidden="true" />
-        </Button>
-      ) : null}
+      <div className="flex items-start gap-3 bg-destructive/10 px-3 py-2">
+        <div className="min-w-0 flex-1 break-words">{children}</div>
+        {onRetry ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 shrink-0 border-destructive/40 bg-transparent px-2.5 text-xs font-medium text-destructive hover:bg-destructive/15 hover:text-destructive"
+            onClick={onRetry}
+          >
+            {retryLabel}
+          </Button>
+        ) : null}
+        {onClose ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="-mr-1 -my-1 size-7 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            aria-label="Dismiss error"
+            onClick={onClose}
+          >
+            <HugeiconsIcon icon={Cancel01Icon} className="size-4" aria-hidden="true" />
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }

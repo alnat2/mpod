@@ -8,12 +8,20 @@ export type ApiErrorBody = {
 export class ApiError extends Error {
   code: string;
   status: number;
+  declare readonly path?: string;
 
-  constructor(message: string, code: string, status: number) {
+  constructor(message: string, code: string, status: number, path?: string) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
+    if (path !== undefined) {
+      Object.defineProperty(this, "path", {
+        value: path,
+        enumerable: false,
+        configurable: true,
+      });
+    }
   }
 }
 
@@ -191,15 +199,16 @@ function notifyUnauthorized() {
   unauthorizedListeners.forEach((listener) => listener());
 }
 
-async function parseResponse<T>(response: Response): Promise<T> {
+async function parseResponse<T>(response: Response, path: string): Promise<T> {
   if (response.status === 204) {
     return undefined as T;
   }
 
+  const fallbackMessage = response.statusText || `HTTP ${response.status}`;
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
     if (!response.ok) {
-      throw new ApiError(response.statusText, "HTTP_ERROR", response.status);
+      throw new ApiError(fallbackMessage, "HTTP_ERROR", response.status, path);
     }
     return undefined as T;
   }
@@ -208,9 +217,10 @@ async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error = (data as ApiErrorBody).error;
     throw new ApiError(
-      error?.message ?? response.statusText,
+      error?.message ?? fallbackMessage,
       error?.code ?? "HTTP_ERROR",
-      response.status
+      response.status,
+      path
     );
   }
 
@@ -241,7 +251,7 @@ async function apiRequest<T>(path: string, options: RequestOptions = {}) {
   });
 
   try {
-    return await parseResponse<T>(response);
+    return await parseResponse<T>(response, path);
   } catch (error) {
     if (response.status === 401) {
       notifyUnauthorized();

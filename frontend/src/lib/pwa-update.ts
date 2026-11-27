@@ -1,9 +1,12 @@
+// Module-level singleton state coordinates SW updates across App, PlaybackProvider, and screens.
 let updateWaiting = false;
 let isPlaybackPlaying = false;
 let isReloading = false;
 let isInitialized = false;
+let observedAppBuild: string | null = null;
 let registeredUpdateSW: ((reloadPage?: boolean) => Promise<void>) | null = null;
 let visibilityListener: (() => void) | null = null;
+let onlineListener: (() => void) | null = null;
 
 export const LEGACY_API_CACHE_NAMES = [
   "api-session-cache",
@@ -44,6 +47,51 @@ export async function cleanupLegacyCaches(
   }
 }
 
+export async function checkForAppUpdate(): Promise<boolean> {
+  if (updateWaiting) {
+    if (!isPlaybackPlaying) {
+      applyAppUpdate();
+      return true;
+    }
+    return true;
+  }
+
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return false;
+  }
+
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) {
+      return false;
+    }
+    await reg.update().catch(() => {});
+    if (reg.waiting) {
+      handleNeedRefresh();
+      return true;
+    }
+  } catch {
+    // Ignore SW registration lookup failures (e.g. dev mode or restricted contexts)
+  }
+
+  return updateWaiting;
+}
+
+export function observeServerAppBuild(serverBuild: string | null | undefined) {
+  const normalized = serverBuild?.trim();
+  if (!normalized) {
+    return;
+  }
+  if (observedAppBuild === null) {
+    observedAppBuild = normalized;
+    return;
+  }
+  if (observedAppBuild !== normalized) {
+    observedAppBuild = normalized;
+    void checkForAppUpdate();
+  }
+}
+
 export function initPwaUpdate(updateFn?: (reloadPage?: boolean) => Promise<void>) {
   if (updateFn) {
     registeredUpdateSW = updateFn;
@@ -58,16 +106,26 @@ export function initPwaUpdate(updateFn?: (reloadPage?: boolean) => Promise<void>
       if (document.visibilityState === "visible") {
         if (updateWaiting && !isPlaybackPlaying) {
           applyAppUpdate();
-        } else if ("serviceWorker" in navigator) {
-          void navigator.serviceWorker.getRegistration().then((reg) => {
-            void reg?.update().catch(() => {});
-          });
+        } else {
+          void checkForAppUpdate();
         }
       }
     };
 
     document.addEventListener("visibilitychange", visibilityListener);
     isInitialized = true;
+  }
+
+  if (typeof window !== "undefined") {
+    onlineListener = () => {
+      if (updateWaiting && !isPlaybackPlaying) {
+        applyAppUpdate();
+      } else {
+        void checkForAppUpdate();
+      }
+    };
+
+    window.addEventListener("online", onlineListener);
   }
 }
 
@@ -129,11 +187,6 @@ export function handleManualReload() {
     return;
   }
   applyAppUpdate();
-  if (typeof window !== "undefined") {
-    setTimeout(() => {
-      window.location.reload();
-    }, 100);
-  }
 }
 
 export function _resetPwaUpdateStateForTesting() {
@@ -141,10 +194,15 @@ export function _resetPwaUpdateStateForTesting() {
     document.removeEventListener("visibilitychange", visibilityListener);
     visibilityListener = null;
   }
+  if (onlineListener && typeof window !== "undefined") {
+    window.removeEventListener("online", onlineListener);
+    onlineListener = null;
+  }
   updateWaiting = false;
   isPlaybackPlaying = false;
   isReloading = false;
   isInitialized = false;
+  observedAppBuild = null;
   registeredUpdateSW = null;
 }
 

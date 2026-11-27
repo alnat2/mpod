@@ -1,9 +1,10 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useTheme } from "next-themes";
 import { useNavigate } from "react-router-dom";
 
 import { AppShell, PageHeader } from "@/components/mpod";
+import { PullToRefresh } from "@/components/mpod/pull-to-refresh";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,8 +15,10 @@ import {
   type ProxyRuntimeStatus,
   type SettingsValues,
 } from "@/lib/api";
+import { handleManualReload, observeServerAppBuild } from "@/lib/pwa-update";
 import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
 import { useLatestRequest } from "@/lib/use-latest-request";
+import { retryTransient } from "@/lib/wake-recovery";
 
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
 import { ErrorBanner, ScreenBannerStack } from "./screen-states";
@@ -133,29 +136,70 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const statusPollRequests = useLatestRequest();
+  const mountedRef = useRef(true);
   const proxyConfigured = settings?.proxyConfigured || proxyStatus?.proxyConfigured || false;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const applySettingsValues = useCallback((values: SettingsValues) => {
+    observeServerAppBuild(values.appBuild);
+    const normalizedTime = normalizeDailyRefreshTime(values.dailyRefreshTime);
+    setSettings(values);
+    setDailyRefreshTime(normalizedTime);
+    updateCachedSettings({
+      settings: values,
+      dailyRefreshTime: normalizedTime,
+    });
+    setLoading(false);
+  }, []);
+
+  const refreshSettings = useCallback(async () => {
+    setError(null);
+
+    try {
+      const { settings: values } = await retryTransient(
+        () => api.settings.get(),
+        { maxAttempts: 2, delaysMs: [300] }
+      );
+      if (!mountedRef.current) {
+        return;
+      }
+      applySettingsValues(values);
+
+      void api.settings.proxyStatus().then(
+        ({ proxy }) => {
+          if (mountedRef.current) {
+            setProxyStatus(proxy);
+            updateCachedSettings({ proxyStatus: proxy });
+          }
+        },
+        () => {}
+      );
+    } catch (caught) {
+      if (mountedRef.current) {
+        setError(getErrorMessage(caught));
+        setLoading(false);
+      }
+    }
+  }, [applySettingsValues]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadSettings() {
-      if (!getCachedSettings()) {
-        setLoading(true);
-      }
-      setError(null);
-
       try {
-        const { settings: values } = await api.settings.get();
+        const { settings: values } = await retryTransient(
+          () => api.settings.get(),
+          { maxAttempts: 2, delaysMs: [300] }
+        );
 
         if (!cancelled) {
-          const normalizedTime = normalizeDailyRefreshTime(values.dailyRefreshTime);
-          setSettings(values);
-          setDailyRefreshTime(normalizedTime);
-          updateCachedSettings({
-            settings: values,
-            dailyRefreshTime: normalizedTime,
-          });
-          setLoading(false);
+          applySettingsValues(values);
         }
 
         void api.settings.proxyStatus().then(
@@ -182,7 +226,7 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [applySettingsValues, reloadKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -312,7 +356,12 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
           )}
           <ScreenBannerStack>
             {error ? (
-              <ErrorBanner onClose={() => setError(null)}>{error}</ErrorBanner>
+              <ErrorBanner
+                onClose={() => setError(null)}
+                onRetry={() => void refreshSettings()}
+              >
+                {error}
+              </ErrorBanner>
             ) : null}
             {actionError ? (
               <ErrorBanner onClose={() => setActionError(null)}>
@@ -320,6 +369,7 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
               </ErrorBanner>
             ) : null}
           </ScreenBannerStack>
+          <PullToRefresh enabled={isMobile} onRefresh={refreshSettings}>
           <div className="mpod-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden pt-4 pb-20 md:py-6">
             <div className="flex w-full flex-col gap-4">
               <div className="grid items-start gap-4 min-[1360px]:grid-cols-[1fr_680px] min-[1360px]:gap-6">
@@ -439,12 +489,21 @@ export function SettingsScreen({ onSessionChange }: SettingsScreenProps) {
                 </div>
               </div>
               {settings?.appBuild ? (
-                <div className="mt-4 text-sm font-medium text-secondary-foreground">
-                  Current app build: {settings.appBuild}
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm font-medium text-secondary-foreground">
+                  <span>Current app build: {settings.appBuild}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleManualReload}
+                  >
+                    Reload app
+                  </Button>
                 </div>
               ) : null}
             </div>
           </div>
+          </PullToRefresh>
         </div>
       </AppShell>
       <AddPodcastModal

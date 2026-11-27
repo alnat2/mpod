@@ -36,6 +36,7 @@ import { prefetchAllRoutes, prefetchRoute } from "@/lib/route-prefetch";
 import { clearCachedAudiobooks, clearCachedSettings } from "@/lib/screen-cache";
 import { SubscriptionsCacheProvider } from "@/lib/subscriptions-cache-provider";
 import { lazyWithRetry } from "@/lib/lazy-retry";
+import { checkForAppUpdate } from "@/lib/pwa-update";
 
 const SetupScreen = lazyWithRetry(async () => {
   const module = await import("@/screens/auth-screens");
@@ -393,6 +394,7 @@ function AppRoutes() {
 
   useEffect(() => {
     const handleOnline = () => {
+      void checkForAppUpdate();
       if (sessionError) {
         void loadSession({ background: false });
       }

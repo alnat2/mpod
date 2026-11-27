@@ -416,4 +416,45 @@ describe("useSubscriptionActions - refreshAll polling", () => {
       "Refresh all timed out. Please try again."
     );
   });
+
+  it("retries transient gateway failure on refreshAll start and resumes polling on 409 already running", async () => {
+    const refreshAllSpy = vi
+      .spyOn(api.podcasts, "refreshAll")
+      .mockRejectedValueOnce(new ApiError("Bad Gateway", "HTTP_ERROR", 502))
+      .mockRejectedValueOnce(
+        new ApiError(
+          "One or more podcast refreshes are already running",
+          "REFRESH_ALREADY_RUNNING",
+          409
+        )
+      );
+    const statusSpy = vi.spyOn(api.jobs, "status").mockResolvedValue({
+      scheduler: {
+        state: "completed",
+        lastRunAt: "2026-09-13T10:00:00Z",
+        lastSuccessAt: "2026-09-13T10:00:05Z",
+      },
+    });
+
+    const { result, setReloadKey } = setupHook();
+
+    await act(async () => {
+      const promise = result.current.refreshAllPodcasts();
+      await vi.advanceTimersByTimeAsync(400);
+      await promise;
+    });
+
+    expect(refreshAllSpy).toHaveBeenCalledTimes(2);
+    expect(result.current.refreshingAll).toBe(true);
+    expect(result.current.actionError).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(REFRESH_ALL_STATUS_POLL_MS);
+    });
+
+    expect(statusSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.refreshingAll).toBe(false);
+    expect(result.current.actionError).toBeNull();
+    expect(setReloadKey).toHaveBeenCalled();
+  });
 });

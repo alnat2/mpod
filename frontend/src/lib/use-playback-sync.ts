@@ -14,6 +14,7 @@ import {
   type PlaybackSpeedLabel,
 } from "@/components/mpod/playback";
 import { api, type PlaybackState } from "./api";
+import { observeServerAppBuild } from "./pwa-update";
 import {
   clampPosition,
   getPositiveDuration,
@@ -435,6 +436,7 @@ export function usePlaybackSync({
       if (!settingsRequests.isLatestRequest(requestGeneration)) {
         return;
       }
+      observeServerAppBuild(response.settings.appBuild);
       const nextSpeed = response.settings.playbackSpeed;
       setSpeedLabel(
         isPlaybackSpeedLabel(nextSpeed) ? nextSpeed : defaultPlaybackSpeed
@@ -525,11 +527,13 @@ export function usePlaybackSync({
 
     window.addEventListener("focus", syncVisiblePlaybackState);
     window.addEventListener("pageshow", syncVisiblePlaybackState);
+    window.addEventListener("online", syncVisiblePlaybackState);
     document.addEventListener("visibilitychange", syncVisiblePlaybackState);
 
     return () => {
       window.removeEventListener("focus", syncVisiblePlaybackState);
       window.removeEventListener("pageshow", syncVisiblePlaybackState);
+      window.removeEventListener("online", syncVisiblePlaybackState);
       document.removeEventListener("visibilitychange", syncVisiblePlaybackState);
     };
   }, [loadPlaybackSettings, loadQueue, playingRef]);

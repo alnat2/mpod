@@ -1,8 +1,9 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { RefreshDotIcon } from "@hugeicons/core-free-icons";
 
 import { AppShell, FileManagerItem, PageHeader } from "@/components/mpod";
+import { PullToRefresh } from "@/components/mpod/pull-to-refresh";
 import { cn } from "@/lib/utils";
 import {
   Breadcrumb,
@@ -16,6 +17,7 @@ import { AudiobookChaptersModal } from "@/components/mpod/audiobook-chapters-mod
 import { api, type Audiobook, type AudiobookTrack } from "@/lib/api";
 import { usePlaybackDispatch } from "@/lib/playback-context";
 import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
+import { isAbortError, retryTransient } from "@/lib/wake-recovery";
 import { AddPodcastModal, type AddPodcastModalMode } from "./add-podcast-modal";
 import { ErrorBanner, ScreenBannerStack } from "./screen-states";
 import { getCachedAudiobooks, setCachedAudiobooks } from "@/lib/screen-cache";
@@ -79,26 +81,42 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
     }
   }, [currentPath]);
 
+  const applyAudiobooksList = useCallback((list: Audiobook[]) => {
+    setAudiobooks(list);
+    setCachedAudiobooks(list);
+    setError(null);
+  }, []);
+
+  const refreshAudiobooks = useCallback(async () => {
+    try {
+      const response = await retryTransient(() => api.audiobooks.list(), {
+        maxAttempts: 2,
+        delaysMs: [300],
+      });
+      applyAudiobooksList(response.audiobooks ?? []);
+    } catch (caught) {
+      if (!isAbortError(caught)) {
+        setError(getErrorMessage(caught));
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [applyAudiobooksList]);
+
   useEffect(() => {
     const controller = new AbortController();
 
-    async function fetchAudiobooks() {
+    async function loadAudiobooks() {
       try {
-        const response = await api.audiobooks.list(controller.signal);
+        const response = await retryTransient(
+          () => api.audiobooks.list(controller.signal),
+          { maxAttempts: 2, delaysMs: [300], signal: controller.signal }
+        );
         if (!controller.signal.aborted) {
-          const list = response.audiobooks ?? [];
-          setAudiobooks(list);
-          setCachedAudiobooks(list);
-          setError(null);
+          applyAudiobooksList(response.audiobooks ?? []);
         }
       } catch (caught) {
-        if (!controller.signal.aborted) {
-          if (
-            (caught instanceof DOMException && caught.name === "AbortError") ||
-            (caught instanceof Error && caught.name === "AbortError")
-          ) {
-            return;
-          }
+        if (!controller.signal.aborted && !isAbortError(caught)) {
           setError(getErrorMessage(caught));
         }
       } finally {
@@ -108,12 +126,12 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
       }
     }
 
-    void fetchAudiobooks();
+    void loadAudiobooks();
 
     return () => {
       controller.abort();
     };
-  }, [reloadKey]);
+  }, [applyAudiobooksList, reloadKey]);
 
   const handleRescan = async () => {
     try {
@@ -328,9 +346,17 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
           />
 
           <ScreenBannerStack>
-            {error && <ErrorBanner>{error}</ErrorBanner>}
+            {error && (
+              <ErrorBanner
+                onClose={() => setError(null)}
+                onRetry={() => void refreshAudiobooks()}
+              >
+                {error}
+              </ErrorBanner>
+            )}
           </ScreenBannerStack>
 
+          <PullToRefresh enabled={isMobile} onRefresh={refreshAudiobooks}>
           <div className="mpod-scroll -mx-1.5 flex h-full min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-1.5 pt-2 pb-5 md:pb-6">
             {/* Breadcrumb Navigation */}
         <Breadcrumb
@@ -455,6 +481,7 @@ export function AudiobooksScreen(props: AudiobooksScreenProps = {}) {
           </div>
         )}
         </div>
+          </PullToRefresh>
       </div>
       </AppShell>
 

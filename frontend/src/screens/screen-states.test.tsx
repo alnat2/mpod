@@ -11,15 +11,23 @@ import {
 } from "./screen-states";
 
 describe("screen state helpers", () => {
-  it("renders error banner content and dismisses it", async () => {
+  it("renders error banner content, opaque card surface, retry action, and dismisses it", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
+    const onRetry = vi.fn();
 
-    render(<ErrorBanner onClose={onClose}>Failed to update episode</ErrorBanner>);
+    render(
+      <ErrorBanner onClose={onClose} onRetry={onRetry}>
+        Failed to update episode
+      </ErrorBanner>
+    );
 
     const alert = screen.getByRole("alert");
+    expect(alert).toHaveClass("bg-card");
     expect(alert).toHaveTextContent("Failed to update episode");
     expect(alert).toHaveAttribute("aria-atomic", "true");
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole("button", { name: "Dismiss error" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });

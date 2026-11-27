@@ -3,12 +3,14 @@ import {
   _resetPwaUpdateStateForTesting,
   _setUpdateWaitingForTesting,
   applyAppUpdate,
+  checkForAppUpdate,
   cleanupLegacyCaches,
   handleManualReload,
   handleNeedRefresh,
   initPwaUpdate,
   isAudioPlaybackActive,
   isUpdateWaiting,
+  observeServerAppBuild,
   setAudioPlaybackActive,
 } from "./pwa-update";
 
@@ -158,6 +160,67 @@ describe("pwa-update", () => {
     expect(removeEventSpy).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
   });
 
+  it("checks for SW updates when server appBuild changes after initial observation", async () => {
+    const updateMock = vi.fn().mockResolvedValue(undefined);
+    const originalNavigator = navigator.serviceWorker;
+
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        getRegistration: vi.fn().mockResolvedValue({ update: updateMock }),
+      },
+    });
+
+    try {
+      observeServerAppBuild("build-1");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(updateMock).not.toHaveBeenCalled();
+
+      observeServerAppBuild("build-1");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(updateMock).not.toHaveBeenCalled();
+
+      observeServerAppBuild("build-2");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(updateMock).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(navigator, "serviceWorker", {
+        configurable: true,
+        value: originalNavigator,
+      });
+    }
+  });
+
+  it("applies a waiting service worker found during checkForAppUpdate", async () => {
+    const mockUpdateSW = vi.fn().mockResolvedValue(undefined);
+    const updateMock = vi.fn().mockResolvedValue(undefined);
+    const originalNavigator = navigator.serviceWorker;
+
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        getRegistration: vi.fn().mockResolvedValue({
+          update: updateMock,
+          waiting: {},
+        }),
+      },
+    });
+
+    try {
+      initPwaUpdate(mockUpdateSW);
+      const result = await checkForAppUpdate();
+
+      expect(result).toBe(true);
+      expect(updateMock).toHaveBeenCalledTimes(1);
+      expect(mockUpdateSW).toHaveBeenCalledWith(true);
+    } finally {
+      Object.defineProperty(navigator, "serviceWorker", {
+        configurable: true,
+        value: originalNavigator,
+      });
+    }
+  });
+
   describe("handleManualReload", () => {
     it("reloads immediately without confirmation when audio is paused", () => {
       const mockUpdateSW = vi.fn().mockResolvedValue(undefined);
@@ -196,6 +259,26 @@ describe("pwa-update", () => {
 
       expect(confirmSpy).toHaveBeenCalledWith("Audio is currently playing. Reload anyway?");
       expect(mockUpdateSW).not.toHaveBeenCalled();
+    });
+
+    it("falls back to immediate window.location.reload when registeredUpdateSW is null", () => {
+      const originalLocation = window.location;
+      const reloadMock = vi.fn();
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: { ...originalLocation, reload: reloadMock },
+      });
+
+      try {
+        setAudioPlaybackActive(false);
+        handleManualReload();
+        expect(reloadMock).toHaveBeenCalledTimes(1);
+      } finally {
+        Object.defineProperty(window, "location", {
+          configurable: true,
+          value: originalLocation,
+        });
+      }
     });
   });
 

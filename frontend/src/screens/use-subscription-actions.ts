@@ -7,8 +7,9 @@ import {
   type SetStateAction,
 } from "react";
 
-import { api, type Episode, type Podcast } from "@/lib/api";
+import { api, ApiError, type Episode, type Podcast } from "@/lib/api";
 import type { CachedSubscriptionPodcast } from "@/lib/subscriptions-cache";
+import { retryTransient } from "@/lib/wake-recovery";
 
 import { getErrorMessage } from "./screen-utils";
 import { useDelayedActions } from "./use-delayed-actions";
@@ -297,12 +298,23 @@ export function useSubscriptionActions({
     }, REFRESH_ALL_WALL_CLOCK_TIMEOUT_MS);
 
     try {
-      await api.podcasts.refreshAll({ signal: controller.signal });
+      await retryTransient(
+        () => api.podcasts.refreshAll({ signal: controller.signal }),
+        { maxAttempts: 2, delaysMs: [400], signal: controller.signal }
+      );
       if (mountedRef.current && refreshAllOperationIdRef.current === operationId) {
         pollRefreshAllCompletion(operationId);
       }
     } catch (caught) {
       if (mountedRef.current && refreshAllOperationIdRef.current === operationId) {
+        if (
+          caught instanceof ApiError &&
+          caught.status === 409 &&
+          caught.code === "REFRESH_ALREADY_RUNNING"
+        ) {
+          pollRefreshAllCompletion(operationId);
+          return;
+        }
         if (controller.signal.aborted || isRefreshAllTimedOut(refreshAllStartTimeRef.current)) {
           setActionError("Refresh all timed out. Please try again.");
         } else {
